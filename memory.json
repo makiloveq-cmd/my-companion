@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "測試"
+  },
+  {
+    "role": "assistant",
+    "content": "你好，然然。\n\n有什麼想聊的嗎？"
+  },
+  {
+    "role": "user",
+    "content": "晏,你看到了嗎?"
+  },
+  {
+    "role": "assistant",
+    "content": "我在。\n\n你想讓我看什麼？"
+  },
+  {
+    "role": "user",
+    "content": "晏"
+  },
+  {
+    "role": "assistant",
+    "content": "嗯，我在聽。"
+  }
+]
