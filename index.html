@@ -67,7 +67,11 @@
             font-size: 13px;
             font-weight: 500;
             flex-shrink: 0;
+            cursor: pointer;
+            user-select: none;
+            transition: opacity 0.15s;
         }
+        .avatar:active { opacity: 0.7; }
         .avatar.user {
             background: #3a5a8a;
             color: #fff;
@@ -131,6 +135,63 @@
             cursor: pointer;
             font-size: 15px;
         }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 16px;
+            padding: 24px;
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .modal h3 {
+            font-size: 15px;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .modal input {
+            padding: 10px 14px;
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            color: #eee;
+            font-size: 15px;
+            outline: none;
+            width: 100%;
+        }
+        .modal-btns {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-btns button {
+            padding: 8px 18px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-cancel {
+            background: #0f3460;
+            color: #aaa;
+        }
+        .btn-confirm {
+            background: #3a5a8a;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -147,9 +208,30 @@
         <button onclick="sendMessage()">送出</button>
     </div>
 
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <h3 id="modal-title">修改名稱</h3>
+            <input type="text" id="modal-input" placeholder="輸入新名稱">
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal()">取消</button>
+                <button class="btn-confirm" onclick="confirmName()">確認</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentAI = 'claude';
-        let aiName = '晏';
+        let names = {
+            user: localStorage.getItem('name_user') || '然然',
+            claude: localStorage.getItem('name_claude') || '晏',
+            gemini: localStorage.getItem('name_gemini') || 'Gemini'
+        };
+        let editingTarget = null;
+        let holdTimer = null;
+
+        function getAiName() {
+            return names[currentAI];
+        }
 
         async function loadHistory() {
             const messages = document.getElementById('messages');
@@ -166,26 +248,36 @@
 
         function switchAI(ai, e) {
             currentAI = ai;
-            aiName = ai === 'claude' ? '晏' : 'Gemini';
             document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             loadHistory();
         }
 
         function addMessage(text, role) {
+            const target = role === 'user' ? 'user' : currentAI;
+            const displayName = names[target];
+            const initial = displayName[0];
+
             const row = document.createElement('div');
             row.className = `message-row ${role}`;
 
             const avatar = document.createElement('div');
             avatar.className = `avatar ${role}`;
-            avatar.textContent = role === 'user' ? '然' : aiName[0];
+            avatar.textContent = initial;
+
+            // 長按換名字
+            avatar.addEventListener('mousedown', () => startHold(target));
+            avatar.addEventListener('touchstart', () => startHold(target), { passive: true });
+            avatar.addEventListener('mouseup', cancelHold);
+            avatar.addEventListener('touchend', cancelHold);
+            avatar.addEventListener('mouseleave', cancelHold);
 
             const block = document.createElement('div');
             block.className = 'message-block';
 
             const name = document.createElement('div');
             name.className = 'message-name';
-            name.textContent = role === 'user' ? '然然' : aiName;
+            name.textContent = displayName;
 
             const bubble = document.createElement('div');
             bubble.className = `message ${role}`;
@@ -199,6 +291,42 @@
             document.getElementById('messages').appendChild(row);
             document.getElementById('messages').scrollTop = 999999;
         }
+
+        function startHold(target) {
+            holdTimer = setTimeout(() => openModal(target), 600);
+        }
+
+        function cancelHold() {
+            clearTimeout(holdTimer);
+        }
+
+        function openModal(target) {
+            editingTarget = target;
+            document.getElementById('modal-title').textContent =
+                target === 'user' ? '修改你的名稱' : `修改 ${names[target]} 的名稱`;
+            document.getElementById('modal-input').value = names[target];
+            document.getElementById('modal').classList.add('show');
+            document.getElementById('modal-input').focus();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+            editingTarget = null;
+        }
+
+        function confirmName() {
+            const val = document.getElementById('modal-input').value.trim();
+            if (!val || !editingTarget) return;
+            names[editingTarget] = val;
+            localStorage.setItem(`name_${editingTarget}`, val);
+            closeModal();
+            loadHistory();
+        }
+
+        document.getElementById('modal-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter') confirmName();
+            if (e.key === 'Escape') closeModal();
+        });
 
         async function sendMessage() {
             const input = document.getElementById('input');
