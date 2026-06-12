@@ -131,46 +131,62 @@
     </div>
 
     <script>
-        let currentAI = 'claude';
+       let currentAI = 'claude';
 
-        function switchAI(ai) {
-            currentAI = ai;
-            document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-        }
+async function loadHistory() {
+    const messages = document.getElementById('messages');
+    messages.innerHTML = '';
+    try {
+        const res = await fetch(`/history/${currentAI}`);
+        const data = await res.json();
+        data.history.forEach(m => {
+            const role = m.role === 'user' ? 'user' : 'ai';
+            addMessage(m.content, role);
+        });
+    } catch (e) {}
+}
 
-        function addMessage(text, role) {
-            const div = document.createElement('div');
-            div.className = `message ${role}`;
-            div.textContent = text;
-            document.getElementById('messages').appendChild(div);
-            document.getElementById('messages').scrollTop = 999999;
-        }
+function switchAI(ai) {
+    currentAI = ai;
+    document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    loadHistory();
+}
 
-        async function sendMessage() {
-            const input = document.getElementById('input');
-            const msg = input.value.trim();
-            if (!msg) return;
-            input.value = '';
+function addMessage(text, role) {
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+    div.textContent = text;
+    document.getElementById('messages').appendChild(div);
+    document.getElementById('messages').scrollTop = 999999;
+}
 
-            addMessage(msg, 'user');
+async function sendMessage() {
+    const input = document.getElementById('input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
 
-            const apiKey = currentAI === 'claude'
-                ? document.getElementById('claude-key').value
-                : document.getElementById('gemini-key').value;
+    addMessage(msg, 'user');
 
-            try {
-                const res = await fetch(`/chat/${currentAI}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg, api_key: apiKey })
-                });
-                const data = await res.json();
-                addMessage(data.reply, 'ai');
-            } catch (e) {
-                addMessage('連線失敗，請確認伺服器是否啟動。', 'ai');
-            }
-        }
+    const apiKey = currentAI === 'claude'
+        ? document.getElementById('claude-key').value
+        : document.getElementById('gemini-key').value;
+
+    try {
+        const res = await fetch(`/chat/${currentAI}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg, api_key: apiKey })
+        });
+        const data = await res.json();
+        addMessage(data.reply, 'ai');
+    } catch (e) {
+        addMessage('連線失敗，請確認伺服器是否啟動。', 'ai');
+    }
+}
+
+loadHistory();
     </script>
 </body>
 </html>

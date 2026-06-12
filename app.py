@@ -30,6 +30,12 @@ def save_message(bot, role, content):
     }).execute()
 
 # 提供前端頁面
+
+# 載入歷史訊息
+@app.route("/history/<bot>", methods=["GET"])
+def get_history(bot):
+    history = load_memory(bot)
+    return jsonify({"history": history})
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
