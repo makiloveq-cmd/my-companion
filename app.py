@@ -4,48 +4,30 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import anthropic
 import google.generativeai as genai
-import sqlite3
 import os
+from supabase import create_client
 
 app = Flask(__name__)
 CORS(app)
 
-DB_PATH = "memory.db"
-
-# 初始化資料庫
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bot TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
+# 初始化 Supabase
+supabase = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_KEY")
+)
 
 # 讀取記憶
 def load_memory(bot):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT role, content FROM messages WHERE bot=? ORDER BY id", (bot,))
-    rows = c.fetchall()
-    conn.close()
-    return [{"role": r[0], "content": r[1]} for r in rows]
+    result = supabase.table("memories").select("role, content").eq("session_id", bot).order("id").execute()
+    return [{"role": r["role"], "content": r["content"]} for r in result.data]
 
 # 儲存記憶
 def save_message(bot, role, content):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("INSERT INTO messages (bot, role, content) VALUES (?, ?, ?)", (bot, role, content))
-    conn.commit()
-    conn.close()
+    supabase.table("memories").insert({
+        "session_id": bot,
+        "role": role,
+        "content": content
+    }).execute()
 
 # 提供前端頁面
 @app.route("/")
