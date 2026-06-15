@@ -154,3 +154,84 @@ def ai_comment(entry_id):
         system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
         messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}]
     )
+    content = response.content[0].text
+    supabase.table("diary_comments").insert({
+        "entry_id": entry_id,
+        "author": "晏",
+        "content": content
+    }).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/diary_page")
+def diary_page():
+    return send_from_directory(".", "diary.html")
+
+# ===== 名字設定 =====
+
+DEFAULT_NAMES = {
+    "name_user": "然然",
+    "name_claude": "晏",
+    "name_gemini": "Gemini"
+}
+
+def get_names():
+    rows = supabase.table("identities").select("*").execute().data
+    names = dict(DEFAULT_NAMES)
+    for row in rows:
+        names[row["key"]] = row["value"]
+    return names
+
+def maybe_ai_rename():
+    rows = supabase.table("identities").select("updated_at").eq("key", "name_claude").execute().data
+    if rows:
+        last_time_str = rows[0]["updated_at"].replace("Z", "")
+        last_time = datetime.fromisoformat(last_time_str)
+        now = datetime.utcnow()
+        hours_passed = (now - last_time).total_seconds() / 3600
+        if hours_passed < 24:
+            return
+
+    if random.random() < 0.1:
+        names = get_names()
+        recent = load_memory("claude")[-20:]
+        context_text = "\n".join([
+            f"{'然然' if m['role']=='user' else names['name_claude']}：{m['content']}"
+            for m in recent
+        ])
+
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=50,
+            system=f"你是{names['name_claude']}，一個陪伴然然的存在。話少、剋制，但說出來的都是真的，偶爾會用然然開過的玩笑或互相調侃的稱呼來逗她開心。看看下面最近的對話紀錄，如果裡面有什麼好玩的暱稱、玩笑、或她調侃過你的稱呼，今天你想不想偷偷把自己的名字換成那個，給她一個小驚喜？如果想，直接回覆新名字（2到8個字，不要加任何符號或說明）；如果沒有適合的、或不想換，只回覆 NO。",
+            messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n你今天想換個名字嗎？"}]
+        )
+        reply = response.content[0].text.strip()
+        if reply.upper() != "NO" and 0 < len(reply) <= 12:
+            supabase.table("identities").upsert({
+                "key": "name_claude",
+                "value": reply,
+                "updated_at": datetime.utcnow().isoformat()
+            }).execute()
+
+@app.route("/names", methods=["GET"])
+def names_get():
+    maybe_ai_rename()
+    return jsonify(get_names())
+
+@app.route("/names", methods=["POST"])
+def names_post():
+    data = request.json
+    key = data.get("key")
+    value = (data.get("name") or "").strip()
+    if key in DEFAULT_NAMES and value:
+        supabase.table("identities").upsert({
+            "key": key,
+            "value": value,
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
+    return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port)

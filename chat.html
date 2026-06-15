@@ -198,8 +198,8 @@
     <div class="header">
         <h1>✦ 我的陪伴空間</h1>
         <div class="ai-switch">
-            <button class="ai-btn active" onclick="switchAI('claude', event)">晏</button>
-            <button class="ai-btn" onclick="switchAI('gemini', event)">Gemini</button>
+            <button class="ai-btn active" id="btn-claude" onclick="switchAI('claude', event)">晏</button>
+            <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)">Gemini</button>
         </div>
     </div>
     <div class="messages" id="messages"></div>
@@ -222,15 +222,23 @@
     <script>
         let currentAI = 'claude';
         let names = {
-            user: localStorage.getItem('name_user') || '然然',
-            claude: localStorage.getItem('name_claude') || '晏',
-            gemini: localStorage.getItem('name_gemini') || 'Gemini'
+            user: '然然',
+            claude: '晏',
+            gemini: 'Gemini'
         };
         let editingTarget = null;
         let holdTimer = null;
 
-        function getAiName() {
-            return names[currentAI];
+        async function loadNames() {
+            try {
+                const res = await fetch('/names');
+                const data = await res.json();
+                names.user = data.name_user || names.user;
+                names.claude = data.name_claude || names.claude;
+                names.gemini = data.name_gemini || names.gemini;
+            } catch (e) {}
+            document.getElementById('btn-claude').textContent = names.claude;
+            document.getElementById('btn-gemini').textContent = names.gemini;
         }
 
         async function loadHistory() {
@@ -265,7 +273,6 @@
             avatar.className = `avatar ${role}`;
             avatar.textContent = initial;
 
-            // 長按換名字
             avatar.addEventListener('mousedown', () => startHold(target));
             avatar.addEventListener('touchstart', () => startHold(target), { passive: true });
             avatar.addEventListener('mouseup', cancelHold);
@@ -314,11 +321,21 @@
             editingTarget = null;
         }
 
-        function confirmName() {
+        async function confirmName() {
             const val = document.getElementById('modal-input').value.trim();
             if (!val || !editingTarget) return;
             names[editingTarget] = val;
-            localStorage.setItem(`name_${editingTarget}`, val);
+
+            const keyMap = { user: 'name_user', claude: 'name_claude', gemini: 'name_gemini' };
+            await fetch('/names', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: keyMap[editingTarget], name: val })
+            });
+
+            if (editingTarget === 'claude') document.getElementById('btn-claude').textContent = val;
+            if (editingTarget === 'gemini') document.getElementById('btn-gemini').textContent = val;
+
             closeModal();
             loadHistory();
         }
@@ -349,7 +366,12 @@
             }
         }
 
-        loadHistory();
+        async function init() {
+            await loadNames();
+            await loadHistory();
+        }
+
+        init();
     </script>
 </body>
 </html>
