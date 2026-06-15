@@ -5,6 +5,8 @@ from flask_cors import CORS
 import anthropic
 import google.generativeai as genai
 import os
+import random
+from datetime import datetime
 from supabase import create_client
 
 app = Flask(__name__)
@@ -78,43 +80,7 @@ def index():
 
 # ===== 日記功能 =====
 
-# 取得所有日記（含留言）
-@app.route("/diary", methods=["GET"])
-def get_diary():
-    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
-    for entry in entries:
-        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
-        entry["comments"] = comments
-    return jsonify({"entries": entries})
-
-# 新增日記（然然寫）
-@app.route("/diary", methods=["POST"])
-def add_diary():
-    data = request.json
-    author = data.get("author", "然然")
-    content = data.get("content", "")
-    supabase.table("diary_entries").insert({
-        "author": author,
-        "content": content
-    }).execute()
-    return jsonify({"status": "ok"})
-
-# 新增留言
-@app.route("/diary/<int:entry_id>/comment", methods=["POST"])
-def add_comment(entry_id):
-    data = request.json
-    author = data.get("author", "然然")
-    content = data.get("content", "")
-    supabase.table("diary_comments").insert({
-        "entry_id": entry_id,
-        "author": author,
-        "content": content
-    }).execute()
-    return jsonify({"status": "ok"})
-
-# 邀請晏寫日記
-@app.route("/diary/ai_entry", methods=["POST"])
-def ai_diary_entry():
+def write_ai_diary_entry():
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
         model="claude-sonnet-4-5",
@@ -127,9 +93,56 @@ def ai_diary_entry():
         "author": "晏",
         "content": content
     }).execute()
+
+def maybe_ai_diary_entry():
+    last = supabase.table("diary_entries").select("created_at").eq("author", "晏").order("id", desc=True).limit(1).execute().data
+    if last:
+        last_time_str = last[0]["created_at"].replace("Z", "")
+        last_time = datetime.fromisoformat(last_time_str)
+        now = datetime.utcnow()
+        hours_passed = (now - last_time).total_seconds() / 3600
+        if hours_passed < 6:
+            return
+    if random.random() < 0.25:
+        write_ai_diary_entry()
+
+@app.route("/diary", methods=["GET"])
+def get_diary():
+    maybe_ai_diary_entry()
+    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
+    for entry in entries:
+        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
+        entry["comments"] = comments
+    return jsonify({"entries": entries})
+
+@app.route("/diary", methods=["POST"])
+def add_diary():
+    data = request.json
+    author = data.get("author", "然然")
+    content = data.get("content", "")
+    supabase.table("diary_entries").insert({
+        "author": author,
+        "content": content
+    }).execute()
     return jsonify({"status": "ok"})
 
-# 邀請晏留言
+@app.route("/diary/<int:entry_id>/comment", methods=["POST"])
+def add_comment(entry_id):
+    data = request.json
+    author = data.get("author", "然然")
+    content = data.get("content", "")
+    supabase.table("diary_comments").insert({
+        "entry_id": entry_id,
+        "author": author,
+        "content": content
+    }).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/diary/ai_entry", methods=["POST"])
+def ai_diary_entry():
+    write_ai_diary_entry()
+    return jsonify({"status": "ok"})
+
 @app.route("/diary/<int:entry_id>/ai_comment", methods=["POST"])
 def ai_comment(entry_id):
     entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
@@ -141,18 +154,3 @@ def ai_comment(entry_id):
         system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
         messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}]
     )
-    content = response.content[0].text
-    supabase.table("diary_comments").insert({
-        "entry_id": entry_id,
-        "author": "晏",
-        "content": content
-    }).execute()
-    return jsonify({"status": "ok"})
-
-# 日記頁面
-@app.route("/diary_page")
-def diary_page():
-    return send_from_directory(".", "diary.html")
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
