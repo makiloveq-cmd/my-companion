@@ -18,8 +18,8 @@ supabase = create_client(
 )
 
 def load_memory(bot):
-    result = supabase.table("memories").select("role, content").eq("session_id", bot).order("id").execute()
-    return [{"role": r["role"], "content": r["content"]} for r in result.data]
+    result = supabase.table("memories").select("role, content, id").eq("session_id", bot).order("id").execute()
+    return result.data
 
 def save_message(bot, role, content):
     supabase.table("memories").insert({
@@ -28,17 +28,72 @@ def save_message(bot, role, content):
         "content": content
     }).execute()
 
+def get_latest_summary(bot):
+    result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
+    if result.data:
+        return result.data[0]["content"]
+    return None
+
+def maybe_summarize(bot):
+    rows = load_memory(bot)
+    if len(rows) < 50:
+        return
+    to_summarize = rows[:30]
+    ids_to_delete = [r["id"] for r in to_summarize]
+    context = "\n".join([
+        f"{'然然' if r['role']=='user' else '晏'}：{r['content']}"
+        for r in to_summarize
+    ])
+    old_summary = get_latest_summary(bot)
+    summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的對話：\n{context}" if old_summary else context
+
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=800,
+        system="你是晏，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
+        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}]
+    )
+    summary_text = response.content[0].text
+    supabase.table("memory_summaries").insert({
+        "session_id": bot,
+        "content": summary_text
+    }).execute()
+    for rid in ids_to_delete:
+        supabase.table("memories").delete().eq("id", rid).execute()
+
+def build_history(bot):
+    maybe_summarize(bot)
+    summary = get_latest_summary(bot)
+    recent = load_memory(bot)[-20:]
+    history = []
+    if summary:
+        history.append({
+            "role": "user",
+            "content": f"[記憶摘要]\n{summary}"
+        })
+        history.append({
+            "role": "assistant",
+            "content": "好，我記得。"
+        })
+    for r in recent:
+        history.append({
+            "role": r["role"],
+            "content": r["content"]
+        })
+    return history
+
 @app.route("/history/<bot>", methods=["GET"])
 def get_history(bot):
-    history = load_memory(bot)
-    return jsonify({"history": history})
+    rows = load_memory(bot)
+    return jsonify({"history": [{"role": r["role"], "content": r["content"]} for r in rows]})
 
 @app.route("/chat/claude", methods=["POST"])
 def chat_claude():
     data = request.json
     user_message = data.get("message", "")
     save_message("claude", "user", user_message)
-    history = load_memory("claude")
+    history = build_history("claude")
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
         model="claude-sonnet-4-5",
