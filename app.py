@@ -233,10 +233,12 @@ def add_comment(entry_id):
     data = request.json
     author = data.get("author", "然然")
     content = data.get("content", "")
+    reply_to = data.get("reply_to", None)
     supabase.table("diary_comments").insert({
         "entry_id": entry_id,
         "author": author,
-        "content": content
+        "content": content,
+        "reply_to": reply_to
     }).execute()
 
     if author == "然然" and random.random() < 0.3:
@@ -252,9 +254,23 @@ def add_comment(entry_id):
         supabase.table("diary_comments").insert({
             "entry_id": entry_id,
             "author": "晏",
-            "content": ai_reply
+            "content": ai_reply,
+            "reply_to": None
         }).execute()
 
+    return jsonify({"status": "ok"})
+
+@app.route("/diary/comment/<int:comment_id>", methods=["PUT"])
+def edit_comment(comment_id):
+    data = request.json
+    content = data.get("content", "").strip()
+    if content:
+        supabase.table("diary_comments").update({"content": content}).eq("id", comment_id).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/diary/comment/<int:comment_id>", methods=["DELETE"])
+def delete_comment(comment_id):
+    supabase.table("diary_comments").delete().eq("id", comment_id).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/ai_entry", methods=["POST"])

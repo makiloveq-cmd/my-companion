@@ -70,10 +70,6 @@
             background: #efe6dd;
             color: #9a8878;
         }
-        .btn.danger {
-            background: #f0e0e0;
-            color: #c07070;
-        }
         .entry-card {
             background: #fff;
             border-radius: 16px;
@@ -107,18 +103,9 @@
             flex-direction: column;
             flex: 1;
         }
-        .entry-author {
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .entry-time {
-            font-size: 11px;
-            color: #9a8878;
-        }
-        .entry-actions {
-            display: flex;
-            gap: 8px;
-        }
+        .entry-author { font-size: 13px; font-weight: 500; }
+        .entry-time { font-size: 11px; color: #9a8878; }
+        .entry-actions { display: flex; gap: 8px; }
         .entry-action-btn {
             font-size: 11px;
             color: #9a8878;
@@ -169,27 +156,84 @@
             align-items: flex-start;
         }
         .comment .avatar {
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             font-size: 10px;
         }
+        .comment-right { flex: 1; }
         .comment-bubble {
             background: #f7f2ed;
             border-radius: 12px;
             padding: 8px 12px;
             font-size: 13px;
             line-height: 1.5;
-            flex: 1;
         }
-        .comment-author {
+        .comment-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        .comment-author { font-size: 11px; color: #9a8878; font-weight: 500; }
+        .comment-reply-tag {
+            font-size: 11px;
+            color: #b07d5a;
+        }
+        .comment-reply-preview {
             font-size: 11px;
             color: #9a8878;
-            margin-bottom: 2px;
+            background: #efe6dd;
+            border-radius: 6px;
+            padding: 4px 8px;
+            margin-bottom: 4px;
+            border-left: 2px solid #b07d5a;
         }
-        .comment-input {
+        .comment-actions {
             display: flex;
             gap: 8px;
             margin-top: 4px;
+        }
+        .comment-action-btn {
+            font-size: 11px;
+            color: #9a8878;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 4px;
+        }
+        .comment-action-btn.reply-btn { color: #b07d5a; }
+        .comment-action-btn.delete { color: #c07070; }
+        .comment-edit-area {
+            display: none;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .comment-edit-area input {
+            flex: 1;
+            border: 1px solid #e8e0d8;
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: 13px;
+            outline: none;
+        }
+        .reply-hint {
+            display: none;
+            font-size: 12px;
+            color: #b07d5a;
+            background: #fdf6f0;
+            border-radius: 8px;
+            padding: 6px 10px;
+            border-left: 2px solid #b07d5a;
+        }
+        .comment-input {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .comment-input-row {
+            display: flex;
+            gap: 8px;
         }
         .comment-input input {
             flex: 1;
@@ -243,9 +287,7 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Diary</h1>
-    </div>
+    <div class="header"><h1>Diary</h1></div>
 
     <div class="main" id="main">
         <div class="compose">
@@ -259,26 +301,11 @@
     </div>
 
     <div class="tab-bar">
-        <a class="tab" href="/">
-            <div class="tab-icon">⌂</div>
-            <div>首頁</div>
-        </a>
-        <a class="tab" href="/chatroom">
-            <div class="tab-icon">✦</div>
-            <div>聊天</div>
-        </a>
-        <a class="tab" href="#">
-            <div class="tab-icon">◎</div>
-            <div>朋友圈</div>
-        </a>
-        <a class="tab active" href="/diary_page">
-            <div class="tab-icon">✐</div>
-            <div>日記</div>
-        </a>
-        <a class="tab" href="#">
-            <div class="tab-icon">⋯</div>
-            <div>更多</div>
-        </a>
+        <a class="tab" href="/"><div class="tab-icon">⌂</div><div>首頁</div></a>
+        <a class="tab" href="/chatroom"><div class="tab-icon">✦</div><div>聊天</div></a>
+        <a class="tab" href="#"><div class="tab-icon">◎</div><div>朋友圈</div></a>
+        <a class="tab active" href="/diary_page"><div class="tab-icon">✐</div><div>日記</div></a>
+        <a class="tab" href="#"><div class="tab-icon">⋯</div><div>更多</div></a>
     </div>
 
     <script>
@@ -297,6 +324,8 @@
             return div.innerHTML;
         }
 
+        let replyState = {};
+
         async function loadEntries() {
             const res = await fetch('/diary');
             const data = await res.json();
@@ -312,26 +341,56 @@
                 const card = document.createElement('div');
                 card.className = 'entry-card';
 
+                const commentMap = {};
+                entry.comments.forEach(c => commentMap[c.id] = c);
+
                 let commentsHtml = '';
                 entry.comments.forEach(c => {
+                    const replyTo = c.reply_to ? commentMap[c.reply_to] : null;
+                    const replyPreview = replyTo
+                        ? `<div class="comment-reply-preview">${escapeHtml(replyTo.author)}：${escapeHtml(replyTo.content.substring(0, 30))}${replyTo.content.length > 30 ? '…' : ''}</div>`
+                        : '';
+                    const replyTag = replyTo
+                        ? `<span class="comment-reply-tag">回覆 ${escapeHtml(replyTo.author)}</span>`
+                        : '';
+                    const isUser = c.author === '然然';
+                    const actionBtns = isUser
+                        ? `<button class="comment-action-btn delete" onclick="deleteComment(${c.id})">刪除</button>
+                           <button class="comment-action-btn" onclick="startEditComment(${c.id})">編輯</button>`
+                        : '';
+
                     commentsHtml += `
-                        <div class="comment">
+                        <div class="comment" id="comment-${c.id}">
                             <div class="avatar ${c.author}">${avatarInitial(c.author)}</div>
-                            <div class="comment-bubble">
-                                <div class="comment-author">${c.author}</div>
-                                <div>${escapeHtml(c.content)}</div>
+                            <div class="comment-right">
+                                <div class="comment-bubble">
+                                    <div class="comment-header">
+                                        <span class="comment-author">${escapeHtml(c.author)}</span>
+                                        ${replyTag}
+                                    </div>
+                                    ${replyPreview}
+                                    <div id="comment-text-${c.id}">${escapeHtml(c.content)}</div>
+                                </div>
+                                <div class="comment-actions">
+                                    <button class="comment-action-btn reply-btn" onclick="startReply(${entry.id}, ${c.id}, '${escapeHtml(c.author)}')">回覆</button>
+                                    ${actionBtns}
+                                </div>
+                                <div class="comment-edit-area" id="edit-comment-${c.id}" style="display:none;flex-direction:row;gap:6px;margin-top:6px;">
+                                    <input type="text" value="${escapeHtml(c.content)}" id="edit-comment-input-${c.id}">
+                                    <button class="btn secondary" style="padding:4px 10px;font-size:12px;" onclick="cancelEditComment(${c.id})">取消</button>
+                                    <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="saveEditComment(${c.id})">儲存</button>
+                                </div>
                             </div>
                         </div>
                     `;
                 });
 
-                const isUser = entry.author === '然然';
-                const actionBtns = isUser ? `
+                const isUserEntry = entry.author === '然然';
+                const actionBtns = isUserEntry ? `
                     <div class="entry-actions">
                         <button class="entry-action-btn" onclick="startEdit(${entry.id}, this)">編輯</button>
                         <button class="entry-action-btn delete" onclick="deleteEntry(${entry.id})">刪除</button>
-                    </div>
-                ` : '';
+                    </div>` : '';
 
                 card.innerHTML = `
                     <div class="entry-header">
@@ -351,23 +410,63 @@
                         </div>
                     </div>
                     <div class="comments">${commentsHtml}</div>
+                    <div class="reply-hint" id="reply-hint-${entry.id}"></div>
                     <button class="ai-comment-btn" onclick="askAiComment(${entry.id}, this)">邀請晏留言</button>
                     <div class="comment-input">
-                        <input type="text" placeholder="留言…" onkeydown="if(event.key==='Enter')postComment(${entry.id}, this)">
-                        <button onclick="postComment(${entry.id}, this.previousElementSibling)">送出</button>
+                        <div class="comment-input-row">
+                            <input type="text" id="comment-input-${entry.id}" placeholder="留言…" onkeydown="if(event.key==='Enter')postComment(${entry.id})">
+                            <button onclick="postComment(${entry.id})">送出</button>
+                        </div>
                     </div>
                 `;
                 container.appendChild(card);
             });
         }
 
-        function startEdit(id, btn) {
+        function startReply(entryId, commentId, author) {
+            replyState[entryId] = { commentId, author };
+            const hint = document.getElementById(`reply-hint-${entryId}`);
+            hint.style.display = 'block';
+            hint.textContent = `回覆 ${author}　✕`;
+            hint.onclick = () => cancelReply(entryId);
+            document.getElementById(`comment-input-${entryId}`).focus();
+        }
+
+        function cancelReply(entryId) {
+            replyState[entryId] = null;
+            const hint = document.getElementById(`reply-hint-${entryId}`);
+            hint.style.display = 'none';
+        }
+
+        function startEditComment(id) {
+            document.getElementById(`edit-comment-${id}`).style.display = 'flex';
+        }
+
+        function cancelEditComment(id) {
+            document.getElementById(`edit-comment-${id}`).style.display = 'none';
+        }
+
+        async function saveEditComment(id) {
+            const content = document.getElementById(`edit-comment-input-${id}`).value.trim();
+            if (!content) return;
+            await fetch(`/diary/comment/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            loadEntries();
+        }
+
+        async function deleteComment(id) {
+            if (!confirm('確定要刪除這則留言嗎？')) return;
+            await fetch(`/diary/comment/${id}`, { method: 'DELETE' });
+            loadEntries();
+        }
+
+        function startEdit(id) {
             document.getElementById(`content-${id}`).style.display = 'none';
-            const editArea = document.getElementById(`edit-${id}`);
-            editArea.style.display = 'flex';
-            const textarea = document.getElementById(`edit-text-${id}`);
-            textarea.value = document.getElementById(`content-${id}`).textContent;
-            textarea.focus();
+            document.getElementById(`edit-${id}`).style.display = 'flex';
+            document.getElementById(`edit-text-${id}`).focus();
         }
 
         function cancelEdit(id) {
@@ -410,15 +509,22 @@
             loadEntries();
         }
 
-        async function postComment(entryId, input) {
+        async function postComment(entryId) {
+            const input = document.getElementById(`comment-input-${entryId}`);
             const content = input.value.trim();
             if (!content) return;
+            const reply = replyState[entryId];
             await fetch(`/diary/${entryId}/comment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ author: '然然', content })
+                body: JSON.stringify({
+                    author: '然然',
+                    content,
+                    reply_to: reply ? reply.commentId : null
+                })
             });
             input.value = '';
+            cancelReply(entryId);
             loadEntries();
         }
 
