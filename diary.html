@@ -337,3 +337,11 @@
         async function askAiComment(entryId, btn) {
             btn.disabled = true;
             await fetch(
+                `/diary/${entryId}/ai_comment`, { method: 'POST' });
+            loadEntries();
+        }
+
+        loadEntries();
+    </script>
+</body>
+</html>
