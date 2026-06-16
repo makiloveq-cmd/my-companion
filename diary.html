@@ -70,6 +70,10 @@
             background: #efe6dd;
             color: #9a8878;
         }
+        .btn.danger {
+            background: #f0e0e0;
+            color: #c07070;
+        }
         .entry-card {
             background: #fff;
             border-radius: 16px;
@@ -95,11 +99,13 @@
             font-weight: 500;
             background: #2a3a5a;
             color: #fff;
+            flex-shrink: 0;
         }
         .avatar.然然 { background: #3a5a8a; }
         .entry-meta {
             display: flex;
             flex-direction: column;
+            flex: 1;
         }
         .entry-author {
             font-size: 13px;
@@ -109,10 +115,46 @@
             font-size: 11px;
             color: #9a8878;
         }
+        .entry-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .entry-action-btn {
+            font-size: 11px;
+            color: #9a8878;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+        .entry-action-btn:hover { background: #f0e9e2; }
+        .entry-action-btn.delete { color: #c07070; }
         .entry-content {
             font-size: 14px;
             line-height: 1.8;
             white-space: pre-wrap;
+        }
+        .edit-area {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .edit-area textarea {
+            border: 1px solid #e8e0d8;
+            border-radius: 10px;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+            min-height: 80px;
+        }
+        .edit-btns {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
         }
         .comments {
             display: flex;
@@ -213,7 +255,6 @@
                 <button class="btn" onclick="postEntry()">發布</button>
             </div>
         </div>
-
         <div id="entries"></div>
     </div>
 
@@ -250,6 +291,12 @@
             return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         async function loadEntries() {
             const res = await fetch('/diary');
             const data = await res.json();
@@ -269,7 +316,7 @@
                 entry.comments.forEach(c => {
                     commentsHtml += `
                         <div class="comment">
-                            <div class="avatar">${avatarInitial(c.author)}</div>
+                            <div class="avatar ${c.author}">${avatarInitial(c.author)}</div>
                             <div class="comment-bubble">
                                 <div class="comment-author">${c.author}</div>
                                 <div>${escapeHtml(c.content)}</div>
@@ -278,6 +325,14 @@
                     `;
                 });
 
+                const isUser = entry.author === '然然';
+                const actionBtns = isUser ? `
+                    <div class="entry-actions">
+                        <button class="entry-action-btn" onclick="startEdit(${entry.id}, this)">編輯</button>
+                        <button class="entry-action-btn delete" onclick="deleteEntry(${entry.id})">刪除</button>
+                    </div>
+                ` : '';
+
                 card.innerHTML = `
                     <div class="entry-header">
                         <div class="avatar ${entry.author}">${avatarInitial(entry.author)}</div>
@@ -285,8 +340,16 @@
                             <div class="entry-author">${entry.author}</div>
                             <div class="entry-time">${formatTime(entry.created_at)}</div>
                         </div>
+                        ${actionBtns}
                     </div>
-                    <div class="entry-content">${escapeHtml(entry.content)}</div>
+                    <div class="entry-content" id="content-${entry.id}">${escapeHtml(entry.content)}</div>
+                    <div class="edit-area" id="edit-${entry.id}">
+                        <textarea id="edit-text-${entry.id}">${escapeHtml(entry.content)}</textarea>
+                        <div class="edit-btns">
+                            <button class="btn secondary" onclick="cancelEdit(${entry.id})">取消</button>
+                            <button class="btn" onclick="saveEdit(${entry.id})">儲存</button>
+                        </div>
+                    </div>
                     <div class="comments">${commentsHtml}</div>
                     <button class="ai-comment-btn" onclick="askAiComment(${entry.id}, this)">邀請晏留言</button>
                     <div class="comment-input">
@@ -298,10 +361,35 @@
             });
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        function startEdit(id, btn) {
+            document.getElementById(`content-${id}`).style.display = 'none';
+            const editArea = document.getElementById(`edit-${id}`);
+            editArea.style.display = 'flex';
+            const textarea = document.getElementById(`edit-text-${id}`);
+            textarea.value = document.getElementById(`content-${id}`).textContent;
+            textarea.focus();
+        }
+
+        function cancelEdit(id) {
+            document.getElementById(`content-${id}`).style.display = '';
+            document.getElementById(`edit-${id}`).style.display = 'none';
+        }
+
+        async function saveEdit(id) {
+            const content = document.getElementById(`edit-text-${id}`).value.trim();
+            if (!content) return;
+            await fetch(`/diary/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            loadEntries();
+        }
+
+        async function deleteEntry(id) {
+            if (!confirm('確定要刪除這篇日記嗎？')) return;
+            await fetch(`/diary/${id}`, { method: 'DELETE' });
+            loadEntries();
         }
 
         async function postEntry() {
@@ -336,8 +424,7 @@
 
         async function askAiComment(entryId, btn) {
             btn.disabled = true;
-            await fetch(
-                `/diary/${entryId}/ai_comment`, { method: 'POST' });
+            await fetch(`/diary/${entryId}/ai_comment`, { method: 'POST' });
             loadEntries();
         }
 
