@@ -99,6 +99,7 @@
             border-radius: 16px;
             font-size: 15px;
             line-height: 1.6;
+            white-space: pre-wrap;
         }
         .message.user {
             background: #0f3460;
@@ -115,8 +116,10 @@
             border-top: 1px solid #0f3460;
             display: flex;
             gap: 10px;
+            align-items: flex-end;
         }
-        .input-area input {
+        .input-area input,
+        .input-area textarea {
             flex: 1;
             padding: 12px 16px;
             background: #1a1a2e;
@@ -125,6 +128,11 @@
             color: #eee;
             font-size: 15px;
             outline: none;
+            resize: none;
+            font-family: inherit;
+            max-height: 120px;
+            overflow-y: auto;
+            line-height: 1.4;
         }
         .input-area button {
             padding: 12px 20px;
@@ -204,7 +212,7 @@
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
-        <input type="text" id="input" placeholder="說點什麼…" onkeydown="if(event.key==='Enter')sendMessage()">
+        <textarea id="input" placeholder="說點什麼…" rows="1" onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
         <button onclick="sendMessage()">送出</button>
     </div>
 
@@ -345,11 +353,24 @@
             if (e.key === 'Escape') closeModal();
         });
 
+        function handleKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function autoGrow(el) {
+            el.style.height = 'auto';
+            el.style.height = el.scrollHeight + 'px';
+        }
+
         async function sendMessage() {
             const input = document.getElementById('input');
             const msg = input.value.trim();
             if (!msg) return;
             input.value = '';
+            input.style.height = 'auto';
 
             addMessage(msg, 'user');
 
