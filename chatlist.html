@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天 - Rifugio</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.2s, color 0.2s;
+        }
+        .header {
+            padding: 18px 20px 14px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 500;
+        }
+        .list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 20px;
+            text-decoration: none;
+            color: inherit;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+        }
+        .chat-item:active {
+            background: var(--surface2);
+        }
+        .chat-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--accent-soft);
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        .chat-avatar.group {
+            background: var(--accent);
+            color: #fff;
+        }
+        .chat-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .chat-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .chat-preview {
+            font-size: 13px;
+            color: var(--text-3);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .chat-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .chat-time {
+            font-size: 11px;
+            color: var(--text-3);
+        }
+        .tab-bar {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            display: flex;
+            padding: 10px 0 16px;
+        }
+        .tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+            color: var(--text-3);
+            font-size: 10px;
+        }
+        .tab.active { color: var(--accent); }
+        .tab-icon { font-size: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>聊天</h1>
+    </div>
+    <div class="list" id="list"></div>
+
+    <div class="tab-bar">
+        <a class="tab" href="/"><div class="tab-icon">⌂</div><div>首頁</div></a>
+        <a class="tab active" href="/chatlist_page"><div class="tab-icon">✦</div><div>聊天</div></a>
+        <a class="tab" href="#"><div class="tab-icon">◎</div><div>朋友圈</div></a>
+        <a class="tab" href="/diary_page"><div class="tab-icon">✐</div><div>日記</div></a>
+        <a class="tab" href="/persona_page"><div class="tab-icon">⋯</div><div>人物書</div></a>
+    </div>
+
+    <script>
+        function formatChatTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            const now = new Date();
+            const sameDay = d.toDateString() === now.toDateString();
+            if (sameDay) {
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            }
+            return `${d.getMonth()+1}/${d.getDate()}`;
+        }
+
+        async function loadChatList() {
+            try {
+                const res = await fetch('/chat_list');
+                const data = await res.json();
+                const list = document.getElementById('list');
+                list.innerHTML = '';
+
+                const items = [
+                    { key: 'claude', href: '/chatroom?ai=claude', data: data.claude, group: false },
+                    { key: 'gemini', href: '/chatroom?ai=gemini', data: data.gemini, group: false },
+                    { key: 'group', href: '/group_page', data: data.group, group: true }
+                ];
+
+                items.forEach(item => {
+                    const a = document.createElement('a');
+                    a.className = 'chat-item';
+                    a.href = item.href;
+
+                    const avatar = document.createElement('div');
+                    avatar.className = 'chat-avatar' + (item.group ? ' group' : '');
+                    avatar.textContent = item.group ? '✦' : item.data.name[0];
+
+                    const info = document.createElement('div');
+                    info.className = 'chat-info';
+                    const name = document.createElement('div');
+                    name.className = 'chat-name';
+                    name.textContent = item.data.name;
+                    const preview = document.createElement('div');
+                    preview.className = 'chat-preview';
+                    preview.textContent = item.data.preview;
+                    info.appendChild(name);
+                    info.appendChild(preview);
+
+                    const right = document.createElement('div');
+                    right.className = 'chat-right';
+                    const time = document.createElement('div');
+                    time.className = 'chat-time';
+                    time.textContent = formatChatTime(item.data.time);
+                    right.appendChild(time);
+
+                    a.appendChild(avatar);
+                    a.appendChild(info);
+                    a.appendChild(right);
+                    list.appendChild(a);
+                });
+            } catch (e) {}
+        }
+
+        loadChatList();
+    </script>
+    <script src="/theme.js"></script>
+</body>
+</html>

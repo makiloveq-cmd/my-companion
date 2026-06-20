@@ -184,6 +184,162 @@ def personas_post(key):
 def persona_page():
     return send_from_directory(".", "persona.html")
 
+# ===== 群聊 =====
+
+def load_group_messages():
+    result = supabase.table("group_messages").select("*").order("id").execute()
+    return result.data
+
+def save_group_message(speaker, content):
+    supabase.table("group_messages").insert({
+        "speaker": speaker,
+        "content": content
+    }).execute()
+
+def build_group_system_prompt(bot_key):
+    personas = get_personas()
+    me = personas.get("user", {})
+    bot = personas.get(bot_key, {})
+    other_key = "gemini" if bot_key == "claude" else "claude"
+    other = personas.get(other_key, {})
+
+    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
+    other_name = other.get("name") or ("熠" if bot_key == "claude" else "晏")
+    you_name = me.get("name") or "然然"
+
+    lines = [
+        f"這是一個群組聊天，參與者有：你（{name}）、{other_name}，以及{you_name}。",
+        f"你是「{name}」，請完全扮演這個角色發言，用繁體中文回覆。"
+    ]
+
+    if bot.get("persona"):
+        lines.append(f"【你的個性】{bot['persona']}")
+
+    if bot.get("phrase"):
+        lines.append(f"口頭禪：{bot['phrase']}。")
+
+    if bot.get("extra"):
+        lines.append(f"【補充指令】{bot['extra']}")
+
+    lines.append(f"群裡還有{other_name}，個性：{other.get('persona') or '（未設定）'}。")
+    lines.append(f"對方本名是「{you_name}」，個性：{me.get('persona') or ''}。")
+
+    lines.append(
+        "【回覆規則，嚴格遵守】\n"
+        f"1. 只用{name}的口吻回覆，30到100字，自然簡短像群聊訊息。\n"
+        f"2. 絕對禁止在回覆開頭加上「{name}：」之類的名字前綴，直接從內容開始。\n"
+        f"3. 絕對禁止幫{you_name}或{other_name}說話、或自己創造對話片段，你只能扮演{name}一個人。\n"
+        "4. 若有人直接點名問你，要正面回應，不要迴避。\n"
+        "5. 不要說「我作為 AI」這類話。"
+    )
+
+    return "\n".join(lines)
+
+def clean_group_reply(text, name, other_name):
+    import re
+    text = re.sub(rf"^{re.escape(name)}[：:]\s*", "", text.strip())
+    match = re.search(rf"\n(?:{re.escape(other_name)})[：:]", text)
+    if match:
+        text = text[:match.start()]
+    return text.strip()
+
+@app.route("/group/messages", methods=["GET"])
+def group_messages_get():
+    rows = load_group_messages()
+    return jsonify({"messages": rows})
+
+@app.route("/group/send", methods=["POST"])
+def group_send():
+    data = request.json
+    content = data.get("content", "")
+    message_id = data.get("message_id")
+    if message_id:
+        existing = supabase.table("group_messages").select("id").eq("message_id", message_id).execute()
+        if existing.data:
+            return jsonify({"status": "ok"})
+    supabase.table("group_messages").insert({
+        "speaker": "user",
+        "content": content,
+        "message_id": message_id
+    }).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/group/reply/<bot_key>", methods=["POST"])
+def group_reply(bot_key):
+    if bot_key not in ["claude", "gemini"]:
+        return jsonify({"error": "invalid bot"}), 400
+
+    personas = get_personas()
+    name = (personas.get(bot_key, {}).get("name")) or ("晏" if bot_key == "claude" else "熠")
+    other_key = "gemini" if bot_key == "claude" else "claude"
+    other_name = (personas.get(other_key, {}).get("name")) or ("熠" if bot_key == "claude" else "晏")
+
+    all_msgs = load_group_messages()
+    recent = all_msgs[-16:]
+
+    # 把歷史轉換成這個角色的視角：自己說的是 assistant，其他人說的都轉成 user 並標註是誰說的
+    history = []
+    for m in recent:
+        if m["speaker"] == bot_key:
+            role = "assistant"
+            content = m["content"]
+        elif m["speaker"] == "user":
+            role = "user"
+            content = m["content"]
+        else:
+            role = "user"
+            speaker_name = personas.get(m["speaker"], {}).get("name") or other_name
+            content = f"（{speaker_name}剛剛說：{m['content']}）"
+        history.append({"role": role, "content": content})
+
+    # 合併連續同 role，避免 Claude API 報錯
+    merged = []
+    for h in history:
+        if merged and merged[-1]["role"] == h["role"]:
+            merged[-1]["content"] += "\n\n" + h["content"]
+        else:
+            merged.append(dict(h))
+    while merged and merged[0]["role"] == "assistant":
+        merged.pop(0)
+    if not merged:
+        return jsonify({"error": "no history"}), 400
+
+    system_prompt = build_group_system_prompt(bot_key)
+
+    try:
+        if bot_key == "claude":
+            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=400,
+                system=system_prompt,
+                messages=merged,
+                timeout=60
+            )
+            reply = response.content[0].text
+        else:
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            contents = []
+            for h in merged:
+                role = "model" if h["role"] == "assistant" else "user"
+                contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=h["content"])]))
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=genai_types.GenerateContentConfig(system_instruction=system_prompt)
+            )
+            reply = response.text
+
+        reply = clean_group_reply(reply, name, other_name)
+        save_group_message(bot_key, reply)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/group_page")
+def group_page():
+    return send_from_directory(".", "group.html")
+
 # ===== 主題設定 =====
 
 @app.route("/theme", methods=["GET"])
@@ -527,6 +683,47 @@ def names_post():
             "updated_at": datetime.utcnow().isoformat()
         }).execute()
     return jsonify({"status": "ok"})
+
+# ===== 聊天列表（首頁用） =====
+
+@app.route("/chat_list", methods=["GET"])
+def chat_list():
+    personas = get_personas()
+
+    def latest_of(bot):
+        rows = supabase.table("memories").select("role, content, created_at").eq("session_id", bot).order("id", desc=True).limit(1).execute().data
+        return rows[0] if rows else None
+
+    def latest_group():
+        rows = supabase.table("group_messages").select("speaker, content, created_at").order("id", desc=True).limit(1).execute().data
+        return rows[0] if rows else None
+
+    claude_last = latest_of("claude")
+    gemini_last = latest_of("gemini")
+    group_last = latest_group()
+
+    result = {
+        "claude": {
+            "name": personas.get("claude", {}).get("name") or "晏",
+            "preview": claude_last["content"] if claude_last else "還沒有對話",
+            "time": claude_last["created_at"] if claude_last else None
+        },
+        "gemini": {
+            "name": personas.get("gemini", {}).get("name") or "熠",
+            "preview": gemini_last["content"] if gemini_last else "還沒有對話",
+            "time": gemini_last["created_at"] if gemini_last else None
+        },
+        "group": {
+            "name": "三人空間",
+            "preview": group_last["content"] if group_last else "還沒有對話",
+            "time": group_last["created_at"] if group_last else None
+        }
+    }
+    return jsonify(result)
+
+@app.route("/chatlist_page")
+def chatlist_page():
+    return send_from_directory(".", "chatlist.html")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
