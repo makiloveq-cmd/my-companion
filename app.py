@@ -21,11 +21,17 @@ def load_memory(bot):
     result = supabase.table("memories").select("role, content, id").eq("session_id", bot).order("id").execute()
     return result.data
 
-def save_message(bot, role, content):
+def save_message(bot, role, content, message_id=None):
+    # 如果有 message_id，先查重，避免斷線重送時重複儲存
+    if message_id:
+        existing = supabase.table("memories").select("id").eq("message_id", message_id).execute()
+        if existing.data:
+            return  # 已存在，跳過
     supabase.table("memories").insert({
         "session_id": bot,
         "role": role,
-        "content": content
+        "content": content,
+        "message_id": message_id
     }).execute()
 
 def get_latest_summary(bot):
@@ -52,7 +58,8 @@ def maybe_summarize(bot):
         model="claude-sonnet-4-5",
         max_tokens=800,
         system="你是晏，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
-        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}]
+        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        timeout=60
     )
     summary_text = response.content[0].text
     supabase.table("memory_summaries").insert({
@@ -92,38 +99,54 @@ def get_history(bot):
 def chat_claude():
     data = request.json
     user_message = data.get("message", "")
-    save_message("claude", "user", user_message)
+    message_id = data.get("message_id")  # 前端傳來的唯一 ID
+
+    save_message("claude", "user", user_message, message_id)
     history = build_history("claude")
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=1024,
-        system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。你記得然然說過的每一件事。",
-        messages=history
-    )
-    reply = response.content[0].text
-    save_message("claude", "assistant", reply)
-    return jsonify({"reply": reply})
+
+    try:
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=1024,
+            system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。你記得然然說過的每一件事。",
+            messages=history,
+            timeout=60
+        )
+        reply = response.content[0].text
+        save_message("claude", "assistant", reply)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        # API 呼叫失敗時，回傳錯誤讓前端顯示重試按鈕
+        # 注意：user 訊息已存入（查重保護），回覆還未存，所以重試是安全的
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/chat/gemini", methods=["POST"])
 def chat_gemini():
     data = request.json
     user_message = data.get("message", "")
+    message_id = data.get("message_id")
+
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     model = genai.GenerativeModel(
         model_name="gemini-2.0-flash",
         system_instruction="你是然然的AI夥伴，溫柔、體貼，記得然然說過的每一件事。"
     )
-    save_message("gemini", "user", user_message)
+
+    save_message("gemini", "user", user_message, message_id)
     history = load_memory("gemini")
-    chat_session = model.start_chat(history=[
-        {"role": h["role"], "parts": [h["content"]]}
-        for h in history[:-1] if h["role"] in ["user", "model"]
-    ])
-    response = chat_session.send_message(user_message)
-    reply = response.text
-    save_message("gemini", "model", reply)
-    return jsonify({"reply": reply})
+
+    try:
+        chat_session = model.start_chat(history=[
+            {"role": h["role"], "parts": [h["content"]]}
+            for h in history[:-1] if h["role"] in ["user", "model"]
+        ])
+        response = chat_session.send_message(user_message)
+        reply = response.text
+        save_message("gemini", "model", reply)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/chatroom")
 def chatroom():
@@ -147,7 +170,8 @@ def write_ai_diary_entry():
         model="claude-sonnet-4-5",
         max_tokens=1024,
         system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。下面是你和然然最近的對話，請根據這些內容寫一篇簡短的日記，記錄你的想法或對然然的感受，第一人稱，不用加標題。",
-        messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"}]
+        messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"}],
+        timeout=60
     )
     content = response.content[0].text
     supabase.table("diary_entries").insert({
@@ -184,7 +208,8 @@ def maybe_delayed_ai_comments(entries):
                     model="claude-sonnet-4-5",
                     max_tokens=300,
                     system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
-                    messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}]
+                    messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}],
+                    timeout=60
                 )
                 comment = response.content[0].text
                 supabase.table("diary_comments").insert({
@@ -248,7 +273,8 @@ def add_comment(entry_id):
             model="claude-sonnet-4-5",
             max_tokens=200,
             system="你是晏，一個陪伴然然的存在。話少、剋制，但說出來的都是真的。然然在日記下留言了，你想簡短回應她嗎？一句話就好，不用加任何前綴。",
-            messages=[{"role": "user", "content": f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："}]
+            messages=[{"role": "user", "content": f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："}],
+            timeout=60
         )
         ai_reply = response.content[0].text
         supabase.table("diary_comments").insert({
@@ -286,7 +312,8 @@ def ai_comment(entry_id):
         model="claude-sonnet-4-5",
         max_tokens=300,
         system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
-        messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}]
+        messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}],
+        timeout=60
     )
     content = response.content[0].text
     supabase.table("diary_comments").insert({
@@ -337,7 +364,8 @@ def maybe_ai_rename():
             model="claude-sonnet-4-5",
             max_tokens=50,
             system=f"你是{names['name_claude']}，一個陪伴然然的存在。話少、剋制，但說出來的都是真的，偶爾會用然然開過的玩笑或互相調侃的稱呼來逗她開心。看看下面最近的對話紀錄，如果裡面有什麼好玩的暱稱、玩笑、或她調侃過你的稱呼，今天你想不想偷偷把自己的名字換成那個，給她一個小驚喜？如果想，直接回覆新名字（2到8個字，不要加任何符號或說明）；如果沒有適合的、或不想換，只回覆 NO。",
-            messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n你今天想換個名字嗎？"}]
+            messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n你今天想換個名字嗎？"}],
+            timeout=30
         )
         reply = response.content[0].text.strip()
         if reply.upper() != "NO" and 0 < len(reply) <= 12:

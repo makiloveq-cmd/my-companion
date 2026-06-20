@@ -404,6 +404,10 @@
             el.focus();
         }
 
+        function generateMessageId() {
+            return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+        }
+
         async function sendMessage() {
             const input = document.getElementById('input');
             const msg = input.value.trim();
@@ -411,19 +415,63 @@
             input.value = '';
             input.style.height = 'auto';
 
+            const messageId = generateMessageId();
             addMessage(msg, 'user');
+            await sendToServer(msg, messageId, currentAI);
+        }
 
+        async function sendToServer(msg, messageId, ai) {
+            const row = addPendingRow();
             try {
-                const res = await fetch(`/chat/${currentAI}`, {
+                const res = await fetch(`/chat/${ai}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg })
+                    body: JSON.stringify({ message: msg, message_id: messageId })
                 });
+                if (!res.ok) throw new Error('server error');
                 const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                row.remove();
                 addMessage(data.reply, 'ai');
             } catch (e) {
-                addMessage('連線失敗，請確認伺服器是否啟動。', 'ai');
+                row.remove();
+                addFailedRow(msg, messageId, ai);
             }
+        }
+
+        function addPendingRow() {
+            const row = document.createElement('div');
+            row.className = 'message-row ai';
+            row.innerHTML = `<div class="message-block"><div class="message ai" style="opacity:0.5;">…</div></div>`;
+            document.getElementById('messages').appendChild(row);
+            document.getElementById('messages').scrollTop = 999999;
+            return row;
+        }
+
+        function addFailedRow(msg, messageId, ai) {
+            const row = document.createElement('div');
+            row.className = 'message-row ai';
+            const block = document.createElement('div');
+            block.className = 'message-block';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message ai';
+            bubble.style.color = '#e88';
+            bubble.textContent = '連線失敗，訊息可能未送達。';
+
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = '重試';
+            retryBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:#0f3460;color:#fff;border:none;border-radius:14px;font-size:13px;cursor:pointer;align-self:flex-start;';
+            retryBtn.onclick = async () => {
+                row.remove();
+                await sendToServer(msg, messageId, ai);
+            };
+
+            block.appendChild(bubble);
+            block.appendChild(retryBtn);
+            row.appendChild(block);
+            document.getElementById('messages').appendChild(row);
+            document.getElementById('messages').scrollTop = 999999;
         }
 
         async function init() {
@@ -435,4 +483,3 @@
     </script>
 </body>
 </html>
-
