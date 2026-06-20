@@ -35,6 +35,72 @@ def save_message(bot, role, content, message_id=None):
         "message_id": message_id
     }).execute()
 
+def get_personas():
+    rows = supabase.table("personas").select("*").execute().data
+    result = {}
+    for r in rows:
+        result[r["key"]] = r
+    return result
+
+def build_system_prompt(bot_key):
+    personas = get_personas()
+    me = personas.get("user", {})
+    bot = personas.get(bot_key, {})
+
+    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
+    you_name = me.get("name") or "然然"
+
+    relation_map = {
+        "lover": "戀人", "childhood": "青梅竹馬", "friend": "好友",
+        "online": "網友", "colleague": "同事", "stranger": "陌生人"
+    }
+    relation_text = relation_map.get(bot.get("relation"), bot.get("relation") or "")
+
+    lines = [f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"]
+
+    basic = []
+    if bot.get("age"):
+        basic.append(f"年齡：{bot['age']}歲")
+    if bot.get("job"):
+        basic.append(f"職業：{bot['job']}")
+    if basic:
+        lines.append("。".join(basic) + "。")
+
+    if bot.get("persona"):
+        lines.append(f"【個性】{bot['persona']}")
+
+    if bot.get("call"):
+        lines.append(f"平時稱呼對方為「{bot['call']}」，用此暱稱叫對方，不可擅自改稱呼。")
+
+    if bot.get("phrase"):
+        lines.append(f"口頭禪：{bot['phrase']}。")
+
+    if relation_text:
+        lines.append(f"與對方的關係：{relation_text}。")
+
+    if bot.get("rel_bg"):
+        lines.append(f"【關係背景】{bot['rel_bg']}")
+
+    you_persona = me.get("persona") or ""
+    you_job = me.get("job") or ""
+    you_info = f"對方本名是「{you_name}」"
+    if you_job:
+        you_info += f"，身份：{you_job}"
+    if you_persona:
+        you_info += f"，個性：{you_persona}"
+    you_info += "。"
+    lines.append(f"【對方資訊】{you_info}")
+
+    if bot.get("taboo"):
+        lines.append(f"【禁止話題】{bot['taboo']}")
+
+    if bot.get("extra"):
+        lines.append(f"【補充指令】{bot['extra']}")
+
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。")
+
+    return "\n".join([l for l in lines if l])
+
 def get_latest_summary(bot):
     result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
     if result.data:
@@ -96,6 +162,28 @@ def get_history(bot):
     rows = load_memory(bot)
     return jsonify({"history": [{"role": r["role"], "content": r["content"]} for r in rows]})
 
+# ===== 人物設定 =====
+
+PERSONA_FIELDS = ["name", "age", "job", "persona", "call", "phrase", "relation", "rel_bg", "taboo", "extra"]
+
+@app.route("/personas", methods=["GET"])
+def personas_get():
+    return jsonify(get_personas())
+
+@app.route("/personas/<key>", methods=["POST"])
+def personas_post(key):
+    if key not in ["claude", "gemini", "user"]:
+        return jsonify({"status": "error", "message": "invalid key"}), 400
+    data = request.json
+    update = {k: data.get(k, "") for k in PERSONA_FIELDS}
+    update["updated_at"] = datetime.utcnow().isoformat()
+    supabase.table("personas").update(update).eq("key", key).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/persona_page")
+def persona_page():
+    return send_from_directory(".", "persona.html")
+
 @app.route("/chat/claude", methods=["POST"])
 def chat_claude():
     data = request.json
@@ -110,7 +198,7 @@ def chat_claude():
         response = client.messages.create(
             model="claude-sonnet-4-5",
             max_tokens=1024,
-            system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。你記得然然說過的每一件事。",
+            system=build_system_prompt("claude"),
             messages=history,
             timeout=60
         )
@@ -155,7 +243,7 @@ def chat_gemini():
             model="gemini-2.5-flash",
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                system_instruction="你是然然的AI夥伴，溫柔、體貼，記得然然說過的每一件事。"
+                system_instruction=build_system_prompt("gemini")
             )
         )
         reply = response.text

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人物設定</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding-bottom: 60px;
+        }
+        .header {
+            padding: 16px 20px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+        }
+        .header h1 { font-size: 18px; font-weight: 400; }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            padding: 16px 20px 0;
+        }
+        .tab-btn {
+            padding: 8px 18px;
+            border: 1px solid #0f3460;
+            background: transparent;
+            color: #aaa;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .tab-btn.active {
+            background: #0f3460;
+            color: #fff;
+        }
+        .form {
+            padding: 20px;
+            max-width: 560px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .field label {
+            display: block;
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 6px;
+        }
+        .field input,
+        .field textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            color: #eee;
+            font-size: 15px;
+            outline: none;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .field textarea {
+            min-height: 80px;
+            line-height: 1.5;
+        }
+        .row2 {
+            display: flex;
+            gap: 12px;
+        }
+        .row2 .field { flex: 1; }
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 10px;
+            color: #eee;
+            font-size: 15px;
+            outline: none;
+        }
+        .save-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 14px 20px;
+            background: #16213e;
+            border-top: 1px solid #0f3460;
+            display: flex;
+            justify-content: center;
+        }
+        .save-btn {
+            padding: 12px 40px;
+            background: #3a5a8a;
+            border: none;
+            border-radius: 24px;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        .save-btn:active { opacity: 0.8; }
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f3460;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .section-title {
+            font-size: 13px;
+            color: #667;
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✦ 人物設定</h1>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="form" id="form"></div>
+    <div class="save-bar">
+        <button class="save-btn" onclick="save()">儲存</button>
+    </div>
+    <div class="toast" id="toast">已儲存</div>
+
+    <script>
+        let currentKey = 'claude';
+        let personas = {};
+
+        const TABS = [
+            { key: 'claude', label: '晏' },
+            { key: 'gemini', label: '熠' },
+            { key: 'user', label: '然然' }
+        ];
+
+        const FIELDS = [
+            { key: 'name', label: '名字', type: 'input' },
+            { key: 'age', label: '年齡', type: 'input', half: true },
+            { key: 'job', label: '職業', type: 'input', half: true },
+            { key: 'persona', label: '個性', type: 'textarea' },
+            { key: 'call', label: '對對方的稱呼', type: 'input', skipFor: ['user'] },
+            { key: 'phrase', label: '口頭禪', type: 'input', skipFor: ['user'] },
+            { key: 'relation', label: '關係', type: 'select', skipFor: ['user'] },
+            { key: 'rel_bg', label: '關係背景', type: 'textarea', skipFor: ['user'] },
+            { key: 'taboo', label: '禁止話題', type: 'textarea', skipFor: ['user'] },
+            { key: 'extra', label: '補充指令', type: 'textarea', skipFor: ['user'] }
+        ];
+
+        const RELATION_OPTIONS = [
+            { value: '', label: '（未設定）' },
+            { value: 'lover', label: '戀人' },
+            { value: 'childhood', label: '青梅竹馬' },
+            { value: 'friend', label: '好友' },
+            { value: 'online', label: '網友' },
+            { value: 'colleague', label: '同事' },
+            { value: 'stranger', label: '陌生人' }
+        ];
+
+        function renderTabs() {
+            const el = document.getElementById('tabs');
+            el.innerHTML = '';
+            TABS.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'tab-btn' + (t.key === currentKey ? ' active' : '');
+                btn.textContent = t.label;
+                btn.onclick = () => { currentKey = t.key; renderTabs(); renderForm(); };
+                el.appendChild(btn);
+            });
+        }
+
+        function renderForm() {
+            const el = document.getElementById('form');
+            el.innerHTML = '';
+            const data = personas[currentKey] || {};
+
+            FIELDS.forEach(f => {
+                if (f.skipFor && f.skipFor.includes(currentKey)) return;
+
+                const field = document.createElement('div');
+                field.className = 'field';
+                if (f.half) field.style.flex = '1';
+
+                const label = document.createElement('label');
+                label.textContent = f.label;
+                field.appendChild(label);
+
+                let input;
+                if (f.type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.value = data[f.key] || '';
+                } else if (f.type === 'select') {
+                    input = document.createElement('select');
+                    RELATION_OPTIONS.forEach(opt => {
+                        const o = document.createElement('option');
+                        o.value = opt.value;
+                        o.textContent = opt.label;
+                        if (data[f.key] === opt.value) o.selected = true;
+                        input.appendChild(o);
+                    });
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = data[f.key] || '';
+                }
+                input.dataset.field = f.key;
+                field.appendChild(input);
+                el.appendChild(field);
+            });
+        }
+
+        async function loadPersonas() {
+            const res = await fetch('/personas');
+            personas = await res.json();
+            renderTabs();
+            renderForm();
+        }
+
+        async function save() {
+            const inputs = document.querySelectorAll('#form [data-field]');
+            const payload = {};
+            inputs.forEach(i => { payload[i.dataset.field] = i.value.trim(); });
+
+            await fetch(`/personas/${currentKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            personas[currentKey] = { ...personas[currentKey], ...payload };
+
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 1500);
+        }
+
+        loadPersonas();
+    </script>
+</body>
+</html>
