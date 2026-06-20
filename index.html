@@ -5,16 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rifugio</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital@1&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/theme.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: #f5f0eb;
-            color: #3a3330;
+            background: var(--bg);
+            color: var(--text);
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            transition: background 0.2s, color 0.2s;
         }
 
         /* 主內容區 */
@@ -33,7 +35,7 @@
             font-family: 'Playfair Display', serif;
             font-style: italic;
             font-size: 42px;
-            color: #3a3330;
+            color: var(--text);
             letter-spacing: 2px;
             text-align: center;
         }
@@ -45,12 +47,12 @@
         .days-number {
             font-size: 72px;
             font-weight: 300;
-            color: #b07d5a;
+            color: var(--accent);
             line-height: 1;
         }
         .days-label {
             font-size: 13px;
-            color: #9a8878;
+            color: var(--text-3);
             letter-spacing: 3px;
             text-transform: uppercase;
             margin-top: 6px;
@@ -58,7 +60,7 @@
 
         /* 名言卡 */
         .quote-card {
-            background: #fff;
+            background: var(--surface);
             border-radius: 16px;
             padding: 24px;
             width: 100%;
@@ -68,13 +70,13 @@
         .quote-text {
             font-size: 14px;
             line-height: 1.8;
-            color: #5a4f47;
+            color: var(--text-2);
             font-style: italic;
             text-align: center;
         }
         .quote-author {
             font-size: 12px;
-            color: #b07d5a;
+            color: var(--accent);
             text-align: center;
             margin-top: 12px;
             letter-spacing: 1px;
@@ -89,10 +91,10 @@
             width: 5px;
             height: 5px;
             border-radius: 50%;
-            background: #d9cfc8;
+            background: var(--surface3);
         }
         .quote-dots span.active {
-            background: #b07d5a;
+            background: var(--accent);
         }
 
         /* 快捷卡片區 */
@@ -104,7 +106,7 @@
             max-width: 340px;
         }
         .card {
-            background: #fff;
+            background: var(--surface);
             border-radius: 16px;
             padding: 20px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.06);
@@ -128,11 +130,11 @@
             font-weight: 500;
             letter-spacing: 1px;
             text-transform: uppercase;
-            color: #3a3330;
+            color: var(--text);
         }
         .card-sub {
             font-size: 11px;
-            color: #9a8878;
+            color: var(--text-3);
         }
         .card.large {
             grid-column: span 2;
@@ -150,8 +152,8 @@
 
         /* 底部 tab */
         .tab-bar {
-            background: #fff;
-            border-top: 1px solid #e8e0d8;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
             display: flex;
             padding: 10px 0 16px;
         }
@@ -164,10 +166,10 @@
             cursor: pointer;
             padding: 4px 0;
             text-decoration: none;
-            color: #9a8878;
+            color: var(--text-3);
             transition: color 0.15s;
         }
-        .tab.active { color: #b07d5a; }
+        .tab.active { color: var(--accent); }
         .tab-icon { font-size: 20px; }
         .tab-label { font-size: 10px; letter-spacing: 0.5px; }
     </style>
@@ -234,9 +236,9 @@
     <div class="tab-icon">✐</div>
     <div class="tab-label">日記</div>
 </a>
-        <a class="tab" href="/persona_page">
-            <div class="tab-icon">⋯</div>
-            <div class="tab-label">人物書</div>
+        <a class="tab" href="/settings_page">
+            <div class="tab-icon">⚙</div>
+            <div class="tab-label">設定</div>
         </a>
     </div>
 
@@ -247,5 +249,6 @@
         const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
         document.getElementById('days').textContent = diff;
     </script>
+    <script src="/theme.js"></script>
 </body>
 </html>

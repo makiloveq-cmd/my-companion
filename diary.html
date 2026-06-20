@@ -5,16 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>日記 - Rifugio</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital@1&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/theme.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: #f5f0eb;
-            color: #3a3330;
+            background: var(--bg);
+            color: var(--text);
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            transition: background 0.2s, color 0.2s;
         }
         .header {
             padding: 20px 24px 12px;
@@ -34,7 +36,7 @@
             gap: 16px;
         }
         .compose {
-            background: #fff;
+            background: var(--surface);
             border-radius: 16px;
             padding: 16px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.06);
@@ -49,7 +51,8 @@
             font-family: inherit;
             font-size: 14px;
             line-height: 1.6;
-            color: #3a3330;
+            color: var(--text);
+            background: transparent;
             min-height: 60px;
         }
         .compose-actions {
@@ -63,15 +66,15 @@
             padding: 8px 16px;
             font-size: 13px;
             cursor: pointer;
-            background: #b07d5a;
+            background: var(--accent);
             color: #fff;
         }
         .btn.secondary {
-            background: #efe6dd;
-            color: #9a8878;
+            background: var(--surface2);
+            color: var(--text-2);
         }
         .entry-card {
-            background: #fff;
+            background: var(--surface);
             border-radius: 16px;
             padding: 16px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.06);
@@ -93,30 +96,30 @@
             justify-content: center;
             font-size: 12px;
             font-weight: 500;
-            background: #2a3a5a;
-            color: #fff;
+            background: var(--surface3);
+            color: var(--text);
             flex-shrink: 0;
         }
-        .avatar.然然 { background: #3a5a8a; }
+        .avatar.然然 { background: var(--accent); color: #fff; }
         .entry-meta {
             display: flex;
             flex-direction: column;
             flex: 1;
         }
         .entry-author { font-size: 13px; font-weight: 500; }
-        .entry-time { font-size: 11px; color: #9a8878; }
+        .entry-time { font-size: 11px; color: var(--text-3); }
         .entry-actions { display: flex; gap: 8px; }
         .entry-action-btn {
             font-size: 11px;
-            color: #9a8878;
+            color: var(--text-3);
             background: none;
             border: none;
             cursor: pointer;
             padding: 2px 6px;
             border-radius: 6px;
         }
-        .entry-action-btn:hover { background: #f0e9e2; }
-        .entry-action-btn.delete { color: #c07070; }
+        .entry-action-btn:hover { background: var(--surface2); }
+        .entry-action-btn.delete { color: var(--danger); }
         .entry-content {
             font-size: 14px;
             line-height: 1.8;
@@ -128,7 +131,7 @@
             gap: 8px;
         }
         .edit-area textarea {
-            border: 1px solid #e8e0d8;
+            border: 1px solid var(--border);
             border-radius: 10px;
             padding: 10px;
             font-family: inherit;
@@ -137,6 +140,8 @@
             resize: none;
             outline: none;
             min-height: 80px;
+            background: var(--bg);
+            color: var(--text);
         }
         .edit-btns {
             display: flex;
@@ -147,7 +152,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-            border-top: 1px solid #f0e9e2;
+            border-top: 1px solid var(--border);
             padding-top: 10px;
         }
         .comment {
@@ -162,7 +167,7 @@
         }
         .comment-right { flex: 1; }
         .comment-bubble {
-            background: #f7f2ed;
+            background: var(--surface2);
             border-radius: 12px;
             padding: 8px 12px;
             font-size: 13px;
@@ -174,19 +179,19 @@
             gap: 6px;
             margin-bottom: 3px;
         }
-        .comment-author { font-size: 11px; color: #9a8878; font-weight: 500; }
+        .comment-author { font-size: 11px; color: var(--text-3); font-weight: 500; }
         .comment-reply-tag {
             font-size: 11px;
-            color: #b07d5a;
+            color: var(--accent);
         }
         .comment-reply-preview {
             font-size: 11px;
-            color: #9a8878;
-            background: #efe6dd;
+            color: var(--text-3);
+            background: var(--surface3);
             border-radius: 6px;
             padding: 4px 8px;
             margin-bottom: 4px;
-            border-left: 2px solid #b07d5a;
+            border-left: 2px solid var(--accent);
         }
         .comment-actions {
             display: flex;
@@ -195,14 +200,14 @@
         }
         .comment-action-btn {
             font-size: 11px;
-            color: #9a8878;
+            color: var(--text-3);
             background: none;
             border: none;
             cursor: pointer;
             padding: 2px 4px;
         }
-        .comment-action-btn.reply-btn { color: #b07d5a; }
-        .comment-action-btn.delete { color: #c07070; }
+        .comment-action-btn.reply-btn { color: var(--accent); }
+        .comment-action-btn.delete { color: var(--danger); }
         .comment-edit-area {
             display: none;
             gap: 6px;
@@ -210,20 +215,22 @@
         }
         .comment-edit-area input {
             flex: 1;
-            border: 1px solid #e8e0d8;
+            border: 1px solid var(--border);
             border-radius: 10px;
             padding: 6px 10px;
             font-size: 13px;
             outline: none;
+            background: var(--bg);
+            color: var(--text);
         }
         .reply-hint {
             display: none;
             font-size: 12px;
-            color: #b07d5a;
-            background: #fdf6f0;
+            color: var(--accent);
+            background: var(--surface2);
             border-radius: 8px;
             padding: 6px 10px;
-            border-left: 2px solid #b07d5a;
+            border-left: 2px solid var(--accent);
         }
         .comment-input {
             display: flex;
@@ -237,16 +244,18 @@
         }
         .comment-input input {
             flex: 1;
-            border: 1px solid #f0e9e2;
+            border: 1px solid var(--border);
             border-radius: 16px;
             padding: 6px 12px;
             font-size: 13px;
             outline: none;
+            background: var(--bg);
+            color: var(--text);
         }
         .comment-input button {
             border: none;
-            background: #efe6dd;
-            color: #9a8878;
+            background: var(--surface2);
+            color: var(--text-2);
             border-radius: 16px;
             padding: 6px 12px;
             font-size: 12px;
@@ -254,7 +263,7 @@
         }
         .ai-comment-btn {
             font-size: 11px;
-            color: #b07d5a;
+            color: var(--accent);
             background: none;
             border: none;
             cursor: pointer;
@@ -262,13 +271,13 @@
         }
         .empty {
             text-align: center;
-            color: #b3a596;
+            color: var(--text-3);
             font-size: 13px;
             padding: 40px 0;
         }
         .tab-bar {
-            background: #fff;
-            border-top: 1px solid #e8e0d8;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
             display: flex;
             padding: 10px 0 16px;
         }
@@ -279,10 +288,10 @@
             align-items: center;
             gap: 4px;
             text-decoration: none;
-            color: #9a8878;
+            color: var(--text-3);
             font-size: 10px;
         }
-        .tab.active { color: #b07d5a; }
+        .tab.active { color: var(--accent); }
         .tab-icon { font-size: 20px; }
     </style>
 </head>
@@ -305,7 +314,7 @@
         <a class="tab" href="/chatroom"><div class="tab-icon">✦</div><div>聊天</div></a>
         <a class="tab" href="#"><div class="tab-icon">◎</div><div>朋友圈</div></a>
         <a class="tab active" href="/diary_page"><div class="tab-icon">✐</div><div>日記</div></a>
-        <a class="tab" href="#"><div class="tab-icon">⋯</div><div>更多</div></a>
+        <a class="tab" href="/persona_page"><div class="tab-icon">⋯</div><div>人物書</div></a>
     </div>
 
     <script>
@@ -536,5 +545,6 @@
 
         loadEntries();
     </script>
+    <script src="/theme.js"></script>
 </body>
 </html>

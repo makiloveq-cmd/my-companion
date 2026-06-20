@@ -184,6 +184,37 @@ def personas_post(key):
 def persona_page():
     return send_from_directory(".", "persona.html")
 
+# ===== 主題設定 =====
+
+@app.route("/theme", methods=["GET"])
+def theme_get():
+    rows = supabase.table("identities").select("value").eq("key", "theme").execute().data
+    theme = rows[0]["value"] if rows else "dark"
+    return jsonify({"theme": theme})
+
+@app.route("/theme", methods=["POST"])
+def theme_post():
+    data = request.json
+    theme = (data.get("theme") or "dark").strip()
+    supabase.table("identities").upsert({
+        "key": "theme",
+        "value": theme,
+        "updated_at": datetime.utcnow().isoformat()
+    }).execute()
+    return jsonify({"status": "ok"})
+
+@app.route("/settings_page")
+def settings_page():
+    return send_from_directory(".", "settings.html")
+
+@app.route("/theme.css")
+def theme_css():
+    return send_from_directory(".", "theme.css")
+
+@app.route("/theme.js")
+def theme_js():
+    return send_from_directory(".", "theme.js")
+
 @app.route("/chat/claude", methods=["POST"])
 def chat_claude():
     data = request.json

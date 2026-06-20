@@ -1,0 +1,96 @@
+/* ═══ Rifugio 共用主題變數 ═══ */
+:root, [data-theme="dark"] {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface2: #0f3460;
+  --surface3: #1e2d52;
+  --text: #eeeeee;
+  --text-2: #aaaaaa;
+  --text-3: #888888;
+  --border: #0f3460;
+  --accent: #3a5a8a;
+  --accent-soft: rgba(58, 90, 138, 0.15);
+  --bubble-user: #0f3460;
+  --bubble-ai: #16213e;
+  --danger: #e88;
+}
+
+[data-theme="cream"] {
+  --bg: #f5f0eb;
+  --surface: #ffffff;
+  --surface2: #f0e8df;
+  --surface3: #e8ddd0;
+  --text: #3a3330;
+  --text-2: #9a8878;
+  --text-3: #b0a294;
+  --border: #e8e0d8;
+  --accent: #b07d5a;
+  --accent-soft: rgba(176, 125, 90, 0.12);
+  --bubble-user: #b07d5a;
+  --bubble-ai: #ffffff;
+  --danger: #c05050;
+}
+
+[data-theme="warm"] {
+  --bg: #ede8e0;
+  --surface: #f7f3ee;
+  --surface2: #e6e0d6;
+  --surface3: #d8d0c4;
+  --text: #1e1a16;
+  --text-2: #4a3f38;
+  --text-3: #7a6e66;
+  --border: rgba(30, 26, 22, 0.12);
+  --accent: #9a5848;
+  --accent-soft: rgba(154, 88, 72, 0.12);
+  --bubble-user: #9a5848;
+  --bubble-ai: #f7f3ee;
+  --danger: #c05050;
+}
+
+[data-theme="gray"] {
+  --bg: #f0eef2;
+  --surface: #fafafa;
+  --surface2: #eae8ec;
+  --surface3: #dcdae0;
+  --text: #1e1c22;
+  --text-2: #4e4a56;
+  --text-3: #847e8e;
+  --border: rgba(30, 28, 34, 0.1);
+  --accent: #7a6f84;
+  --accent-soft: rgba(122, 111, 132, 0.12);
+  --bubble-user: #7a6f84;
+  --bubble-ai: #fafafa;
+  --danger: #c05050;
+}
+
+[data-theme="ocean"] {
+  --bg: #eef2f5;
+  --surface: #f8fbfc;
+  --surface2: #e4edf2;
+  --surface3: #d4e2ea;
+  --text: #0e1e28;
+  --text-2: #2e4e60;
+  --text-3: #6888a0;
+  --border: rgba(14, 30, 40, 0.1);
+  --accent: #3d7290;
+  --accent-soft: rgba(61, 114, 144, 0.12);
+  --bubble-user: #3d7290;
+  --bubble-ai: #f8fbfc;
+  --danger: #c05050;
+}
+
+[data-theme="matcha"] {
+  --bg: #eff3ee;
+  --surface: #f8fbf8;
+  --surface2: #e4ede4;
+  --surface3: #d4e2d4;
+  --text: #0e1e12;
+  --text-2: #2e4e36;
+  --text-3: #5e8666;
+  --border: rgba(14, 30, 18, 0.1);
+  --accent: #4e7858;
+  --accent-soft: rgba(78, 120, 88, 0.12);
+  --bubble-user: #4e7858;
+  --bubble-ai: #f8fbf8;
+  --danger: #c05050;
+}

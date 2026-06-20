@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設定</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+        .header {
+            padding: 16px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 { font-size: 18px; font-weight: 400; }
+        .section {
+            padding: 24px 20px;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        .section-title {
+            font-size: 13px;
+            color: var(--text-3);
+            letter-spacing: 1px;
+            margin-bottom: 14px;
+        }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .theme-opt {
+            border-radius: 14px;
+            padding: 14px 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            transition: border-color 0.15s;
+        }
+        .theme-opt.sel {
+            border-color: var(--accent);
+        }
+        .theme-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .theme-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .theme-name {
+            font-size: 12px;
+            color: var(--text-2);
+            letter-spacing: 0.5px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: var(--text-3);
+            font-size: 13px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✦ 設定</h1>
+    </div>
+    <div class="section">
+        <div class="section-title">配色主題</div>
+        <div class="theme-grid" id="theme-grid"></div>
+        <a class="back-link" href="/">← 回首頁</a>
+    </div>
+
+    <script>
+        const THEMES = [
+            { key: 'dark', name: '深夜', colors: ['#1a1a2e', '#3a5a8a', '#eeeeee'] },
+            { key: 'cream', name: '奶白', colors: ['#f5f0eb', '#b07d5a', '#3a3330'] },
+            { key: 'warm', name: '暖米', colors: ['#ede8e0', '#9a5848', '#1e1a16'] },
+            { key: 'gray', name: '霧灰', colors: ['#f0eef2', '#7a6f84', '#1e1c22'] },
+            { key: 'ocean', name: '海霧', colors: ['#eef2f5', '#3d7290', '#0e1e28'] },
+            { key: 'matcha', name: '抹茶', colors: ['#eff3ee', '#4e7858', '#0e1e12'] }
+        ];
+
+        let currentTheme = localStorage.getItem('rifugio_theme') || 'dark';
+
+        function renderThemes() {
+            const grid = document.getElementById('theme-grid');
+            grid.innerHTML = '';
+            THEMES.forEach(t => {
+                const opt = document.createElement('div');
+                opt.className = 'theme-opt' + (t.key === currentTheme ? ' sel' : '');
+                opt.onclick = () => selectTheme(t.key);
+
+                const preview = document.createElement('div');
+                preview.className = 'theme-preview';
+                preview.style.background = t.colors[0];
+                t.colors.slice(1).forEach(c => {
+                    const dot = document.createElement('div');
+                    dot.className = 'theme-dot';
+                    dot.style.background = c;
+                    preview.appendChild(dot);
+                });
+
+                const name = document.createElement('div');
+                name.className = 'theme-name';
+                name.textContent = t.name;
+
+                opt.appendChild(preview);
+                opt.appendChild(name);
+                grid.appendChild(opt);
+            });
+        }
+
+        async function selectTheme(key) {
+            currentTheme = key;
+            await rifugioSetTheme(key);
+            renderThemes();
+        }
+
+        renderThemes();
+    </script>
+    <script src="/theme.js"></script>
+</body>
+</html>
