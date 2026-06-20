@@ -152,7 +152,7 @@ def chat_gemini():
         )
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=contents,
             config=genai_types.GenerateContentConfig(
                 system_instruction="你是然然的AI夥伴，溫柔、體貼，記得然然說過的每一件事。"
