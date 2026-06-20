@@ -3,7 +3,8 @@ load_dotenv()
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import anthropic
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 import os
 import random
 from datetime import datetime
@@ -127,21 +128,36 @@ def chat_gemini():
     user_message = data.get("message", "")
     message_id = data.get("message_id")
 
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction="你是然然的AI夥伴，溫柔、體貼，記得然然說過的每一件事。"
-    )
-
     save_message("gemini", "user", user_message, message_id)
     history = load_memory("gemini")
 
     try:
-        chat_session = model.start_chat(history=[
-            {"role": h["role"], "parts": [h["content"]]}
-            for h in history[:-1] if h["role"] in ["user", "model"]
-        ])
-        response = chat_session.send_message(user_message)
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+        contents = []
+        for h in history[:-1]:
+            if h["role"] not in ["user", "model"]:
+                continue
+            contents.append(
+                genai_types.Content(
+                    role=h["role"],
+                    parts=[genai_types.Part(text=h["content"])]
+                )
+            )
+        contents.append(
+            genai_types.Content(
+                role="user",
+                parts=[genai_types.Part(text=user_message)]
+            )
+        )
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
+                system_instruction="你是然然的AI夥伴，溫柔、體貼，記得然然說過的每一件事。"
+            )
+        )
         reply = response.text
         save_message("gemini", "model", reply)
         return jsonify({"reply": reply})
