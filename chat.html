@@ -83,6 +83,15 @@
             margin-top: 4px; padding: 8px 12px;
             font-size: 14px; line-height: 1.5;
         }
+        /* 時間戳 */
+        .message-time {
+            font-size: 11px;
+            color: var(--text-3);
+            padding: 0 4px;
+            align-self: flex-end;
+        }
+        .message-row.user .message-time { align-self: flex-end; }
+
         .input-area {
             background: var(--surface);
             border-top: 1px solid var(--border);
@@ -112,8 +121,8 @@
         .toolbar-icon {
             width: 36px; height: 36px; flex-shrink: 0;
             background: transparent; border: none;
-            color: var(--text-3); font-size: 22px;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            color: var(--text-3); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
             border-radius: 50%; transition: background 0.15s; padding: 0;
         }
         .toolbar-icon:hover { background: var(--surface2); }
@@ -134,7 +143,6 @@
             color: var(--text-3); border-radius: 6px; font-size: 13px;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
-        .newline-btn:active { opacity: 0.6; }
         .send-btn {
             width: 36px; height: 36px; flex-shrink: 0;
             background: var(--accent); border: none; border-radius: 50%;
@@ -235,6 +243,24 @@
         let holdTimer = null;
         let pendingImageUrl = null;
 
+        // ===== 時間格式化（UTC → 台灣時間）=====
+        function formatTime(isoStr) {
+            if (!isoStr) return '';
+            const d = new Date(isoStr);
+            // 轉台灣時間 UTC+8
+            const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+            const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+            const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+                         && tw.getUTCMonth() === nowTw.getUTCMonth()
+                         && tw.getUTCDate() === nowTw.getUTCDate();
+            const hh = String(tw.getUTCHours()).padStart(2, '0');
+            const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+            if (isToday) return `${hh}:${mm}`;
+            const mo = tw.getUTCMonth() + 1;
+            const dd = tw.getUTCDate();
+            return `${mo}/${dd} ${hh}:${mm}`;
+        }
+
         // ===== 頭像 =====
         async function loadAvatars() {
             try {
@@ -329,7 +355,7 @@
                 const data = await res.json();
                 data.history.forEach(m => {
                     const role = m.role === 'user' ? 'user' : 'ai';
-                    addMessage(m.content, role, m.image_url);
+                    addMessage(m.content, role, m.image_url, m.created_at);
                 });
             } catch(e) {}
         }
@@ -342,7 +368,7 @@
         }
 
         // ===== 渲染訊息 =====
-        function addMessage(text, role, imageUrl) {
+        function addMessage(text, role, imageUrl, createdAt) {
             const target = role === 'user' ? 'user' : currentAI;
             const displayName = names[target];
 
@@ -379,8 +405,14 @@
                 bubble.textContent = text;
             }
 
+            // 時間戳
+            const timeEl = document.createElement('div');
+            timeEl.className = 'message-time';
+            timeEl.textContent = formatTime(createdAt || new Date().toISOString());
+
             block.appendChild(nameEl);
             block.appendChild(bubble);
+            block.appendChild(timeEl);
             row.appendChild(avatar);
             row.appendChild(block);
             document.getElementById('messages').appendChild(row);
@@ -453,7 +485,8 @@
             const imageUrl = pendingImageUrl;
             removeImage();
             const messageId = generateMessageId();
-            addMessage(msg, 'user', imageUrl);
+            const sentAt = new Date().toISOString();
+            addMessage(msg, 'user', imageUrl, sentAt);
             await sendToServer(msg, messageId, currentAI, imageUrl);
         }
 
@@ -469,7 +502,7 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 row.remove();
-                addMessage(data.reply, 'ai');
+                addMessage(data.reply, 'ai', null, new Date().toISOString());
             } catch(e) {
                 row.remove();
                 addFailedRow(msg, messageId, ai, imageUrl);

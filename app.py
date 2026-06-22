@@ -27,7 +27,7 @@ def get_tw_time_str():
     return tw_str
 
 def load_memory(bot):
-    result = supabase.table("memories").select("role, content, id, image_url").eq("session_id", bot).order("id").execute()
+    result = supabase.table("memories").select("role, content, id, image_url, created_at").eq("session_id", bot).order("id").execute()
     return result.data
 
 def save_message(bot, role, content, message_id=None, image_url=None):
@@ -166,7 +166,7 @@ def build_history(bot):
 @app.route("/history/<bot>", methods=["GET"])
 def get_history(bot):
     rows = load_memory(bot)
-    return jsonify({"history": [{"role": r["role"], "content": r["content"], "image_url": r.get("image_url")} for r in rows]})
+    return jsonify({"history": [{"role": r["role"], "content": r["content"], "image_url": r.get("image_url"), "created_at": r.get("created_at")} for r in rows]})
 
 # ===== 人物設定 =====
 
