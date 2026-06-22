@@ -19,25 +19,16 @@
         .header {
             padding: 16px 20px;
             background: var(--surface);
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            display: flex; align-items: center; gap: 12px;
             border-bottom: 1px solid var(--border);
         }
         .header h1 { font-size: 18px; font-weight: 400; }
         .messages {
-            flex: 1;
-            overflow-y: auto;
+            flex: 1; overflow-y: auto;
             padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+            display: flex; flex-direction: column; gap: 16px;
         }
-        .message-row {
-            display: flex;
-            align-items: flex-end;
-            gap: 10px;
-        }
+        .message-row { display: flex; align-items: flex-end; gap: 10px; }
         .message-row.user { flex-direction: row-reverse; }
         .avatar {
             width: 36px; height: 36px; border-radius: 50%;
@@ -49,9 +40,7 @@
         .avatar.user { background: var(--accent); color: #fff; }
         .avatar.claude { background: var(--surface3); color: var(--text-2); }
         .avatar.gemini { background: var(--surface3); color: var(--text-2); opacity: 0.85; }
-        .message-block {
-            display: flex; flex-direction: column; gap: 4px; max-width: 70%;
-        }
+        .message-block { display: flex; flex-direction: column; gap: 4px; max-width: 70%; }
         .message-row.user .message-block { align-items: flex-end; }
         .message-name { font-size: 12px; color: var(--text-3); padding: 0 4px; }
         .message {
@@ -67,6 +56,20 @@
             border: 1px solid var(--border);
             border-radius: 16px 16px 16px 4px;
         }
+        .message.has-img { padding: 0; background: transparent; border: none; }
+        .message.has-img .chat-img {
+            max-width: 200px; max-height: 260px;
+            border-radius: 14px; display: block; cursor: pointer;
+            border: 1px solid var(--border);
+        }
+        .message.has-img .img-caption {
+            margin-top: 4px; padding: 8px 12px;
+            font-size: 14px; line-height: 1.5;
+        }
+        .message-time {
+            font-size: 11px; color: var(--text-3); padding: 0 4px;
+        }
+        /* 回覆按鈕列 */
         .reply-bar {
             padding: 10px 20px;
             background: var(--surface);
@@ -82,27 +85,63 @@
         }
         .reply-btn:active { opacity: 0.7; }
         .reply-btn:disabled { opacity: 0.4; cursor: default; }
-        .reply-btn .dot {
-            width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+        .reply-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+        /* 輸入區 */
+        .input-area { background: var(--surface); border-top: 1px solid var(--border); }
+        .image-preview-bar {
+            display: none; align-items: center;
+            gap: 10px; padding: 8px 16px 0;
         }
-        .input-area {
-            padding: 16px 20px;
-            background: var(--surface);
-            border-top: 1px solid var(--border);
-            display: flex; gap: 10px; align-items: flex-end;
+        .image-preview-bar.show { display: flex; }
+        .preview-thumb { position: relative; width: 60px; height: 60px; }
+        .preview-thumb img {
+            width: 60px; height: 60px;
+            object-fit: cover; border-radius: 10px;
+            border: 1px solid var(--border);
         }
-        .input-area textarea {
-            flex: 1; padding: 12px 16px;
+        .remove-img-btn {
+            position: absolute; top: -6px; right: -6px;
+            width: 18px; height: 18px;
+            background: var(--text-2); color: var(--surface);
+            border: none; border-radius: 50%; font-size: 10px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .input-row {
+            display: flex; align-items: flex-end;
+            padding: 10px 12px 12px; gap: 8px;
+        }
+        .toolbar-icon {
+            width: 36px; height: 36px; flex-shrink: 0;
+            background: transparent; border: none;
+            color: var(--text-3); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; transition: background 0.15s; padding: 0;
+        }
+        .toolbar-icon:hover { background: var(--surface2); }
+        .toolbar-icon:active { opacity: 0.6; }
+        .input-wrapper { position: relative; flex: 1; }
+        .input-wrapper textarea {
+            width: 100%; padding: 9px 14px;
             background: var(--bg); border: 1px solid var(--border);
-            border-radius: 24px; color: var(--text);
+            border-radius: 22px; color: var(--text);
             font-size: 15px; outline: none; resize: none;
-            font-family: inherit; max-height: 120px; line-height: 1.4;
+            font-family: inherit; max-height: 120px; line-height: 1.5;
         }
-        .input-area button {
-            padding: 12px 20px; background: var(--accent);
-            border: none; border-radius: 24px;
-            color: #fff; cursor: pointer; font-size: 15px;
+        .send-btn {
+            width: 36px; height: 36px; flex-shrink: 0;
+            background: var(--accent); border: none; border-radius: 50%;
+            color: #fff; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
         }
+        .send-btn:active { opacity: 0.8; }
+        /* 燈箱 */
+        .lightbox {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.88); z-index: 200;
+            align-items: center; justify-content: center;
+        }
+        .lightbox.show { display: flex; }
+        .lightbox img { max-width: 94vw; max-height: 90vh; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -119,32 +158,68 @@
         </button>
     </div>
     <div class="input-area">
-        <textarea id="input" placeholder="說點什麼…" rows="1"
-            onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
-        <button onclick="sendMessage()">送出</button>
+        <div class="image-preview-bar" id="imagePreviewBar">
+            <div class="preview-thumb">
+                <img id="imagePreviewThumb" src="" alt="">
+                <button class="remove-img-btn" onclick="removeImage()">✕</button>
+            </div>
+        </div>
+        <div class="input-row">
+            <button class="toolbar-icon" onclick="document.getElementById('imageInput').click()">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="3"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+            </button>
+            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
+            <div class="input-wrapper">
+                <textarea id="input" placeholder="說點什麼…" rows="1"
+                    onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+            </div>
+            <button class="send-btn" onclick="sendMessage()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <img id="lightboxImg" src="" alt="">
     </div>
 
     <script>
         let names = { user: '然然', claude: '晏', gemini: '熠' };
         let avatars = { user: null, claude: null, gemini: null };
+        let pendingImageUrl = null;
 
-        async function loadAvatars() {
-            try {
-                const res = await fetch('/personas');
-                const data = await res.json();
-                avatars.user = data.user?.avatar || null;
-                avatars.claude = data.claude?.avatar || null;
-                avatars.gemini = data.gemini?.avatar || null;
-            } catch(e) {}
+        // ===== 時間格式化 =====
+        function formatTime(isoStr) {
+            if (!isoStr) return '';
+            const d = new Date(isoStr);
+            const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+            const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+            const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+                         && tw.getUTCMonth() === nowTw.getUTCMonth()
+                         && tw.getUTCDate() === nowTw.getUTCDate();
+            const hh = String(tw.getUTCHours()).padStart(2, '0');
+            const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+            if (isToday) return `${hh}:${mm}`;
+            return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
         }
 
-        async function loadNames() {
+        // ===== 頭像與名字 =====
+        async function loadPersonas() {
             try {
                 const res = await fetch('/personas');
                 const data = await res.json();
                 names.user = data.user?.name || names.user;
                 names.claude = data.claude?.name || names.claude;
                 names.gemini = data.gemini?.name || names.gemini;
+                avatars.user = data.user?.avatar || null;
+                avatars.claude = data.claude?.avatar || null;
+                avatars.gemini = data.gemini?.avatar || null;
             } catch(e) {}
             document.getElementById('name-claude-btn').textContent = `請${names.claude}說話`;
             document.getElementById('name-gemini-btn').textContent = `請${names.gemini}說話`;
@@ -164,7 +239,48 @@
             return av;
         }
 
-        function addMessage(content, speaker) {
+        // ===== 燈箱 =====
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('lightbox').classList.add('show');
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('show');
+        }
+
+        // ===== 圖片上傳 =====
+        async function handleImageSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('imagePreviewThumb').src = URL.createObjectURL(file);
+            document.getElementById('imagePreviewBar').classList.add('show');
+            pendingImageUrl = null;
+            const formData = new FormData();
+            formData.append('image', file);
+            try {
+                const res = await fetch('/upload_image', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.url) {
+                    pendingImageUrl = data.url;
+                } else {
+                    alert('圖片上傳失敗');
+                    removeImage();
+                }
+            } catch(err) {
+                alert('圖片上傳失敗');
+                removeImage();
+            }
+            e.target.value = '';
+        }
+
+        function removeImage() {
+            pendingImageUrl = null;
+            document.getElementById('imagePreviewBar').classList.remove('show');
+            document.getElementById('imagePreviewThumb').src = '';
+        }
+
+        // ===== 渲染訊息 =====
+        function addMessage(content, speaker, imageUrl, createdAt) {
             const row = document.createElement('div');
             const isUser = speaker === 'user';
             row.className = `message-row ${isUser ? 'user' : ''}`;
@@ -179,11 +295,31 @@
             nameEl.textContent = names[speaker] || speaker;
 
             const bubble = document.createElement('div');
-            bubble.className = `message ${isUser ? 'user' : 'bot'}`;
-            bubble.textContent = content;
+            if (imageUrl) {
+                bubble.className = `message ${isUser ? 'user' : 'bot'} has-img`;
+                const img = document.createElement('img');
+                img.className = 'chat-img';
+                img.src = imageUrl;
+                img.onclick = () => openLightbox(imageUrl);
+                bubble.appendChild(img);
+                if (content) {
+                    const cap = document.createElement('div');
+                    cap.className = 'img-caption';
+                    cap.textContent = content;
+                    bubble.appendChild(cap);
+                }
+            } else {
+                bubble.className = `message ${isUser ? 'user' : 'bot'}`;
+                bubble.textContent = content;
+            }
+
+            const timeEl = document.createElement('div');
+            timeEl.className = 'message-time';
+            timeEl.textContent = formatTime(createdAt || new Date().toISOString());
 
             block.appendChild(nameEl);
             block.appendChild(bubble);
+            block.appendChild(timeEl);
             row.appendChild(avatar);
             row.appendChild(block);
 
@@ -191,12 +327,12 @@
             document.getElementById('messages').scrollTop = 999999;
         }
 
+        // ===== 載入訊息 =====
         async function loadMessages() {
             const res = await fetch('/group/messages');
             const data = await res.json();
-            const container = document.getElementById('messages');
-            container.innerHTML = '';
-            data.messages.forEach(m => addMessage(m.content, m.speaker));
+            document.getElementById('messages').innerHTML = '';
+            data.messages.forEach(m => addMessage(m.content, m.speaker, m.image_url, m.created_at));
         }
 
         function generateMessageId() {
@@ -215,24 +351,29 @@
             }
         }
 
+        // ===== 送出 =====
         async function sendMessage() {
             const input = document.getElementById('input');
             const msg = input.value.trim();
-            if (!msg) return;
+            if (!msg && !pendingImageUrl) return;
             input.value = '';
             input.style.height = 'auto';
 
-            addMessage(msg, 'user');
+            const imageUrl = pendingImageUrl;
+            removeImage();
+            const sentAt = new Date().toISOString();
+            addMessage(msg, 'user', imageUrl, sentAt);
 
             try {
                 await fetch('/group/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: msg, message_id: generateMessageId() })
+                    body: JSON.stringify({ content: msg, message_id: generateMessageId(), image_url: imageUrl || null })
                 });
             } catch(e) {}
         }
 
+        // ===== 請角色說話 =====
         async function triggerReply(botKey) {
             const btn = document.getElementById(`btn-${botKey}-reply`);
             btn.disabled = true;
@@ -248,24 +389,22 @@
                 const data = await res.json();
                 pendingRow.remove();
                 if (data.error) {
-                    addMessage('（連線失敗，請再試一次）', botKey);
+                    addMessage('（連線失敗，請再試一次）', botKey, null, new Date().toISOString());
                 } else {
-                    addMessage(data.reply, botKey);
+                    addMessage(data.reply, botKey, null, new Date().toISOString());
                 }
             } catch(e) {
                 pendingRow.remove();
-                addMessage('（連線失敗，請再試一次）', botKey);
+                addMessage('（連線失敗，請再試一次）', botKey, null, new Date().toISOString());
             }
 
             btn.disabled = false;
         }
 
         async function init() {
-            await loadAvatars();
-            await loadNames();
+            await loadPersonas();
             await loadMessages();
         }
-
         init();
     </script>
     <script src="/theme.js"></script>

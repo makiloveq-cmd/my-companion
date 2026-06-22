@@ -738,17 +738,17 @@ def chat_list():
     result = {
         "claude": {
             "name": personas.get("claude", {}).get("name") or "晏",
-            "preview": claude_last["content"] if claude_last else "還沒有對話",
+            "preview": (claude_last["content"] or "📷 圖片") if claude_last else "還沒有對話",
             "time": claude_last["created_at"] if claude_last else None
         },
         "gemini": {
             "name": personas.get("gemini", {}).get("name") or "熠",
-            "preview": gemini_last["content"] if gemini_last else "還沒有對話",
+            "preview": (gemini_last["content"] or "📷 圖片") if gemini_last else "還沒有對話",
             "time": gemini_last["created_at"] if gemini_last else None
         },
         "group": {
             "name": "三人空間",
-            "preview": group_last["content"] if group_last else "還沒有對話",
+            "preview": (group_last["content"] or "📷 圖片") if group_last else "還沒有對話",
             "time": group_last["created_at"] if group_last else None
         }
     }
