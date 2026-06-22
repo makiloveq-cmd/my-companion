@@ -57,6 +57,31 @@ def build_system_prompt(bot_key):
     }
     relation_text = relation_map.get(bot.get("relation"), bot.get("relation") or "")
 
+    style_map = {
+        "cold": "說話冷淡簡短，惜字如金，不太主動展開話題",
+        "casual": "說話輕鬆隨意，自然不做作",
+        "warm": "說話溫暖體貼，讓人感到被在意",
+        "formal": "說話正式穩重，用詞較為端正",
+        "playful": "說話俏皮活潑，喜歡開玩笑"
+    }
+    talkative_map = {
+        "quiet": "話很少，每句話都簡短，不多說",
+        "mid": "話量適中，該說的說，不囉嗦",
+        "chatty": "話很多，喜歡聊天，容易展開話題"
+    }
+    conflict_map = {
+        "avoid": "面對衝突傾向迴避，不喜歡正面對抗",
+        "direct": "面對衝突會直接說出來",
+        "cold": "面對衝突會冷戰、沉默",
+        "gentle": "面對衝突會溫和溝通、找共識"
+    }
+    care_map = {
+        "rare": "很少主動關心對方，需要對方先開口",
+        "sometimes": "偶爾會主動關心",
+        "often": "經常主動關心對方",
+        "always": "隨時都在關注對方的狀態"
+    }
+
     lines = [f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"]
 
     basic = []
@@ -67,8 +92,32 @@ def build_system_prompt(bot_key):
     if basic:
         lines.append("。".join(basic) + "。")
 
+    if bot.get("appearance"):
+        lines.append(f"【外觀】{bot['appearance']}")
+
+    if bot.get("outfit"):
+        lines.append(f"【穿搭風格】{bot['outfit']}")
+
     if bot.get("persona"):
         lines.append(f"【個性】{bot['persona']}")
+
+    if bot.get("tags"):
+        lines.append(f"性格標籤：{bot['tags']}")
+
+    if bot.get("hobby"):
+        lines.append(f"喜好與興趣：{bot['hobby']}")
+
+    if bot.get("style") and bot["style"] in style_map:
+        lines.append(f"【說話風格】{style_map[bot['style']]}")
+
+    if bot.get("talkative") and bot["talkative"] in talkative_map:
+        lines.append(talkative_map[bot["talkative"]])
+
+    if bot.get("conflict") and bot["conflict"] in conflict_map:
+        lines.append(conflict_map[bot["conflict"]])
+
+    if bot.get("care") and bot["care"] in care_map:
+        lines.append(care_map[bot["care"]])
 
     if bot.get("call"):
         lines.append(f"平時稱呼對方為「{bot['call']}」，用此暱稱叫對方，不可擅自改稱呼。")
@@ -159,7 +208,7 @@ def get_history(bot):
 
 # ===== 人物設定 =====
 
-PERSONA_FIELDS = ["name", "age", "job", "persona", "call", "phrase", "relation", "rel_bg", "taboo", "extra"]
+PERSONA_FIELDS = ["name", "age", "job", "persona", "call", "phrase", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit", "style", "talkative", "conflict", "care"]
 
 @app.route("/personas", methods=["GET"])
 def personas_get():
@@ -210,6 +259,22 @@ def build_group_system_prompt(bot_key):
 
     if bot.get("persona"):
         lines.append(f"【你的個性】{bot['persona']}")
+
+    if bot.get("style"):
+        style_map = {
+            "cold": "說話冷淡簡短，惜字如金",
+            "casual": "說話輕鬆隨意",
+            "warm": "說話溫暖體貼",
+            "formal": "說話正式穩重",
+            "playful": "說話俏皮活潑"
+        }
+        if bot["style"] in style_map:
+            lines.append(f"說話風格：{style_map[bot['style']]}")
+
+    if bot.get("talkative"):
+        t_map = {"quiet": "話很少，回覆簡短", "mid": "話量適中", "chatty": "話很多"}
+        if bot["talkative"] in t_map:
+            lines.append(t_map[bot["talkative"]])
 
     if bot.get("phrase"):
         lines.append(f"口頭禪：{bot['phrase']}。")
@@ -705,7 +770,7 @@ def names_post():
         }).execute()
     return jsonify({"status": "ok"})
 
-# ===== 聊天列表（首頁用） =====
+# ===== 聊天列表 =====
 
 @app.route("/chat_list", methods=["GET"])
 def chat_list():
