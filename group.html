@@ -38,63 +38,32 @@
             align-items: flex-end;
             gap: 10px;
         }
-        .message-row.user {
-            flex-direction: row-reverse;
-        }
+        .message-row.user { flex-direction: row-reverse; }
         .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
-            font-weight: 500;
-            flex-shrink: 0;
-            user-select: none;
+            width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 500; flex-shrink: 0;
+            user-select: none; overflow: hidden;
         }
-        .avatar.user {
-            background: var(--accent);
-            color: #fff;
-        }
-        .avatar.claude {
-            background: var(--surface3);
-            color: var(--text-2);
-        }
-        .avatar.gemini {
-            background: var(--surface3);
-            color: var(--text-2);
-            opacity: 0.85;
-        }
+        .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .avatar.user { background: var(--accent); color: #fff; }
+        .avatar.claude { background: var(--surface3); color: var(--text-2); }
+        .avatar.gemini { background: var(--surface3); color: var(--text-2); opacity: 0.85; }
         .message-block {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            max-width: 70%;
+            display: flex; flex-direction: column; gap: 4px; max-width: 70%;
         }
-        .message-row.user .message-block {
-            align-items: flex-end;
-        }
-        .message-name {
-            font-size: 12px;
-            color: var(--text-3);
-            padding: 0 4px;
-        }
+        .message-row.user .message-block { align-items: flex-end; }
+        .message-name { font-size: 12px; color: var(--text-3); padding: 0 4px; }
         .message {
-            padding: 12px 16px;
-            border-radius: 16px;
-            font-size: 15px;
-            line-height: 1.6;
-            white-space: pre-wrap;
+            padding: 12px 16px; border-radius: 16px;
+            font-size: 15px; line-height: 1.6; white-space: pre-wrap;
         }
         .message.user {
-            background: var(--bubble-user);
-            color: #fff;
+            background: var(--bubble-user); color: #fff;
             border-radius: 16px 16px 4px 16px;
         }
         .message.bot {
-            background: var(--bubble-ai);
-            color: var(--text);
+            background: var(--bubble-ai); color: var(--text);
             border: 1px solid var(--border);
             border-radius: 16px 16px 16px 4px;
         }
@@ -102,60 +71,37 @@
             padding: 10px 20px;
             background: var(--surface);
             border-top: 1px solid var(--border);
-            display: flex;
-            gap: 10px;
-            justify-content: center;
+            display: flex; gap: 10px; justify-content: center;
         }
         .reply-btn {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            display: flex; align-items: center; gap: 8px;
             padding: 8px 18px;
             border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-2);
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 13px;
+            background: transparent; color: var(--text-2);
+            border-radius: 20px; cursor: pointer; font-size: 13px;
         }
         .reply-btn:active { opacity: 0.7; }
         .reply-btn:disabled { opacity: 0.4; cursor: default; }
         .reply-btn .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent);
+            width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
         }
         .input-area {
             padding: 16px 20px;
             background: var(--surface);
             border-top: 1px solid var(--border);
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
+            display: flex; gap: 10px; align-items: flex-end;
         }
         .input-area textarea {
-            flex: 1;
-            padding: 12px 16px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            color: var(--text);
-            font-size: 15px;
-            outline: none;
-            resize: none;
-            font-family: inherit;
-            max-height: 120px;
-            line-height: 1.4;
+            flex: 1; padding: 12px 16px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 24px; color: var(--text);
+            font-size: 15px; outline: none; resize: none;
+            font-family: inherit; max-height: 120px; line-height: 1.4;
         }
         .input-area button {
-            padding: 12px 20px;
-            background: var(--accent);
-            border: none;
-            border-radius: 24px;
-            color: #fff;
-            cursor: pointer;
-            font-size: 15px;
+            padding: 12px 20px; background: var(--accent);
+            border: none; border-radius: 24px;
+            color: #fff; cursor: pointer; font-size: 15px;
         }
     </style>
 </head>
@@ -173,12 +119,24 @@
         </button>
     </div>
     <div class="input-area">
-        <textarea id="input" placeholder="說點什麼…" rows="1" onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+        <textarea id="input" placeholder="說點什麼…" rows="1"
+            onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
         <button onclick="sendMessage()">送出</button>
     </div>
 
     <script>
         let names = { user: '然然', claude: '晏', gemini: '熠' };
+        let avatars = { user: null, claude: null, gemini: null };
+
+        async function loadAvatars() {
+            try {
+                const res = await fetch('/personas');
+                const data = await res.json();
+                avatars.user = data.user?.avatar || null;
+                avatars.claude = data.claude?.avatar || null;
+                avatars.gemini = data.gemini?.avatar || null;
+            } catch(e) {}
+        }
 
         async function loadNames() {
             try {
@@ -187,9 +145,23 @@
                 names.user = data.user?.name || names.user;
                 names.claude = data.claude?.name || names.claude;
                 names.gemini = data.gemini?.name || names.gemini;
-            } catch (e) {}
+            } catch(e) {}
             document.getElementById('name-claude-btn').textContent = `請${names.claude}說話`;
             document.getElementById('name-gemini-btn').textContent = `請${names.gemini}說話`;
+        }
+
+        function makeAvatar(speaker) {
+            const av = document.createElement('div');
+            av.className = `avatar ${speaker}`;
+            const src = avatars[speaker];
+            if (src && src.startsWith('data:')) {
+                const img = document.createElement('img');
+                img.src = src;
+                av.appendChild(img);
+            } else {
+                av.textContent = (names[speaker] || speaker)[0];
+            }
+            return av;
         }
 
         function addMessage(content, speaker) {
@@ -197,22 +169,20 @@
             const isUser = speaker === 'user';
             row.className = `message-row ${isUser ? 'user' : ''}`;
 
-            const avatar = document.createElement('div');
-            avatar.className = `avatar ${speaker}`;
-            avatar.textContent = (names[speaker] || speaker)[0];
+            const avatar = makeAvatar(speaker);
 
             const block = document.createElement('div');
             block.className = 'message-block';
 
-            const name = document.createElement('div');
-            name.className = 'message-name';
-            name.textContent = names[speaker] || speaker;
+            const nameEl = document.createElement('div');
+            nameEl.className = 'message-name';
+            nameEl.textContent = names[speaker] || speaker;
 
             const bubble = document.createElement('div');
             bubble.className = `message ${isUser ? 'user' : 'bot'}`;
             bubble.textContent = content;
 
-            block.appendChild(name);
+            block.appendChild(nameEl);
             block.appendChild(bubble);
             row.appendChild(avatar);
             row.appendChild(block);
@@ -260,7 +230,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content: msg, message_id: generateMessageId() })
                 });
-            } catch (e) {}
+            } catch(e) {}
         }
 
         async function triggerReply(botKey) {
@@ -282,7 +252,7 @@
                 } else {
                     addMessage(data.reply, botKey);
                 }
-            } catch (e) {
+            } catch(e) {
                 pendingRow.remove();
                 addMessage('（連線失敗，請再試一次）', botKey);
             }
@@ -291,6 +261,7 @@
         }
 
         async function init() {
+            await loadAvatars();
             await loadNames();
             await loadMessages();
         }
