@@ -8,7 +8,7 @@ from google.genai import types as genai_types
 import os
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from supabase import create_client
 
 app = Flask(__name__)
@@ -18,6 +18,13 @@ supabase = create_client(
     os.getenv("SUPABASE_URL"),
     os.getenv("SUPABASE_KEY")
 )
+
+def get_tw_time_str():
+    tw_time = datetime.now(timezone(timedelta(hours=8)))
+    tw_str = tw_time.strftime("%Y年%m月%d日 %H:%M")
+    weekdays = ["一","二","三","四","五","六","日"]
+    tw_str += f"（週{weekdays[tw_time.weekday()]}）"
+    return tw_str
 
 def load_memory(bot):
     result = supabase.table("memories").select("role, content, id, image_url").eq("session_id", bot).order("id").execute()
@@ -57,7 +64,10 @@ def build_system_prompt(bot_key):
     }
     relation_text = relation_map.get(bot.get("relation"), bot.get("relation") or "")
 
-    lines = [f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"]
+    lines = [
+        f"現在台灣時間：{get_tw_time_str()}。",
+        f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
+    ]
 
     if bot.get("job"):
         lines.append(f"職業：{bot['job']}。")
@@ -76,8 +86,6 @@ def build_system_prompt(bot_key):
 
     if bot.get("hobby"):
         lines.append(f"喜好與興趣：{bot['hobby']}")
-
-
 
     if relation_text:
         lines.append(f"與對方的關係：{relation_text}。")
@@ -207,6 +215,7 @@ def build_group_system_prompt(bot_key):
     you_name = me.get("name") or "然然"
 
     lines = [
+        f"現在台灣時間：{get_tw_time_str()}。",
         f"這是一個群組聊天，參與者有：你（{name}）、{other_name}，以及{you_name}。",
         f"你是「{name}」，請完全扮演這個角色發言，用繁體中文回覆。"
     ]
@@ -216,7 +225,6 @@ def build_group_system_prompt(bot_key):
 
     if bot.get("tags"):
         lines.append(f"性格標籤：{bot['tags']}")
-
 
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
