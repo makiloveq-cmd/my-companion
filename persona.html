@@ -15,8 +15,6 @@
       display: flex;
       flex-direction: column;
     }
-
-    /* ── header ── */
     .ph {
       display: flex; align-items: center;
       padding: 14px 16px;
@@ -24,20 +22,12 @@
       border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 50;
     }
-    .ph-back {
-      font-size: 14px; color: var(--accent);
-      cursor: pointer; padding: 4px 8px 4px 0;
-      display: flex; align-items: center; gap: 4px;
-    }
+    .ph-back { font-size: 14px; color: var(--accent); cursor: pointer; padding: 4px 8px 4px 0; }
     .ph-title { flex: 1; text-align: center; font-size: 16px; font-weight: 500; }
-    .ph-save {
-      font-size: 14px; color: var(--accent);
-      cursor: pointer; padding: 4px 0 4px 8px; font-weight: 500;
-    }
+    .ph-save { font-size: 14px; color: var(--accent); cursor: pointer; padding: 4px 0 4px 8px; font-weight: 500; }
 
-    /* ── persona switcher ── */
     .persona-switch {
-      display: flex; gap: 0;
+      display: flex;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       padding: 0 16px;
@@ -50,35 +40,30 @@
     }
     .ps-btn.active { color: var(--accent); border-color: var(--accent); font-weight: 500; }
 
-    /* ── tab bar ── */
     .tab-bar {
-      display: flex; overflow-x: auto; gap: 0;
+      display: flex; overflow-x: auto;
       background: var(--surface2);
       border-bottom: 1px solid var(--border);
       scrollbar-width: none;
     }
     .tab-bar::-webkit-scrollbar { display: none; }
     .tab-item {
-      flex-shrink: 0; padding: 9px 16px;
+      flex-shrink: 0; padding: 9px 18px;
       font-size: 13px; color: var(--text-3);
       cursor: pointer; border-bottom: 2px solid transparent;
       white-space: nowrap; transition: color .15s, border-color .15s;
     }
     .tab-item.active { color: var(--accent); border-color: var(--accent); }
 
-    /* ── scroll body ── */
     .tab-body { flex: 1; overflow-y: auto; }
     .tab-panel { display: none; padding-bottom: 40px; }
     .tab-panel.active { display: block; }
 
-    /* ── section label ── */
     .sec-label {
       font-size: 11px; font-weight: 600; letter-spacing: .08em;
       color: var(--text-3); text-transform: uppercase;
       padding: 18px 16px 6px;
     }
-
-    /* ── form group ── */
     .form-group {
       background: var(--surface);
       border-top: .5px solid var(--border);
@@ -90,25 +75,17 @@
       display: flex; flex-direction: column; gap: 6px;
     }
     .form-row:last-child { border-bottom: none; }
-    .form-label {
-      font-size: 13px; color: var(--text-2); font-weight: 400;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .badge {
-      font-size: 10px; background: var(--accent);
-      color: #fff; border-radius: 4px; padding: 1px 5px;
-    }
+    .form-label { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+    .badge { font-size: 10px; background: var(--accent); color: #fff; border-radius: 4px; padding: 1px 5px; }
     .form-input {
       width: 100%; background: transparent;
       border: none; outline: none;
       font-size: 15px; color: var(--text);
-      font-family: inherit; line-height: 1.5;
-      resize: none;
+      font-family: inherit; line-height: 1.5; resize: none;
     }
     .form-input::placeholder { color: var(--text-3); }
     textarea.form-input { min-height: 60px; }
 
-    /* ── 頭像 ── */
     .av-hero {
       display: flex; flex-direction: column; align-items: center;
       padding: 24px 16px 8px;
@@ -117,8 +94,7 @@
       width: 88px; height: 88px; border-radius: 50%;
       background: var(--surface2); border: 2px solid var(--border);
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; overflow: hidden; position: relative;
-      font-size: 40px;
+      cursor: pointer; overflow: hidden; position: relative; font-size: 40px;
     }
     .av-circle img { width: 100%; height: 100%; object-fit: cover; }
     .av-edit {
@@ -131,7 +107,6 @@
     .av-edit svg { width: 22px; height: 22px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .av-hint { font-size: 12px; color: var(--text-3); margin-top: 8px; }
 
-    /* ── opt buttons (tags / style) ── */
     .opt-group { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
     .opt-btn {
       padding: 6px 14px; border-radius: 20px;
@@ -140,11 +115,8 @@
       cursor: pointer; transition: background .12s, color .12s, border-color .12s;
       user-select: none;
     }
-    .opt-btn.sel {
-      background: var(--accent); color: #fff; border-color: var(--accent);
-    }
+    .opt-btn.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-    /* ── toast ── */
     .toast {
       position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.75); color: #fff;
@@ -163,30 +135,27 @@
     <div class="ph-save" onclick="savePersona()">儲存</div>
   </div>
 
-  <!-- persona switcher -->
   <div class="persona-switch">
     <div class="ps-btn active" id="ps-claude" onclick="switchPersona('claude')">晏</div>
     <div class="ps-btn" id="ps-gemini" onclick="switchPersona('gemini')">熠</div>
     <div class="ps-btn" id="ps-user" onclick="switchPersona('user')">然然</div>
   </div>
 
-  <!-- tab bar -->
-  <div class="tab-bar" id="tabBar">
+  <div class="tab-bar">
     <div class="tab-item active" onclick="switchTab(0)">基本資訊</div>
     <div class="tab-item" onclick="switchTab(1)">個性背景</div>
-    <div class="tab-item" onclick="switchTab(2)">說話方式</div>
-    <div class="tab-item" onclick="switchTab(3)">關係設定</div>
-    <div class="tab-item" onclick="switchTab(4)">進階設定</div>
+    <div class="tab-item" onclick="switchTab(2)">關係設定</div>
+    <div class="tab-item" onclick="switchTab(3)">進階設定</div>
   </div>
 
   <input type="file" id="avInput" accept="image/*" style="display:none" onchange="onAvChange(event)">
 
   <div class="tab-body">
 
-    <!-- ── Tab 0: 基本資訊 ── -->
+    <!-- Tab 0: 基本資訊 -->
     <div class="tab-panel active" id="tp0">
       <div class="av-hero">
-        <div class="av-circle" id="avCircle" onclick="document.getElementById('avInput').click()">
+        <div class="av-circle" onclick="document.getElementById('avInput').click()">
           <span id="avEmoji">🌸</span>
           <img id="avImg" src="" style="display:none">
           <div class="av-edit"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
@@ -199,10 +168,6 @@
         <div class="form-row">
           <div class="form-label">名字 <span class="badge">必填</span></div>
           <input class="form-input" type="text" id="f-name" placeholder="例：晏、熠…">
-        </div>
-        <div class="form-row">
-          <div class="form-label">年齡</div>
-          <input class="form-input" type="number" id="f-age" placeholder="例：24">
         </div>
         <div class="form-row">
           <div class="form-label">職業 / 身份</div>
@@ -223,7 +188,7 @@
       </div>
     </div>
 
-    <!-- ── Tab 1: 個性背景 ── -->
+    <!-- Tab 1: 個性背景 -->
     <div class="tab-panel" id="tp1">
       <div class="sec-label">個性</div>
       <div class="form-group">
@@ -246,43 +211,8 @@
       </div>
     </div>
 
-    <!-- ── Tab 2: 說話方式 ── -->
+    <!-- Tab 2: 關係設定 -->
     <div class="tab-panel" id="tp2">
-      <div class="sec-label">風格</div>
-      <div class="form-group">
-        <div class="form-row">
-          <div class="form-label">說話風格</div>
-          <div class="opt-group" id="styleGroup"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-label">話量傾向</div>
-          <div class="opt-group" id="talkGroup"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-label">面對衝突</div>
-          <div class="opt-group" id="conflictGroup"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-label">主動關心頻率</div>
-          <div class="opt-group" id="careGroup"></div>
-        </div>
-      </div>
-
-      <div class="sec-label">細節</div>
-      <div class="form-group">
-        <div class="form-row">
-          <div class="form-label">對你的稱呼</div>
-          <input class="form-input" type="text" id="f-call" placeholder="例：小丫頭、直接叫名字…">
-        </div>
-        <div class="form-row">
-          <div class="form-label">口頭禪 / 慣用語</div>
-          <input class="form-input" type="text" id="f-phrase" placeholder="例：「說真的」、句尾常加「耶」…">
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Tab 3: 關係設定 ── -->
-    <div class="tab-panel" id="tp3">
       <div class="sec-label">與你的關係</div>
       <div class="form-group">
         <div class="form-row">
@@ -296,8 +226,8 @@
       </div>
     </div>
 
-    <!-- ── Tab 4: 進階設定 ── -->
-    <div class="tab-panel" id="tp4">
+    <!-- Tab 3: 進階設定 -->
+    <div class="tab-panel" id="tp3">
       <div class="sec-label">限制</div>
       <div class="form-group">
         <div class="form-row">
@@ -314,36 +244,12 @@
       </div>
     </div>
 
-  </div><!-- tab-body -->
+  </div>
 
   <div class="toast" id="toast"></div>
 
   <script>
     const TAGS = ['傲嬌','溫柔','冷靜','話少','活潑','體貼','霸道','純情','成熟','幽默','神秘','認真','撒嬌','腹黑','直率','細膩','溫暖','理性'];
-    const STYLES = [
-      { v: 'cold', l: '冷淡簡短' },
-      { v: 'casual', l: '輕鬆隨意' },
-      { v: 'warm', l: '溫暖體貼' },
-      { v: 'formal', l: '正式穩重' },
-      { v: 'playful', l: '俏皮活潑' },
-    ];
-    const TALKATIVE = [
-      { v: 'quiet', l: '惜字如金' },
-      { v: 'mid', l: '適量' },
-      { v: 'chatty', l: '話很多' },
-    ];
-    const CONFLICT = [
-      { v: 'avoid', l: '迴避' },
-      { v: 'direct', l: '直接說' },
-      { v: 'cold', l: '冷戰沉默' },
-      { v: 'gentle', l: '溫和溝通' },
-    ];
-    const CARE = [
-      { v: 'rare', l: '很少' },
-      { v: 'sometimes', l: '偶爾' },
-      { v: 'often', l: '經常' },
-      { v: 'always', l: '隨時' },
-    ];
     const RELATIONS = [
       { v: 'lover', l: '戀人' },
       { v: 'childhood', l: '青梅竹馬' },
@@ -357,32 +263,41 @@
     let allData = {};
     let selectedTags = [];
 
-    // ── 初始化選項按鈕 ──
-    function buildOpts(groupId, options, field, single = true) {
-      const g = document.getElementById(groupId);
+    function buildTags() {
+      const g = document.getElementById('tagGroup');
       g.innerHTML = '';
-      options.forEach(o => {
+      TAGS.forEach(t => {
         const b = document.createElement('div');
         b.className = 'opt-btn';
-        b.textContent = o.l || o;
-        b.dataset.val = o.v || o;
+        b.textContent = t;
+        b.dataset.val = t;
         b.onclick = () => {
-          if (single) {
-            g.querySelectorAll('.opt-btn').forEach(x => x.classList.remove('sel'));
+          if (b.classList.contains('sel')) {
+            b.classList.remove('sel');
+            selectedTags = selectedTags.filter(x => x !== t);
+          } else if (selectedTags.length < 5) {
             b.classList.add('sel');
+            selectedTags.push(t);
           } else {
-            // tag multi-select
-            if (b.classList.contains('sel')) {
-              b.classList.remove('sel');
-              selectedTags = selectedTags.filter(t => t !== b.dataset.val);
-            } else if (selectedTags.length < 5) {
-              b.classList.add('sel');
-              selectedTags.push(b.dataset.val);
-            } else {
-              showToast('最多選 5 個標籤');
-            }
-            updateTagCount();
+            showToast('最多選 5 個標籤');
           }
+          updateTagCount();
+        };
+        g.appendChild(b);
+      });
+    }
+
+    function buildRelations() {
+      const g = document.getElementById('relationGroup');
+      g.innerHTML = '';
+      RELATIONS.forEach(o => {
+        const b = document.createElement('div');
+        b.className = 'opt-btn';
+        b.textContent = o.l;
+        b.dataset.val = o.v;
+        b.onclick = () => {
+          g.querySelectorAll('.opt-btn').forEach(x => x.classList.remove('sel'));
+          b.classList.add('sel');
         };
         g.appendChild(b);
       });
@@ -392,19 +307,17 @@
       document.getElementById('tagCount').textContent = `（已選 ${selectedTags.length} / 最多 5 個）`;
     }
 
-    function setOptVal(groupId, val) {
-      if (!val) return;
-      document.querySelectorAll(`#${groupId} .opt-btn`).forEach(b => {
+    function setRelation(val) {
+      document.querySelectorAll('#relationGroup .opt-btn').forEach(b => {
         b.classList.toggle('sel', b.dataset.val === val);
       });
     }
 
-    function getOptVal(groupId) {
-      const sel = document.querySelector(`#${groupId} .opt-btn.sel`);
+    function getRelation() {
+      const sel = document.querySelector('#relationGroup .opt-btn.sel');
       return sel ? sel.dataset.val : '';
     }
 
-    // ── 頭像 ──
     function onAvChange(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -444,7 +357,6 @@
       }
     }
 
-    // ── Tab / Persona 切換 ──
     let curTab = 0;
     function switchTab(n) {
       document.querySelectorAll('.tab-item').forEach((t, i) => t.classList.toggle('active', i === n));
@@ -457,13 +369,10 @@
       currentPersona = key;
       document.querySelectorAll('.ps-btn').forEach(b => b.classList.remove('active'));
       document.getElementById(`ps-${key}`).classList.add('active');
-
-      // user 不顯示關係和說話方式的某些欄位其實都顯示就好，簡單處理
       loadCurrentFromCache();
     }
 
-    // ── 讀取/寫入當前表單 ──
-    const TEXT_FIELDS = ['name','age','job','appearance','outfit','persona','hobby','call','phrase','rel_bg','taboo','extra'];
+    const TEXT_FIELDS = ['name','job','appearance','outfit','persona','hobby','rel_bg','taboo','extra'];
 
     function saveCurrentToCache() {
       const d = allData[currentPersona] || {};
@@ -472,11 +381,7 @@
         if (el) d[f] = el.value;
       });
       d.tags = selectedTags.join(',');
-      d.style = getOptVal('styleGroup');
-      d.talkative = getOptVal('talkGroup');
-      d.conflict = getOptVal('conflictGroup');
-      d.care = getOptVal('careGroup');
-      d.relation = getOptVal('relationGroup');
+      d.relation = getRelation();
       allData[currentPersona] = d;
     }
 
@@ -486,31 +391,19 @@
         const el = document.getElementById(`f-${f}`);
         if (el) el.value = d[f] || '';
       });
-
-      // 頭像
       showAvatar(d.avatar || '🌸');
-
-      // tags
       selectedTags = d.tags ? d.tags.split(',').filter(Boolean) : [];
       document.querySelectorAll('#tagGroup .opt-btn').forEach(b => {
         b.classList.toggle('sel', selectedTags.includes(b.dataset.val));
       });
       updateTagCount();
-
-      // single opts
-      setOptVal('styleGroup', d.style || '');
-      setOptVal('talkGroup', d.talkative || '');
-      setOptVal('conflictGroup', d.conflict || '');
-      setOptVal('careGroup', d.care || '');
-      setOptVal('relationGroup', d.relation || '');
+      setRelation(d.relation || '');
     }
 
-    // ── 儲存 ──
     async function savePersona() {
       saveCurrentToCache();
       const d = allData[currentPersona];
       if (!d.name || !d.name.trim()) { showToast('請填寫名字'); return; }
-
       try {
         await fetch(`/personas/${currentPersona}`, {
           method: 'POST',
@@ -518,12 +411,11 @@
           body: JSON.stringify(d)
         });
         showToast('已儲存');
-      } catch (e) {
+      } catch(e) {
         showToast('儲存失敗');
       }
     }
 
-    // ── toast ──
     let toastTimer;
     function showToast(msg) {
       const t = document.getElementById('toast');
@@ -533,31 +425,20 @@
       toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
     }
 
-    // ── 初始化 ──
     async function init() {
-      // 建 opt 按鈕
-      buildOpts('tagGroup', TAGS, 'tags', false);
-      buildOpts('styleGroup', STYLES, 'style');
-      buildOpts('talkGroup', TALKATIVE, 'talkative');
-      buildOpts('conflictGroup', CONFLICT, 'conflict');
-      buildOpts('careGroup', CARE, 'care');
-      buildOpts('relationGroup', RELATIONS, 'relation');
-
-      // 從 server 載入
+      buildTags();
+      buildRelations();
       try {
         const res = await fetch('/personas');
         const data = await res.json();
         allData = data;
       } catch(e) {}
-
-      // 更新 persona switcher 名字
       const cn = allData.claude?.name || '晏';
       const gn = allData.gemini?.name || '熠';
       const un = allData.user?.name || '然然';
       document.getElementById('ps-claude').textContent = cn;
       document.getElementById('ps-gemini').textContent = gn;
       document.getElementById('ps-user').textContent = un;
-
       loadCurrentFromCache();
     }
 
