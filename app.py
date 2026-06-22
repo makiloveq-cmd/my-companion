@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types as genai_types
 import os
 import random
+import uuid
 from datetime import datetime
 from supabase import create_client
 
@@ -19,20 +20,20 @@ supabase = create_client(
 )
 
 def load_memory(bot):
-    result = supabase.table("memories").select("role, content, id").eq("session_id", bot).order("id").execute()
+    result = supabase.table("memories").select("role, content, id, image_url").eq("session_id", bot).order("id").execute()
     return result.data
 
-def save_message(bot, role, content, message_id=None):
-    # 如果有 message_id，先查重，避免斷線重送時重複儲存
+def save_message(bot, role, content, message_id=None, image_url=None):
     if message_id:
         existing = supabase.table("memories").select("id").eq("message_id", message_id).execute()
         if existing.data:
-            return  # 已存在，跳過
+            return
     supabase.table("memories").insert({
         "session_id": bot,
         "role": role,
         "content": content,
-        "message_id": message_id
+        "message_id": message_id,
+        "image_url": image_url
     }).execute()
 
 def get_personas():
@@ -142,25 +143,19 @@ def build_history(bot):
     recent = load_memory(bot)[-20:]
     history = []
     if summary:
-        history.append({
-            "role": "user",
-            "content": f"[記憶摘要]\n{summary}"
-        })
-        history.append({
-            "role": "assistant",
-            "content": "好，我記得。"
-        })
+        history.append({"role": "user", "content": f"[記憶摘要]\n{summary}"})
+        history.append({"role": "assistant", "content": "好，我記得。"})
     for r in recent:
-        history.append({
-            "role": r["role"],
-            "content": r["content"]
-        })
+        content = r["content"]
+        if r.get("image_url"):
+            content = f"[傳了一張圖片]{(' ' + content) if content else ''}"
+        history.append({"role": r["role"], "content": content})
     return history
 
 @app.route("/history/<bot>", methods=["GET"])
 def get_history(bot):
     rows = load_memory(bot)
-    return jsonify({"history": [{"role": r["role"], "content": r["content"]} for r in rows]})
+    return jsonify({"history": [{"role": r["role"], "content": r["content"], "image_url": r.get("image_url")} for r in rows]})
 
 # ===== 人物設定 =====
 
@@ -190,10 +185,11 @@ def load_group_messages():
     result = supabase.table("group_messages").select("*").order("id").execute()
     return result.data
 
-def save_group_message(speaker, content):
+def save_group_message(speaker, content, image_url=None):
     supabase.table("group_messages").insert({
         "speaker": speaker,
-        "content": content
+        "content": content,
+        "image_url": image_url
     }).execute()
 
 def build_group_system_prompt(bot_key):
@@ -253,6 +249,7 @@ def group_send():
     data = request.json
     content = data.get("content", "")
     message_id = data.get("message_id")
+    image_url = data.get("image_url")
     if message_id:
         existing = supabase.table("group_messages").select("id").eq("message_id", message_id).execute()
         if existing.data:
@@ -260,7 +257,8 @@ def group_send():
     supabase.table("group_messages").insert({
         "speaker": "user",
         "content": content,
-        "message_id": message_id
+        "message_id": message_id,
+        "image_url": image_url
     }).execute()
     return jsonify({"status": "ok"})
 
@@ -277,22 +275,23 @@ def group_reply(bot_key):
     all_msgs = load_group_messages()
     recent = all_msgs[-16:]
 
-    # 把歷史轉換成這個角色的視角：自己說的是 assistant，其他人說的都轉成 user 並標註是誰說的
     history = []
     for m in recent:
+        base_content = m["content"]
+        if m.get("image_url"):
+            base_content = f"[傳了一張圖片]{(' ' + base_content) if base_content else ''}"
         if m["speaker"] == bot_key:
             role = "assistant"
-            content = m["content"]
+            content = base_content
         elif m["speaker"] == "user":
             role = "user"
-            content = m["content"]
+            content = base_content
         else:
             role = "user"
             speaker_name = personas.get(m["speaker"], {}).get("name") or other_name
-            content = f"（{speaker_name}剛剛說：{m['content']}）"
+            content = f"（{speaker_name}剛剛說：{base_content}）"
         history.append({"role": role, "content": content})
 
-    # 合併連續同 role，避免 Claude API 報錯
     merged = []
     for h in history:
         if merged and merged[-1]["role"] == h["role"]:
@@ -371,13 +370,37 @@ def theme_css():
 def theme_js():
     return send_from_directory(".", "theme.js")
 
+# ===== 圖片上傳 =====
+
+@app.route("/upload_image", methods=["POST"])
+def upload_image():
+    file = request.files.get("image")
+    if not file:
+        return jsonify({"error": "no file"}), 400
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    if ext not in ["jpg", "jpeg", "png", "gif", "webp"]:
+        return jsonify({"error": "unsupported file type"}), 400
+
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    file_bytes = file.read()
+
+    supabase.storage.from_("chat-images").upload(
+        filename, file_bytes, {"content-type": file.content_type}
+    )
+    public_url = supabase.storage.from_("chat-images").get_public_url(filename)
+    return jsonify({"url": public_url})
+
+# ===== 聊天 =====
+
 @app.route("/chat/claude", methods=["POST"])
 def chat_claude():
     data = request.json
     user_message = data.get("message", "")
-    message_id = data.get("message_id")  # 前端傳來的唯一 ID
+    message_id = data.get("message_id")
+    image_url = data.get("image_url")
 
-    save_message("claude", "user", user_message, message_id)
+    save_message("claude", "user", user_message, message_id, image_url)
     history = build_history("claude")
 
     try:
@@ -393,8 +416,6 @@ def chat_claude():
         save_message("claude", "assistant", reply)
         return jsonify({"reply": reply})
     except Exception as e:
-        # API 呼叫失敗時，回傳錯誤讓前端顯示重試按鈕
-        # 注意：user 訊息已存入（查重保護），回覆還未存，所以重試是安全的
         return jsonify({"error": str(e)}), 500
 
 @app.route("/chat/gemini", methods=["POST"])

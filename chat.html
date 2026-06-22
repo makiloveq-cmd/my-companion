@@ -114,19 +114,74 @@
             border: 1px solid var(--border);
             border-radius: 16px 16px 16px 4px;
         }
+        .message img {
+            max-width: 220px;
+            max-height: 280px;
+            border-radius: 10px;
+            display: block;
+            cursor: pointer;
+        }
         .input-area {
             padding: 16px 20px;
             background: var(--surface);
             border-top: 1px solid var(--border);
             display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .image-preview-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 4px;
+        }
+        .image-preview-bar.show {
+            display: flex;
+        }
+        .image-preview-bar img {
+            width: 56px;
+            height: 56px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .remove-img-btn {
+            background: var(--surface2);
+            border: none;
+            color: var(--text-2);
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .input-row {
+            display: flex;
             gap: 10px;
             align-items: flex-end;
         }
+        .img-upload-btn {
+            padding: 10px 12px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-2);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .img-upload-btn:active { opacity: 0.7; }
         .input-wrapper {
             position: relative;
             flex: 1;
         }
-        .input-area input,
         .input-wrapper textarea {
             width: 100%;
             padding: 12px 40px 12px 16px;
@@ -160,10 +215,8 @@
             justify-content: center;
             padding: 0;
         }
-        .newline-btn:active {
-            opacity: 0.7;
-        }
-        .input-area button {
+        .newline-btn:active { opacity: 0.7; }
+        .send-btn {
             padding: 12px 20px;
             background: var(--accent);
             border: none;
@@ -171,6 +224,23 @@
             color: #fff;
             cursor: pointer;
             font-size: 15px;
+            flex-shrink: 0;
+        }
+        /* 圖片燈箱 */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .lightbox.show { display: flex; }
+        .lightbox img {
+            max-width: 92vw;
+            max-height: 88vh;
+            border-radius: 10px;
         }
         .modal-overlay {
             display: none;
@@ -181,9 +251,7 @@
             align-items: center;
             justify-content: center;
         }
-        .modal-overlay.show {
-            display: flex;
-        }
+        .modal-overlay.show { display: flex; }
         .modal {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -194,11 +262,7 @@
             flex-direction: column;
             gap: 16px;
         }
-        .modal h3 {
-            font-size: 15px;
-            font-weight: 500;
-            color: var(--text-2);
-        }
+        .modal h3 { font-size: 15px; font-weight: 500; color: var(--text-2); }
         .modal input {
             padding: 10px 14px;
             background: var(--bg);
@@ -209,26 +273,10 @@
             outline: none;
             width: 100%;
         }
-        .modal-btns {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        .modal-btns button {
-            padding: 8px 18px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .btn-cancel {
-            background: var(--surface2);
-            color: var(--text-2);
-        }
-        .btn-confirm {
-            background: var(--accent);
-            color: #fff;
-        }
+        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-btns button { padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; }
+        .btn-cancel { background: var(--surface2); color: var(--text-2); }
+        .btn-confirm { background: var(--accent); color: #fff; }
     </style>
 </head>
 <body>
@@ -241,11 +289,24 @@
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
-        <div class="input-wrapper">
-            <textarea id="input" placeholder="說點什麼…" rows="1" onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
-            <button class="newline-btn" type="button" onclick="insertNewline()">⏎</button>
+        <div class="image-preview-bar" id="imagePreviewBar">
+            <img id="imagePreviewThumb" src="" alt="預覽">
+            <button class="remove-img-btn" onclick="removeImage()">✕</button>
+            <span style="font-size:12px;color:var(--text-3);">圖片已選擇</span>
         </div>
-        <button onclick="sendMessage()">送出</button>
+        <div class="input-row">
+            <button class="img-upload-btn" onclick="document.getElementById('imageInput').click()">🖼</button>
+            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
+            <div class="input-wrapper">
+                <textarea id="input" placeholder="說點什麼…" rows="1" onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+                <button class="newline-btn" type="button" onclick="insertNewline()">⏎</button>
+            </div>
+            <button class="send-btn" onclick="sendMessage()">送出</button>
+        </div>
+    </div>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <img id="lightboxImg" src="" alt="">
     </div>
 
     <div class="modal-overlay" id="modal">
@@ -261,14 +322,54 @@
 
     <script>
         let currentAI = 'claude';
-        let names = {
-            user: '然然',
-            claude: '晏',
-            gemini: 'Gemini'
-        };
+        let names = { user: '然然', claude: '晏', gemini: 'Gemini' };
         let editingTarget = null;
         let holdTimer = null;
+        let pendingImageUrl = null;
 
+        // ===== 圖片選擇 =====
+        async function handleImageSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const thumb = document.getElementById('imagePreviewThumb');
+            thumb.src = URL.createObjectURL(file);
+            document.getElementById('imagePreviewBar').classList.add('show');
+
+            const formData = new FormData();
+            formData.append('image', file);
+            try {
+                const res = await fetch('/upload_image', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.url) {
+                    pendingImageUrl = data.url;
+                } else {
+                    alert('圖片上傳失敗');
+                    removeImage();
+                }
+            } catch (err) {
+                alert('圖片上傳失敗');
+                removeImage();
+            }
+            e.target.value = '';
+        }
+
+        function removeImage() {
+            pendingImageUrl = null;
+            document.getElementById('imagePreviewBar').classList.remove('show');
+            document.getElementById('imagePreviewThumb').src = '';
+        }
+
+        // ===== 燈箱 =====
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('lightbox').classList.add('show');
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('show');
+        }
+
+        // ===== 名字 =====
         async function loadNames() {
             try {
                 const res = await fetch('/names');
@@ -281,6 +382,7 @@
             document.getElementById('btn-gemini').textContent = names.gemini;
         }
 
+        // ===== 歷史記錄 =====
         async function loadHistory() {
             const messages = document.getElementById('messages');
             messages.innerHTML = '';
@@ -289,7 +391,7 @@
                 const data = await res.json();
                 data.history.forEach(m => {
                     const role = m.role === 'user' ? 'user' : 'ai';
-                    addMessage(m.content, role);
+                    addMessage(m.content, role, m.image_url);
                 });
             } catch (e) {}
         }
@@ -301,7 +403,8 @@
             loadHistory();
         }
 
-        function addMessage(text, role) {
+        // ===== 渲染訊息 =====
+        function addMessage(text, role, imageUrl) {
             const target = role === 'user' ? 'user' : currentAI;
             const displayName = names[target];
             const initial = displayName[0];
@@ -312,7 +415,6 @@
             const avatar = document.createElement('div');
             avatar.className = `avatar ${role}`;
             avatar.textContent = initial;
-
             avatar.addEventListener('mousedown', () => startHold(target));
             avatar.addEventListener('touchstart', () => startHold(target), { passive: true });
             avatar.addEventListener('mouseup', cancelHold);
@@ -328,7 +430,22 @@
 
             const bubble = document.createElement('div');
             bubble.className = `message ${role}`;
-            bubble.textContent = text;
+
+            if (imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = '圖片';
+                img.onclick = () => openLightbox(imageUrl);
+                bubble.appendChild(img);
+                if (text) {
+                    const t = document.createElement('div');
+                    t.style.marginTop = '6px';
+                    t.textContent = text;
+                    bubble.appendChild(t);
+                }
+            } else {
+                bubble.textContent = text;
+            }
 
             block.appendChild(name);
             block.appendChild(bubble);
@@ -339,14 +456,11 @@
             document.getElementById('messages').scrollTop = 999999;
         }
 
+        // ===== 長按改名 =====
         function startHold(target) {
             holdTimer = setTimeout(() => openModal(target), 600);
         }
-
-        function cancelHold() {
-            clearTimeout(holdTimer);
-        }
-
+        function cancelHold() { clearTimeout(holdTimer); }
         function openModal(target) {
             editingTarget = target;
             document.getElementById('modal-title').textContent =
@@ -355,82 +469,77 @@
             document.getElementById('modal').classList.add('show');
             document.getElementById('modal-input').focus();
         }
-
         function closeModal() {
             document.getElementById('modal').classList.remove('show');
             editingTarget = null;
         }
-
         async function confirmName() {
             const val = document.getElementById('modal-input').value.trim();
             if (!val || !editingTarget) return;
             names[editingTarget] = val;
-
             const keyMap = { user: 'name_user', claude: 'name_claude', gemini: 'name_gemini' };
             await fetch('/names', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ key: keyMap[editingTarget], name: val })
             });
-
             if (editingTarget === 'claude') document.getElementById('btn-claude').textContent = val;
             if (editingTarget === 'gemini') document.getElementById('btn-gemini').textContent = val;
-
             closeModal();
             loadHistory();
         }
-
         document.getElementById('modal-input').addEventListener('keydown', e => {
             if (e.key === 'Enter') confirmName();
             if (e.key === 'Escape') closeModal();
         });
 
+        // ===== 輸入框 =====
         function handleKeydown(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         }
-
         function autoGrow(el) {
             el.style.height = 'auto';
             el.style.height = el.scrollHeight + 'px';
         }
-
         function insertNewline() {
             const el = document.getElementById('input');
             const start = el.selectionStart;
             const end = el.selectionEnd;
-            const value = el.value;
-            el.value = value.slice(0, start) + '\n' + value.slice(end);
+            el.value = el.value.slice(0, start) + '\n' + el.value.slice(end);
             el.selectionStart = el.selectionEnd = start + 1;
             autoGrow(el);
             el.focus();
         }
-
         function generateMessageId() {
             return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
         }
 
+        // ===== 送出 =====
         async function sendMessage() {
             const input = document.getElementById('input');
             const msg = input.value.trim();
-            if (!msg) return;
+            if (!msg && !pendingImageUrl) return;
             input.value = '';
             input.style.height = 'auto';
 
+            const imageUrl = pendingImageUrl;
+            removeImage();
+
             const messageId = generateMessageId();
-            addMessage(msg, 'user');
-            await sendToServer(msg, messageId, currentAI);
+            addMessage(msg, 'user', imageUrl);
+            await sendToServer(msg, messageId, currentAI, imageUrl);
         }
 
-        async function sendToServer(msg, messageId, ai) {
+        async function sendToServer(msg, messageId, ai, imageUrl) {
             const row = addPendingRow();
             try {
                 const res = await fetch(`/chat/${ai}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg, message_id: messageId })
+                    body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
                 });
                 if (!res.ok) throw new Error('server error');
                 const data = await res.json();
@@ -439,7 +548,7 @@
                 addMessage(data.reply, 'ai');
             } catch (e) {
                 row.remove();
-                addFailedRow(msg, messageId, ai);
+                addFailedRow(msg, messageId, ai, imageUrl);
             }
         }
 
@@ -452,25 +561,22 @@
             return row;
         }
 
-        function addFailedRow(msg, messageId, ai) {
+        function addFailedRow(msg, messageId, ai, imageUrl) {
             const row = document.createElement('div');
             row.className = 'message-row ai';
             const block = document.createElement('div');
             block.className = 'message-block';
-
             const bubble = document.createElement('div');
             bubble.className = 'message ai';
             bubble.style.color = 'var(--danger)';
             bubble.textContent = '連線失敗，訊息可能未送達。';
-
             const retryBtn = document.createElement('button');
             retryBtn.textContent = '重試';
             retryBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:14px;font-size:13px;cursor:pointer;align-self:flex-start;';
             retryBtn.onclick = async () => {
                 row.remove();
-                await sendToServer(msg, messageId, ai);
+                await sendToServer(msg, messageId, ai, imageUrl);
             };
-
             block.appendChild(bubble);
             block.appendChild(retryBtn);
             row.appendChild(block);
@@ -482,7 +588,6 @@
             await loadNames();
             await loadHistory();
         }
-
         init();
     </script>
     <script src="/theme.js"></script>
