@@ -58,7 +58,12 @@
         .compose-actions {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             gap: 8px;
+        }
+        .compose-ai-btns {
+            display: flex;
+            gap: 6px;
         }
         .btn {
             border: none;
@@ -101,6 +106,8 @@
             flex-shrink: 0;
         }
         .avatar.然然 { background: var(--accent); color: #fff; }
+        .avatar.晏 { background: var(--surface3); color: var(--text); }
+        .avatar.熠 { background: var(--surface3); color: var(--text); }
         .entry-meta {
             display: flex;
             flex-direction: column;
@@ -180,10 +187,7 @@
             margin-bottom: 3px;
         }
         .comment-author { font-size: 11px; color: var(--text-3); font-weight: 500; }
-        .comment-reply-tag {
-            font-size: 11px;
-            color: var(--accent);
-        }
+        .comment-reply-tag { font-size: 11px; color: var(--accent); }
         .comment-reply-preview {
             font-size: 11px;
             color: var(--text-3);
@@ -231,6 +235,7 @@
             border-radius: 8px;
             padding: 6px 10px;
             border-left: 2px solid var(--accent);
+            cursor: pointer;
         }
         .comment-input {
             display: flex;
@@ -261,14 +266,19 @@
             font-size: 12px;
             cursor: pointer;
         }
+        .ai-comment-btns {
+            display: flex;
+            gap: 8px;
+        }
         .ai-comment-btn {
             font-size: 11px;
             color: var(--accent);
             background: none;
             border: none;
             cursor: pointer;
-            align-self: flex-start;
+            padding: 0;
         }
+        .ai-comment-btn:disabled { opacity: 0.4; cursor: default; }
         .empty {
             text-align: center;
             color: var(--text-3);
@@ -302,7 +312,10 @@
         <div class="compose">
             <textarea id="new-entry" placeholder="寫點什麼…"></textarea>
             <div class="compose-actions">
-                <button class="btn secondary" onclick="askAiEntry()">邀請晏寫日記</button>
+                <div class="compose-ai-btns">
+                    <button class="btn secondary" onclick="askAiEntry('claude')">邀晏寫日記</button>
+                    <button class="btn secondary" onclick="askAiEntry('gemini')">邀熠寫日記</button>
+                </div>
                 <button class="btn" onclick="postEntry()">發布</button>
             </div>
         </div>
@@ -318,13 +331,17 @@
     </div>
 
     <script>
+        // 頭像首字對應（未來加宸：map['宸'] = '宸'）
         function avatarInitial(author) {
-            return author === '然然' ? '然' : '晏';
+            const map = { '然然': '然', '晏': '晏', '熠': '熠' };
+            return map[author] || author.charAt(0);
         }
 
         function formatTime(ts) {
             const d = new Date(ts);
-            return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const offset = 8 * 60;
+            const local = new Date(d.getTime() + (offset - d.getTimezoneOffset()) * 60000);
+            return `${local.getMonth()+1}/${local.getDate()} ${String(local.getHours()).padStart(2,'0')}:${String(local.getMinutes()).padStart(2,'0')}`;
         }
 
         function escapeHtml(text) {
@@ -370,7 +387,7 @@
 
                     commentsHtml += `
                         <div class="comment" id="comment-${c.id}">
-                            <div class="avatar ${c.author}">${avatarInitial(c.author)}</div>
+                            <div class="avatar ${escapeHtml(c.author)}">${avatarInitial(c.author)}</div>
                             <div class="comment-right">
                                 <div class="comment-bubble">
                                     <div class="comment-header">
@@ -397,15 +414,15 @@
                 const isUserEntry = entry.author === '然然';
                 const actionBtns = isUserEntry ? `
                     <div class="entry-actions">
-                        <button class="entry-action-btn" onclick="startEdit(${entry.id}, this)">編輯</button>
+                        <button class="entry-action-btn" onclick="startEdit(${entry.id})">編輯</button>
                         <button class="entry-action-btn delete" onclick="deleteEntry(${entry.id})">刪除</button>
                     </div>` : '';
 
                 card.innerHTML = `
                     <div class="entry-header">
-                        <div class="avatar ${entry.author}">${avatarInitial(entry.author)}</div>
+                        <div class="avatar ${escapeHtml(entry.author)}">${avatarInitial(entry.author)}</div>
                         <div class="entry-meta">
-                            <div class="entry-author">${entry.author}</div>
+                            <div class="entry-author">${escapeHtml(entry.author)}</div>
                             <div class="entry-time">${formatTime(entry.created_at)}</div>
                         </div>
                         ${actionBtns}
@@ -420,7 +437,10 @@
                     </div>
                     <div class="comments">${commentsHtml}</div>
                     <div class="reply-hint" id="reply-hint-${entry.id}"></div>
-                    <button class="ai-comment-btn" onclick="askAiComment(${entry.id}, this)">邀請晏留言</button>
+                    <div class="ai-comment-btns">
+                        <button class="ai-comment-btn" id="ai-btn-claude-${entry.id}" onclick="askAiComment(${entry.id}, 'claude', this)">邀晏留言</button>
+                        <button class="ai-comment-btn" id="ai-btn-gemini-${entry.id}" onclick="askAiComment(${entry.id}, 'gemini', this)">邀熠留言</button>
+                    </div>
                     <div class="comment-input">
                         <div class="comment-input-row">
                             <input type="text" id="comment-input-${entry.id}" placeholder="留言…" onkeydown="if(event.key==='Enter')postComment(${entry.id})">
@@ -513,8 +533,8 @@
             loadEntries();
         }
 
-        async function askAiEntry() {
-            await fetch('/diary/ai_entry', { method: 'POST' });
+        async function askAiEntry(botKey) {
+            await fetch(`/diary/ai_entry/${botKey}`, { method: 'POST' });
             loadEntries();
         }
 
@@ -537,9 +557,9 @@
             loadEntries();
         }
 
-        async function askAiComment(entryId, btn) {
+        async function askAiComment(entryId, botKey, btn) {
             btn.disabled = true;
-            await fetch(`/diary/${entryId}/ai_comment`, { method: 'POST' });
+            await fetch(`/diary/${entryId}/ai_comment/${botKey}`, { method: 'POST' });
             loadEntries();
         }
 

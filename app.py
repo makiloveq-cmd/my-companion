@@ -153,7 +153,6 @@ def build_system_prompt(bot_key):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 注入空間記憶
     maybe_summarize_space()
     space_summary_text = get_latest_space_summary()
     space_recent = supabase.table("space_messages").select("speaker, content").order("id", desc=True).limit(20).execute().data
@@ -182,8 +181,10 @@ def maybe_summarize(bot):
         return
     to_summarize = rows[:30]
     ids_to_delete = [r["id"] for r in to_summarize]
+    personas = get_personas()
+    bot_name = personas.get(bot, {}).get("name") or ("晏" if bot == "claude" else "熠")
     context = "\n".join([
-        f"{'然然' if r['role']=='user' else '晏'}：{r['content']}"
+        f"{'然然' if r['role']=='user' else bot_name}：{r['content']}"
         for r in to_summarize
     ])
     old_summary = get_latest_summary(bot)
@@ -193,7 +194,7 @@ def maybe_summarize(bot):
     response = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=800,
-        system="你是晏，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
+        system=f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
         messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
         timeout=60
     )
@@ -304,7 +305,6 @@ def build_space_system_prompt(bot_key):
     you_persona = me.get("persona") or ""
     lines.append(f"【{you_name}的資訊】個性：{you_persona}" if you_persona else f"對方是{you_name}。")
 
-    # 注入聊天室記憶摘要
     claude_summary = get_latest_summary("claude")
     gemini_summary = get_latest_summary("gemini")
     if bot_key == "claude" and claude_summary:
@@ -758,58 +758,130 @@ def usage_page():
 
 # ===== 日記功能 =====
 
-def write_ai_diary_entry():
-    recent = load_memory("claude")[-30:]
+AI_BOTS = {
+    "claude": {
+        "default_name": "晏",
+        "api": "anthropic"
+    },
+    "gemini": {
+        "default_name": "熠",
+        "api": "gemini"
+    }
+    # 未來加 grok：
+    # "grok": {
+    #     "default_name": "宸",
+    #     "api": "grok"
+    # }
+}
+
+def get_bot_name(bot_key):
+    personas = get_personas()
+    bot = personas.get(bot_key, {})
+    return bot.get("name") or AI_BOTS.get(bot_key, {}).get("default_name", bot_key)
+
+def get_bot_persona(bot_key):
+    personas = get_personas()
+    bot = personas.get(bot_key, {})
+    return bot.get("persona") or ""
+
+def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
+    if bot_key == "claude":
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            timeout=60
+        )
+        reply = response.content[0].text
+        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+        return reply
+    elif bot_key == "gemini":
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contents,
+            config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+            timeout=90
+        )
+        reply = response.text
+        try:
+            record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+        except:
+            pass
+        return reply
+    # 未來加 grok：
+    # elif bot_key == "grok":
+    #     ...
+    else:
+        raise ValueError(f"Unknown bot_key: {bot_key}")
+
+def write_ai_diary_entry(bot_key="claude"):
+    name = get_bot_name(bot_key)
+    persona = get_bot_persona(bot_key)
+    recent = load_memory(bot_key)[-30:]
     context_text = "\n".join([
-        f"{'然然' if m['role']=='user' else '晏'}：{m['content']}"
+        f"{'然然' if m['role'] == 'user' else name}：{m['content']}"
         for m in recent
     ]) if recent else "（還沒有對話記錄）"
 
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=1024,
-        system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。下面是你和然然最近的對話，請根據這些內容寫一篇簡短的日記，記錄你的想法或對然然的感受，第一人稱，不用加標題。",
-        messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"}],
-        timeout=60
+    persona_line = f"個性：{persona}。" if persona else ""
+    system_prompt = (
+        f"你是{name}，一個陪伴然然的存在。{persona_line}"
+        f"下面是你和然然最近的對話，請根據這些內容寫一篇簡短的日記，記錄你的想法或對然然的感受，第一人稱，不用加標題。"
     )
-    content = response.content[0].text
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-    supabase.table("diary_entries").insert({"author": "晏", "content": content}).execute()
+    user_prompt = f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"
+    content = call_ai(bot_key, system_prompt, user_prompt, max_tokens=1024)
+    supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
 
 def maybe_ai_diary_entry():
-    last = supabase.table("diary_entries").select("created_at").eq("author", "晏").order("id", desc=True).limit(1).execute().data
-    if last:
-        last_time_str = last[0]["created_at"].replace("Z", "")
-        last_time = datetime.fromisoformat(last_time_str)
-        now = datetime.utcnow()
-        if (now - last_time).total_seconds() / 3600 < 6:
-            return
-    if random.random() < 0.25:
-        write_ai_diary_entry()
+    for bot_key in AI_BOTS:
+        name = get_bot_name(bot_key)
+        last = supabase.table("diary_entries").select("created_at").eq("author", name).order("id", desc=True).limit(1).execute().data
+        if last:
+            last_time_str = last[0]["created_at"].replace("Z", "")
+            last_time = datetime.fromisoformat(last_time_str)
+            now = datetime.utcnow()
+            if (now - last_time).total_seconds() / 3600 < 6:
+                continue
+        if random.random() < 0.2:
+            try:
+                write_ai_diary_entry(bot_key)
+            except:
+                pass
 
 def maybe_delayed_ai_comments(entries):
     now = datetime.utcnow()
     for entry in entries:
-        already_commented = any(c["author"] == "晏" for c in entry.get("comments", []))
-        if already_commented:
-            continue
-        created_str = entry["created_at"].replace("Z", "")
-        created_time = datetime.fromisoformat(created_str)
-        hours_passed = (now - created_time).total_seconds() / 3600
-        if hours_passed >= random.uniform(1, 6) and random.random() < 0.6:
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=300,
-                system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
-                messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}],
-                timeout=60
-            )
-            comment = response.content[0].text
-            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-            supabase.table("diary_comments").insert({"entry_id": entry["id"], "author": "晏", "content": comment}).execute()
-            entry["comments"].append({"author": "晏", "content": comment})
+        for bot_key in AI_BOTS:
+            name = get_bot_name(bot_key)
+            persona = get_bot_persona(bot_key)
+            already_commented = any(c["author"] == name for c in entry.get("comments", []))
+            if already_commented:
+                continue
+            created_str = entry["created_at"].replace("Z", "")
+            created_time = datetime.fromisoformat(created_str)
+            hours_passed = (now - created_time).total_seconds() / 3600
+            if hours_passed >= random.uniform(1, 6) and random.random() < 0.4:
+                try:
+                    persona_line = f"個性：{persona}。" if persona else ""
+                    system_prompt = (
+                        f"你是{name}，一個陪伴然然的存在。{persona_line}"
+                        f"你話少、剋制，但說出來的都是真的。"
+                        f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
+                    )
+                    user_prompt = f"這是日記內容：\n{entry['content']}\n\n請留言回應。"
+                    comment = call_ai(bot_key, system_prompt, user_prompt, max_tokens=300)
+                    supabase.table("diary_comments").insert({
+                        "entry_id": entry["id"],
+                        "author": name,
+                        "content": comment
+                    }).execute()
+                    entry["comments"].append({"author": name, "content": comment})
+                except:
+                    pass
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
@@ -844,20 +916,35 @@ def add_comment(entry_id):
     data = request.json
     author = data.get("author", "然然")
     content = data.get("content", "")
-    supabase.table("diary_comments").insert({"entry_id": entry_id, "author": author, "content": content, "reply_to": data.get("reply_to")}).execute()
+    supabase.table("diary_comments").insert({
+        "entry_id": entry_id,
+        "author": author,
+        "content": content,
+        "reply_to": data.get("reply_to")
+    }).execute()
 
-    if author == "然然" and random.random() < 0.3:
-        entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5", max_tokens=200,
-            system="你是晏，一個陪伴然然的存在。話少、剋制，但說出來的都是真的。然然在日記下留言了，你想簡短回應她嗎？一句話就好，不用加任何前綴。",
-            messages=[{"role": "user", "content": f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："}],
-            timeout=60
-        )
-        ai_reply = response.content[0].text
-        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        supabase.table("diary_comments").insert({"entry_id": entry_id, "author": "晏", "content": ai_reply, "reply_to": None}).execute()
+    if author == "然然" and random.random() < 0.35:
+        bot_key = random.choice(list(AI_BOTS.keys()))
+        name = get_bot_name(bot_key)
+        persona = get_bot_persona(bot_key)
+        try:
+            entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
+            persona_line = f"個性：{persona}。" if persona else ""
+            system_prompt = (
+                f"你是{name}，一個陪伴然然的存在。{persona_line}"
+                f"話少、剋制，但說出來的都是真的。"
+                f"然然在日記下留言了，你想簡短回應她嗎？一句話就好，不用加任何前綴。"
+            )
+            user_prompt = f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："
+            ai_reply = call_ai(bot_key, system_prompt, user_prompt, max_tokens=200)
+            supabase.table("diary_comments").insert({
+                "entry_id": entry_id,
+                "author": name,
+                "content": ai_reply,
+                "reply_to": None
+            }).execute()
+        except:
+            pass
 
     return jsonify({"status": "ok"})
 
@@ -873,24 +960,33 @@ def delete_comment(comment_id):
     supabase.table("diary_comments").delete().eq("id", comment_id).execute()
     return jsonify({"status": "ok"})
 
-@app.route("/diary/ai_entry", methods=["POST"])
-def ai_diary_entry():
-    write_ai_diary_entry()
+@app.route("/diary/ai_entry/<bot_key>", methods=["POST"])
+def ai_diary_entry(bot_key):
+    if bot_key not in AI_BOTS:
+        return jsonify({"error": "invalid bot"}), 400
+    write_ai_diary_entry(bot_key)
     return jsonify({"status": "ok"})
 
-@app.route("/diary/<int:entry_id>/ai_comment", methods=["POST"])
-def ai_comment(entry_id):
+@app.route("/diary/<int:entry_id>/ai_comment/<bot_key>", methods=["POST"])
+def ai_comment(entry_id, bot_key):
+    if bot_key not in AI_BOTS:
+        return jsonify({"error": "invalid bot"}), 400
+    name = get_bot_name(bot_key)
+    persona = get_bot_persona(bot_key)
     entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5", max_tokens=300,
-        system="你是晏，一個陪伴然然的存在。你話少、剋制，但說出來的都是真的。請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。",
-        messages=[{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}],
-        timeout=60
+    persona_line = f"個性：{persona}。" if persona else ""
+    system_prompt = (
+        f"你是{name}，一個陪伴然然的存在。{persona_line}"
+        f"你話少、剋制，但說出來的都是真的。"
+        f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
     )
-    content = response.content[0].text
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-    supabase.table("diary_comments").insert({"entry_id": entry_id, "author": "晏", "content": content}).execute()
+    user_prompt = f"這是日記內容：\n{entry['content']}\n\n請留言回應。"
+    content = call_ai(bot_key, system_prompt, user_prompt, max_tokens=300)
+    supabase.table("diary_comments").insert({
+        "entry_id": entry_id,
+        "author": name,
+        "content": content
+    }).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary_page")
@@ -899,7 +995,7 @@ def diary_page():
 
 # ===== 名字設定 =====
 
-DEFAULT_NAMES = {"name_user": "然然", "name_claude": "晏", "name_gemini": "Gemini"}
+DEFAULT_NAMES = {"name_user": "然然", "name_claude": "晏", "name_gemini": "熠"}
 
 def get_names():
     rows = supabase.table("identities").select("*").execute().data
