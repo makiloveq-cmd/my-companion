@@ -410,9 +410,9 @@
             const geminiLoading = addLoadingRow('gemini');
 
             try {
-                const [claudeRes, geminiRes] = await Promise.allSettled([
-                    fetch('/space/reply/claude', { method: 'POST' }).then(r => r.json()),
-                    fetch('/space/reply/gemini', { method: 'POST' }).then(r => r.json())
+                const [claudeReply, geminiReply] = await Promise.all([
+                    trySpaceReply('claude'),
+                    trySpaceReply('gemini')
                 ]);
 
                 claudeLoading.remove();
@@ -420,13 +420,13 @@
 
                 const now = new Date().toISOString();
 
-                if (claudeRes.status === 'fulfilled' && claudeRes.value.reply) {
-                    renderAI('claude', claudeRes.value.reply, now);
+                if (claudeReply) {
+                    renderAI('claude', claudeReply, now);
                 } else {
                     renderRetry('claude');
                 }
-                if (geminiRes.status === 'fulfilled' && geminiRes.value.reply) {
-                    renderAI('gemini', geminiRes.value.reply, now);
+                if (geminiReply) {
+                    renderAI('gemini', geminiReply, now);
                 } else {
                     renderRetry('gemini');
                 }
@@ -461,7 +461,22 @@
             el.focus();
         }
 
-        // ===== 空間設定 =====
+        async function trySpaceReply(speaker) {
+            try {
+                const res = await fetch(`/space/reply/${speaker}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.reply) return data.reply;
+                throw new Error('no reply');
+            } catch(e) {
+                // 自動重試一次
+                try {
+                    const res2 = await fetch(`/space/reply/${speaker}`, { method: 'POST' });
+                    const data2 = await res2.json();
+                    if (data2.reply) return data2.reply;
+                } catch(e2) {}
+                return null;
+            }
+        }
         async function openSettings() {
             try {
                 const res = await fetch('/space_settings');

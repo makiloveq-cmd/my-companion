@@ -490,7 +490,7 @@
             await sendToServer(msg, messageId, currentAI, imageUrl);
         }
 
-        async function sendToServer(msg, messageId, ai, imageUrl) {
+        async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
             const row = addPendingRow();
             try {
                 const res = await fetch(`/chat/${ai}`, {
@@ -505,6 +505,25 @@
                 addMessage(data.reply, 'ai', null, new Date().toISOString());
             } catch(e) {
                 row.remove();
+                if (!isRetry) {
+                    // 自動重試一次
+                    const retryRow = addPendingRow();
+                    try {
+                        const res2 = await fetch(`/chat/${ai}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
+                        });
+                        if (!res2.ok) throw new Error('server error');
+                        const data2 = await res2.json();
+                        if (data2.error) throw new Error(data2.error);
+                        retryRow.remove();
+                        addMessage(data2.reply, 'ai', null, new Date().toISOString());
+                        return;
+                    } catch(e2) {
+                        retryRow.remove();
+                    }
+                }
                 addFailedRow(msg, messageId, ai, imageUrl);
             }
         }

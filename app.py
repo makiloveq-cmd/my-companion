@@ -396,7 +396,8 @@ def space_reply(bot_key):
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=contents,
-                config=genai_types.GenerateContentConfig(system_instruction=system_prompt)
+                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+                timeout=90
             )
             reply = response.text
             try:
@@ -562,7 +563,8 @@ def group_reply(bot_key):
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=contents,
-                config=genai_types.GenerateContentConfig(system_instruction=system_prompt)
+                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+                timeout=90
             )
             reply = response.text
             try:
@@ -676,7 +678,8 @@ def chat_gemini():
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=contents,
-            config=genai_types.GenerateContentConfig(system_instruction=build_system_prompt("gemini"))
+            config=genai_types.GenerateContentConfig(system_instruction=build_system_prompt("gemini")),
+            timeout=90
         )
         reply = response.text
         try:
