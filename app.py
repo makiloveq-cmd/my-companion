@@ -57,6 +57,41 @@ def get_space_settings():
         result[r["key"]] = r["value"]
     return result
 
+def get_latest_space_summary():
+    result = supabase.table("memory_summaries").select("content").eq("session_id", "space").order("id", desc=True).limit(1).execute()
+    if result.data:
+        return result.data[0]["content"]
+    return None
+
+def maybe_summarize_space():
+    rows = supabase.table("space_messages").select("*").order("id").execute().data
+    if len(rows) < 40:
+        return
+    to_summarize = rows[:30]
+    context = "\n".join([
+        f"{'然然' if r['speaker']=='user' else r['speaker']}：{r['content']}"
+        for r in to_summarize
+    ])
+    old_summary = get_latest_space_summary()
+    summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的互動：\n{context}" if old_summary else context
+
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=600,
+        system="請把以下共同空間裡的互動內容濃縮成一段記憶摘要，保留重要的情感、場景、說過的話、發生的事。用第三人稱記錄，不超過 250 字。",
+        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        timeout=60
+    )
+    summary_text = response.content[0].text
+    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+    supabase.table("memory_summaries").insert({
+        "session_id": "space",
+        "content": summary_text
+    }).execute()
+    for r in to_summarize:
+        supabase.table("space_messages").delete().eq("id", r["id"]).execute()
+
 def record_usage(api, input_tokens, output_tokens):
     try:
         supabase.table("api_usage").insert({
@@ -118,12 +153,18 @@ def build_system_prompt(bot_key):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 注入空間記憶摘要
-    space_recent = supabase.table("space_messages").select("speaker, content").order("id", desc=True).limit(10).execute().data
+    # 注入空間記憶
+    maybe_summarize_space()
+    space_summary_text = get_latest_space_summary()
+    space_recent = supabase.table("space_messages").select("speaker, content").order("id", desc=True).limit(20).execute().data
     if space_recent:
         space_recent.reverse()
-        space_summary = "\n".join([f"{'然然' if m['speaker']=='user' else m['speaker']}：{m['content']}" for m in space_recent])
-        lines.append(f"【你們最近在共同空間的互動】\n{space_summary}")
+        space_lines = "\n".join([f"{'然然' if m['speaker']=='user' else m['speaker']}：{m['content']}" for m in space_recent])
+        if space_summary_text:
+            space_block = f"[空間記憶摘要]\n{space_summary_text}\n\n[最近互動]\n{space_lines}"
+        else:
+            space_block = space_lines
+        lines.append(f"【你們在共同空間的互動】\n{space_block}")
 
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。")
 
@@ -266,9 +307,9 @@ def build_space_system_prompt(bot_key):
     # 注入聊天室記憶摘要
     claude_summary = get_latest_summary("claude")
     gemini_summary = get_latest_summary("gemini")
-    if claude_summary:
+    if bot_key == "claude" and claude_summary:
         lines.append(f"【你在聊天室裡和{you_name}的記憶摘要】\n{claude_summary}")
-    if gemini_summary and bot_key == "gemini":
+    if bot_key == "gemini" and gemini_summary:
         lines.append(f"【你在聊天室裡和{you_name}的記憶摘要】\n{gemini_summary}")
 
     lines.append(
@@ -321,7 +362,6 @@ def space_reply(bot_key):
         else:
             history.append({"role": "user", "content": f"（{other_name}：{m['content']}）"})
 
-    # 合併連續同 role
     merged = []
     for h in history:
         if merged and merged[-1]["role"] == h["role"]:
