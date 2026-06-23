@@ -166,7 +166,7 @@ def build_system_prompt(bot_key):
             space_block = space_lines
         lines.append(f"【你們在共同空間的互動】\n{space_block}")
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，包含段落，簡短有力，不可超過。")
 
     return "\n".join([l for l in lines if l])
 
@@ -315,7 +315,7 @@ def build_space_system_prompt(bot_key):
     lines.append(
         f"【回覆格式與規則】\n"
         f"1. 用第三人稱敘述你的動作與狀態，搭配對話，像寫小說一樣，例如：「晏抬起頭，目光落在她身上。『回來了。』」\n"
-        f"2. 回覆100到200字，有動作、有感受、有對話。\n"
+        f"2. 回覆嚴格控制在150字以內，有動作、有場景、有對話，文字精煉不拖沓，不可超過。\n"
         f"3. 只扮演{name}一個人，不要替{other_name}或{you_name}說話。\n"
         f"4. 語氣完全符合{name}的個性，不能像AI或客服。\n"
         f"5. 不要說「我作為AI」這類話。"
@@ -380,7 +380,7 @@ def space_reply(bot_key):
             client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
             response = client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=600,
+                max_tokens=400,
                 system=system_prompt,
                 messages=merged,
                 timeout=60
@@ -643,7 +643,7 @@ def chat_claude():
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         response = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=1024,
+            max_tokens=400,
             system=build_system_prompt("claude"),
             messages=history,
             timeout=60
