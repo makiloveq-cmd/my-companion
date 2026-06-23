@@ -21,11 +21,40 @@
             position: sticky; top: 0; z-index: 10;
         }
         .header-back { font-size: 14px; color: var(--accent); cursor: pointer; padding: 4px 8px 4px 0; }
-        .header h1 { font-size: 17px; font-weight: 400; }
+        .header h1 { font-size: 17px; font-weight: 400; flex: 1; }
 
-        .content { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+        /* 幣別切換 */
+        .currency-bar {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .currency-label { font-size: 13px; color: var(--text-3); }
+        .currency-toggle {
+            display: flex; gap: 0;
+            border: 1px solid var(--border);
+            border-radius: 8px; overflow: hidden;
+        }
+        .currency-btn {
+            padding: 6px 14px; font-size: 13px;
+            background: transparent; border: none;
+            color: var(--text-2); cursor: pointer;
+        }
+        .currency-btn.active { background: var(--accent); color: #fff; }
+        .rate-wrap {
+            display: flex; align-items: center; gap: 6px; margin-left: auto;
+        }
+        .rate-label { font-size: 12px; color: var(--text-3); }
+        .rate-input {
+            width: 70px; padding: 5px 8px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text);
+            font-size: 13px; outline: none; text-align: center;
+        }
 
-        /* 卡片 */
+        .content { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
         .card {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -46,21 +75,14 @@
         .card-icon.gemini { background: #4285f4; }
         .card-title { font-size: 15px; font-weight: 500; }
         .card-subtitle { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+        .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
 
-        .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-
-        /* 餘額大字 */
-        .balance-row {
-            display: flex; align-items: baseline; gap: 6px;
-        }
-        .balance-amount {
-            font-size: 32px; font-weight: 300; letter-spacing: -1px;
-        }
+        .balance-row { display: flex; align-items: baseline; gap: 6px; }
+        .balance-amount { font-size: 32px; font-weight: 300; letter-spacing: -1px; }
         .balance-amount.warn { color: #e8a020; }
         .balance-amount.danger { color: #e05252; }
         .balance-unit { font-size: 14px; color: var(--text-3); }
 
-        /* 進度條 */
         .progress-wrap { display: flex; flex-direction: column; gap: 4px; }
         .progress-label {
             display: flex; justify-content: space-between;
@@ -72,45 +94,47 @@
         }
         .progress-fill {
             height: 100%; border-radius: 3px;
-            background: var(--accent);
-            transition: width 0.4s ease;
+            background: var(--accent); transition: width 0.4s ease;
         }
         .progress-fill.warn { background: #e8a020; }
         .progress-fill.danger { background: #e05252; }
 
-        /* 細節列 */
         .detail-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 6px 0;
-            border-bottom: .5px solid var(--border);
+            padding: 6px 0; border-bottom: .5px solid var(--border);
         }
         .detail-row:last-child { border-bottom: none; }
         .detail-label { font-size: 13px; color: var(--text-2); }
         .detail-val { font-size: 13px; font-weight: 500; }
 
-        /* 儲值輸入 */
-        .budget-row {
-            display: flex; gap: 8px; align-items: center;
-            padding-top: 4px;
-        }
+        .budget-section { display: flex; flex-direction: column; gap: 6px; }
+        .budget-row { display: flex; gap: 8px; align-items: center; }
         .budget-input {
             flex: 1; padding: 9px 12px;
             background: var(--bg); border: 1px solid var(--border);
             border-radius: 10px; color: var(--text);
             font-size: 14px; outline: none;
         }
+        .budget-unit-toggle {
+            display: flex; border: 1px solid var(--border);
+            border-radius: 8px; overflow: hidden;
+        }
+        .budget-unit-btn {
+            padding: 9px 10px; font-size: 12px;
+            background: transparent; border: none;
+            color: var(--text-2); cursor: pointer;
+        }
+        .budget-unit-btn.active { background: var(--surface2); color: var(--text); font-weight: 500; }
         .budget-btn {
             padding: 9px 16px;
             background: var(--accent); border: none; border-radius: 10px;
             color: #fff; font-size: 14px; cursor: pointer;
         }
 
-        /* 外部連結 */
-        .links-card { display: flex; flex-direction: column; gap: 0; }
+        .links-card { display: flex; flex-direction: column; }
         .ext-link {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 16px;
-            border-bottom: .5px solid var(--border);
+            padding: 14px 16px; border-bottom: .5px solid var(--border);
             cursor: pointer; text-decoration: none; color: var(--text);
         }
         .ext-link:last-child { border-bottom: none; }
@@ -119,7 +143,6 @@
         .ext-link-icon { font-size: 18px; }
         .ext-arrow { color: var(--text-3); font-size: 14px; }
 
-        /* toast */
         .toast {
             position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,.75); color: #fff;
@@ -136,9 +159,23 @@
         <h1>用量監控</h1>
     </div>
 
+    <!-- 幣別切換列 -->
+    <div class="currency-bar">
+        <div class="currency-label">顯示單位</div>
+        <div class="currency-toggle">
+            <button class="currency-btn active" id="btn-usd" onclick="setCurrency('usd')">USD</button>
+            <button class="currency-btn" id="btn-twd" onclick="setCurrency('twd')">TWD</button>
+        </div>
+        <div class="rate-wrap">
+            <div class="rate-label">匯率 1 USD =</div>
+            <input class="rate-input" type="number" id="rateInput" value="31.5" step="0.1" min="1" onchange="renderAll()">
+            <div class="rate-label">TWD</div>
+        </div>
+    </div>
+
     <div class="content">
 
-        <!-- Claude / Anthropic -->
+        <!-- 晏 Anthropic -->
         <div class="card">
             <div class="card-header">
                 <div class="card-icon anthropic">✦</div>
@@ -152,7 +189,7 @@
                     <div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">預估剩餘</div>
                     <div class="balance-row">
                         <div class="balance-amount" id="a-remaining">—</div>
-                        <div class="balance-unit">USD</div>
+                        <div class="balance-unit" id="a-unit">USD</div>
                     </div>
                 </div>
                 <div class="progress-wrap">
@@ -182,17 +219,21 @@
                         <div class="detail-val" id="a-out">—</div>
                     </div>
                 </div>
-                <div>
-                    <div style="font-size:12px;color:var(--text-3);margin-bottom:6px;">本次充值金額（USD，累加）</div>
+                <div class="budget-section">
+                    <div style="font-size:12px;color:var(--text-3);">本次充值（累加）</div>
                     <div class="budget-row">
-                        <input class="budget-input" type="number" id="a-budget-input" placeholder="本次充值金額" step="0.01" min="0">
+                        <input class="budget-input" type="number" id="a-budget-input" placeholder="金額" step="0.01" min="0">
+                        <div class="budget-unit-toggle">
+                            <button class="budget-unit-btn active" id="a-unit-usd" onclick="setBudgetUnit('a','usd')">USD</button>
+                            <button class="budget-unit-btn" id="a-unit-twd" onclick="setBudgetUnit('a','twd')">TWD</button>
+                        </div>
                         <button class="budget-btn" onclick="saveBudget('anthropic')">新增</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Gemini -->
+        <!-- 熠 Gemini -->
         <div class="card">
             <div class="card-header">
                 <div class="card-icon gemini">G</div>
@@ -206,7 +247,7 @@
                     <div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">預估剩餘</div>
                     <div class="balance-row">
                         <div class="balance-amount" id="g-remaining">—</div>
-                        <div class="balance-unit">USD</div>
+                        <div class="balance-unit" id="g-unit">USD</div>
                     </div>
                 </div>
                 <div class="progress-wrap">
@@ -236,10 +277,14 @@
                         <div class="detail-val" id="g-out">—</div>
                     </div>
                 </div>
-                <div>
-                    <div style="font-size:12px;color:var(--text-3);margin-bottom:6px;">本次充值金額（USD，累加）</div>
+                <div class="budget-section">
+                    <div style="font-size:12px;color:var(--text-3);">本次充值（累加）</div>
                     <div class="budget-row">
-                        <input class="budget-input" type="number" id="g-budget-input" placeholder="本次充值金額" step="0.01" min="0">
+                        <input class="budget-input" type="number" id="g-budget-input" placeholder="金額" step="0.01" min="0">
+                        <div class="budget-unit-toggle">
+                            <button class="budget-unit-btn active" id="g-unit-usd" onclick="setBudgetUnit('g','usd')">USD</button>
+                            <button class="budget-unit-btn" id="g-unit-twd" onclick="setBudgetUnit('g','twd')">TWD</button>
+                        </div>
                         <button class="budget-btn" onclick="saveBudget('gemini')">新增</button>
                     </div>
                 </div>
@@ -269,55 +314,89 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        function fmt(n) { return '$' + Number(n).toFixed(4); }
+        let currency = 'usd';
+        let budgetUnits = { a: 'usd', g: 'usd' };
+        let rawData = null;
+
+        function getRate() {
+            return parseFloat(document.getElementById('rateInput').value) || 31.5;
+        }
+
+        function setCurrency(c) {
+            currency = c;
+            document.getElementById('btn-usd').classList.toggle('active', c === 'usd');
+            document.getElementById('btn-twd').classList.toggle('active', c === 'twd');
+            renderAll();
+        }
+
+        function setBudgetUnit(prefix, unit) {
+            budgetUnits[prefix] = unit;
+            document.getElementById(`${prefix}-unit-usd`).classList.toggle('active', unit === 'usd');
+            document.getElementById(`${prefix}-unit-twd`).classList.toggle('active', unit === 'twd');
+        }
+
+        function fmtMoney(usdVal) {
+            if (currency === 'twd') {
+                return 'NT$' + (usdVal * getRate()).toFixed(0);
+            }
+            return '$' + Number(usdVal).toFixed(4);
+        }
+
         function fmtNum(n) { return Number(n).toLocaleString(); }
 
-        function setBar(barId, pctId, amountId, cost, budget) {
-            const bar = document.getElementById(barId);
-            const pctEl = document.getElementById(pctId);
-            const amountEl = document.getElementById(amountId);
-
+        function setCard(prefix, cost, budget) {
             const remaining = budget - cost;
             const pct = budget > 0 ? Math.min(100, (cost / budget) * 100) : 0;
-
-            amountEl.textContent = fmt(Math.max(0, remaining));
-            pctEl.textContent = budget > 0 ? `${pct.toFixed(1)}%` : '—';
-            bar.style.width = pct + '%';
-
-            // 顏色
             const cls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '';
+
+            const remainEl = document.getElementById(`${prefix}-remaining`);
+            remainEl.textContent = fmtMoney(Math.max(0, remaining));
+            remainEl.className = 'balance-amount' + (cls ? ' ' + cls : '');
+
+            document.getElementById(`${prefix}-unit`).textContent = currency === 'twd' ? '' : 'USD';
+            document.getElementById(`${prefix}-pct`).textContent = budget > 0 ? `${pct.toFixed(1)}%` : '—';
+
+            const bar = document.getElementById(`${prefix}-bar`);
+            bar.style.width = pct + '%';
             bar.className = 'progress-fill' + (cls ? ' ' + cls : '');
-            amountEl.className = 'balance-amount' + (cls ? ' ' + cls : '');
+
+            document.getElementById(`${prefix}-budget`).textContent = fmtMoney(budget);
+            document.getElementById(`${prefix}-cost`).textContent = fmtMoney(cost);
+        }
+
+        function renderAll() {
+            if (!rawData) return;
+            setCard('a', rawData.anthropic.cost_usd, rawData.anthropic.budget_usd);
+            setCard('g', rawData.gemini.cost_usd, rawData.gemini.budget_usd);
         }
 
         async function loadUsage() {
             try {
                 const res = await fetch('/usage');
-                const d = await res.json();
+                rawData = await res.json();
 
-                // Anthropic
-                document.getElementById('a-budget').textContent = fmt(d.anthropic.budget_usd);
-                document.getElementById('a-cost').textContent = fmt(d.anthropic.cost_usd);
-                document.getElementById('a-in').textContent = fmtNum(d.anthropic.input_tokens);
-                document.getElementById('a-out').textContent = fmtNum(d.anthropic.output_tokens);
-                setBar('a-bar', 'a-pct', 'a-remaining', d.anthropic.cost_usd, d.anthropic.budget_usd);
+                document.getElementById('a-in').textContent = fmtNum(rawData.anthropic.input_tokens);
+                document.getElementById('a-out').textContent = fmtNum(rawData.anthropic.output_tokens);
+                document.getElementById('g-in').textContent = fmtNum(rawData.gemini.input_tokens);
+                document.getElementById('g-out').textContent = fmtNum(rawData.gemini.output_tokens);
 
-                // Gemini
-                document.getElementById('g-budget').textContent = fmt(d.gemini.budget_usd);
-                document.getElementById('g-cost').textContent = fmt(d.gemini.cost_usd);
-                document.getElementById('g-in').textContent = fmtNum(d.gemini.input_tokens);
-                document.getElementById('g-out').textContent = fmtNum(d.gemini.output_tokens);
-                setBar('g-bar', 'g-pct', 'g-remaining', d.gemini.cost_usd, d.gemini.budget_usd);
-
+                renderAll();
             } catch(e) {
                 console.error(e);
             }
         }
 
         async function saveBudget(api) {
-            const inputId = api === 'anthropic' ? 'a-budget-input' : 'g-budget-input';
-            const val = parseFloat(document.getElementById(inputId).value);
-            if (isNaN(val) || val < 0) { showToast('請輸入正確金額'); return; }
+            const prefix = api === 'anthropic' ? 'a' : 'g';
+            const unit = budgetUnits[prefix];
+            const inputEl = document.getElementById(`${prefix}-budget-input`);
+            let val = parseFloat(inputEl.value);
+            if (isNaN(val) || val <= 0) { showToast('請輸入正確金額'); return; }
+
+            // 如果填的是 TWD，換算成 USD 存進去
+            if (unit === 'twd') {
+                val = val / getRate();
+            }
 
             const payload = {};
             payload[api + '_budget'] = val;
@@ -328,11 +407,11 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                showToast('已更新');
-                document.getElementById(inputId).value = '';
+                showToast('已新增');
+                inputEl.value = '';
                 await loadUsage();
             } catch(e) {
-                showToast('更新失敗');
+                showToast('新增失敗');
             }
         }
 
