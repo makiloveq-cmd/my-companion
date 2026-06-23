@@ -303,7 +303,51 @@
             return wrap;
         }
 
-        function escHtml(str) {
+        function renderRetry(speaker) {
+            const wrap = document.createElement('div');
+            wrap.className = 'entry-ai';
+            const av = makeAv(speaker);
+            const contentWrap = document.createElement('div');
+            contentWrap.className = 'content-wrap';
+
+            const nameEl = document.createElement('div');
+            nameEl.className = 'speaker-name';
+            nameEl.textContent = names[speaker] || speaker;
+
+            const errBubble = document.createElement('div');
+            errBubble.className = 'bubble';
+            errBubble.style.cssText = 'color:var(--text-3);font-size:13px;';
+            errBubble.textContent = '連線失敗';
+
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = '重試';
+            retryBtn.style.cssText = 'margin-top:6px;padding:5px 14px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:13px;cursor:pointer;align-self:flex-start;';
+            retryBtn.onclick = async () => {
+                wrap.remove();
+                const loading = addLoadingRow(speaker);
+                try {
+                    const res = await fetch(`/space/reply/${speaker}`, { method: 'POST' });
+                    const data = await res.json();
+                    loading.remove();
+                    if (data.reply) {
+                        renderAI(speaker, data.reply, new Date().toISOString());
+                    } else {
+                        renderRetry(speaker);
+                    }
+                } catch(e) {
+                    loading.remove();
+                    renderRetry(speaker);
+                }
+            };
+
+            contentWrap.appendChild(nameEl);
+            contentWrap.appendChild(errBubble);
+            contentWrap.appendChild(retryBtn);
+            wrap.appendChild(av);
+            wrap.appendChild(contentWrap);
+            document.getElementById('messages').appendChild(wrap);
+            scrollBottom();
+        }
             return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
@@ -367,9 +411,13 @@
 
             if (claudeRes.status === 'fulfilled' && claudeRes.value.reply) {
                 renderAI('claude', claudeRes.value.reply, now);
+            } else {
+                renderRetry('claude');
             }
             if (geminiRes.status === 'fulfilled' && geminiRes.value.reply) {
                 renderAI('gemini', geminiRes.value.reply, now);
+            } else {
+                renderRetry('gemini');
             }
 
             isSending = false;
