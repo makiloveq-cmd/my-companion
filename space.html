@@ -110,23 +110,32 @@
         .input-area {
             background: var(--surface);
             border-top: 1px solid var(--border);
-            padding: 12px 16px 16px;
+            padding: 10px 12px 14px;
         }
         .input-hint {
             font-size: 12px; color: var(--text-3);
-            margin-bottom: 8px; padding: 0 2px;
+            margin-bottom: 6px; padding: 0 2px;
         }
         .input-row {
             display: flex; gap: 8px; align-items: flex-end;
         }
         .input-wrapper { flex: 1; position: relative; }
         .input-wrapper textarea {
-            width: 100%; padding: 10px 14px;
+            width: 100%; padding: 9px 36px 9px 14px;
             background: var(--bg); border: 1px solid var(--border);
-            border-radius: 18px; color: var(--text);
+            border-radius: 22px; color: var(--text);
             font-size: 15px; outline: none; resize: none;
             font-family: inherit; max-height: 140px; line-height: 1.6;
+            overflow-y: auto;
         }
+        .newline-btn {
+            position: absolute; right: 8px; bottom: 7px;
+            width: 24px; height: 24px;
+            border: none; background: transparent;
+            color: var(--text-3); border-radius: 6px; font-size: 13px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .newline-btn:active { opacity: 0.6; }
         .send-btn {
             width: 38px; height: 38px; flex-shrink: 0;
             background: var(--accent); border: none; border-radius: 50%;
@@ -183,6 +192,7 @@
             <div class="input-wrapper">
                 <textarea id="input" rows="1" placeholder="「我回來了！」推開門，把包包放到玄關…"
                     onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+                <button class="newline-btn" onclick="insertNewline()">⏎</button>
             </div>
             <button class="send-btn" id="sendBtn" onclick="sendAction()">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -386,7 +396,6 @@
             const sentAt = new Date().toISOString();
             renderUser(text, sentAt);
 
-            // 存到後端
             try {
                 await fetch('/space/send', {
                     method: 'POST',
@@ -395,33 +404,39 @@
                 });
             } catch(e) {}
 
-            // 晏和熠同時回應
             const claudeLoading = addLoadingRow('claude');
             const geminiLoading = addLoadingRow('gemini');
 
-            const [claudeRes, geminiRes] = await Promise.allSettled([
-                fetch('/space/reply/claude', { method: 'POST' }).then(r => r.json()),
-                fetch('/space/reply/gemini', { method: 'POST' }).then(r => r.json())
-            ]);
+            try {
+                const [claudeRes, geminiRes] = await Promise.allSettled([
+                    fetch('/space/reply/claude', { method: 'POST' }).then(r => r.json()),
+                    fetch('/space/reply/gemini', { method: 'POST' }).then(r => r.json())
+                ]);
 
-            claudeLoading.remove();
-            geminiLoading.remove();
+                claudeLoading.remove();
+                geminiLoading.remove();
 
-            const now = new Date().toISOString();
+                const now = new Date().toISOString();
 
-            if (claudeRes.status === 'fulfilled' && claudeRes.value.reply) {
-                renderAI('claude', claudeRes.value.reply, now);
-            } else {
+                if (claudeRes.status === 'fulfilled' && claudeRes.value.reply) {
+                    renderAI('claude', claudeRes.value.reply, now);
+                } else {
+                    renderRetry('claude');
+                }
+                if (geminiRes.status === 'fulfilled' && geminiRes.value.reply) {
+                    renderAI('gemini', geminiRes.value.reply, now);
+                } else {
+                    renderRetry('gemini');
+                }
+            } catch(e) {
+                claudeLoading.remove();
+                geminiLoading.remove();
                 renderRetry('claude');
-            }
-            if (geminiRes.status === 'fulfilled' && geminiRes.value.reply) {
-                renderAI('gemini', geminiRes.value.reply, now);
-            } else {
                 renderRetry('gemini');
+            } finally {
+                isSending = false;
+                document.getElementById('sendBtn').disabled = false;
             }
-
-            isSending = false;
-            document.getElementById('sendBtn').disabled = false;
         }
 
         // ===== 輸入框 =====
@@ -434,6 +449,14 @@
         function autoGrow(el) {
             el.style.height = 'auto';
             el.style.height = el.scrollHeight + 'px';
+        }
+        function insertNewline() {
+            const el = document.getElementById('input');
+            const s = el.selectionStart, end = el.selectionEnd;
+            el.value = el.value.slice(0, s) + '\n' + el.value.slice(end);
+            el.selectionStart = el.selectionEnd = s + 1;
+            autoGrow(el);
+            el.focus();
         }
 
         // ===== 空間設定 =====
