@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用量監控 - Rifugio</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+        .header {
+            padding: 14px 20px;
+            background: var(--surface);
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 10;
+        }
+        .header-back { font-size: 14px; color: var(--accent); cursor: pointer; padding: 4px 8px 4px 0; }
+        .header h1 { font-size: 17px; font-weight: 400; }
+
+        .content { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+
+        /* 卡片 */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 14px 16px 10px;
+            display: flex; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .card-icon {
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+        }
+        .card-icon.anthropic { background: #d4a574; }
+        .card-icon.gemini { background: #4285f4; }
+        .card-title { font-size: 15px; font-weight: 500; }
+        .card-subtitle { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+
+        .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+        /* 餘額大字 */
+        .balance-row {
+            display: flex; align-items: baseline; gap: 6px;
+        }
+        .balance-amount {
+            font-size: 32px; font-weight: 300; letter-spacing: -1px;
+        }
+        .balance-amount.warn { color: #e8a020; }
+        .balance-amount.danger { color: #e05252; }
+        .balance-unit { font-size: 14px; color: var(--text-3); }
+
+        /* 進度條 */
+        .progress-wrap { display: flex; flex-direction: column; gap: 4px; }
+        .progress-label {
+            display: flex; justify-content: space-between;
+            font-size: 12px; color: var(--text-3);
+        }
+        .progress-bar {
+            height: 6px; background: var(--surface2);
+            border-radius: 3px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; border-radius: 3px;
+            background: var(--accent);
+            transition: width 0.4s ease;
+        }
+        .progress-fill.warn { background: #e8a020; }
+        .progress-fill.danger { background: #e05252; }
+
+        /* 細節列 */
+        .detail-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 0;
+            border-bottom: .5px solid var(--border);
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { font-size: 13px; color: var(--text-2); }
+        .detail-val { font-size: 13px; font-weight: 500; }
+
+        /* 儲值輸入 */
+        .budget-row {
+            display: flex; gap: 8px; align-items: center;
+            padding-top: 4px;
+        }
+        .budget-input {
+            flex: 1; padding: 9px 12px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text);
+            font-size: 14px; outline: none;
+        }
+        .budget-btn {
+            padding: 9px 16px;
+            background: var(--accent); border: none; border-radius: 10px;
+            color: #fff; font-size: 14px; cursor: pointer;
+        }
+
+        /* 外部連結 */
+        .links-card { display: flex; flex-direction: column; gap: 0; }
+        .ext-link {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: .5px solid var(--border);
+            cursor: pointer; text-decoration: none; color: var(--text);
+        }
+        .ext-link:last-child { border-bottom: none; }
+        .ext-link:active { background: var(--surface2); }
+        .ext-link-left { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+        .ext-link-icon { font-size: 18px; }
+        .ext-arrow { color: var(--text-3); font-size: 14px; }
+
+        /* toast */
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,.75); color: #fff;
+            font-size: 13px; padding: 8px 18px; border-radius: 20px;
+            opacity: 0; pointer-events: none; transition: opacity .25s;
+            white-space: nowrap; z-index: 999;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-back" onclick="history.back()">‹ 返回</div>
+        <h1>用量監控</h1>
+    </div>
+
+    <div class="content">
+
+        <!-- Claude / Anthropic -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon anthropic">✦</div>
+                <div>
+                    <div class="card-title">晏（Anthropic）</div>
+                    <div class="card-subtitle">claude-sonnet-4-5</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div>
+                    <div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">預估剩餘</div>
+                    <div class="balance-row">
+                        <div class="balance-amount" id="a-remaining">—</div>
+                        <div class="balance-unit">USD</div>
+                    </div>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-label">
+                        <span>已使用</span>
+                        <span id="a-pct">—</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="a-bar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="detail-row">
+                        <div class="detail-label">儲值金額</div>
+                        <div class="detail-val" id="a-budget">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">累計花費</div>
+                        <div class="detail-val" id="a-cost">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Input tokens</div>
+                        <div class="detail-val" id="a-in">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Output tokens</div>
+                        <div class="detail-val" id="a-out">—</div>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-3);margin-bottom:6px;">本次充值金額（USD，累加）</div>
+                    <div class="budget-row">
+                        <input class="budget-input" type="number" id="a-budget-input" placeholder="本次充值金額" step="0.01" min="0">
+                        <button class="budget-btn" onclick="saveBudget('anthropic')">新增</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gemini -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon gemini">G</div>
+                <div>
+                    <div class="card-title">熠（Google Gemini）</div>
+                    <div class="card-subtitle">gemini-2.5-flash</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div>
+                    <div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">預估剩餘</div>
+                    <div class="balance-row">
+                        <div class="balance-amount" id="g-remaining">—</div>
+                        <div class="balance-unit">USD</div>
+                    </div>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-label">
+                        <span>已使用</span>
+                        <span id="g-pct">—</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="g-bar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="detail-row">
+                        <div class="detail-label">儲值金額</div>
+                        <div class="detail-val" id="g-budget">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">累計花費</div>
+                        <div class="detail-val" id="g-cost">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Input tokens</div>
+                        <div class="detail-val" id="g-in">—</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Output tokens</div>
+                        <div class="detail-val" id="g-out">—</div>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-3);margin-bottom:6px;">本次充值金額（USD，累加）</div>
+                    <div class="budget-row">
+                        <input class="budget-input" type="number" id="g-budget-input" placeholder="本次充值金額" step="0.01" min="0">
+                        <button class="budget-btn" onclick="saveBudget('gemini')">新增</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快捷連結 -->
+        <div class="card links-card">
+            <a class="ext-link" href="https://console.anthropic.com/settings/billing" target="_blank">
+                <div class="ext-link-left">
+                    <span class="ext-link-icon">✦</span>
+                    <span>Anthropic Console 充值</span>
+                </div>
+                <span class="ext-arrow">›</span>
+            </a>
+            <a class="ext-link" href="https://aistudio.google.com/app/apikey" target="_blank">
+                <div class="ext-link-left">
+                    <span class="ext-link-icon">G</span>
+                    <span>Google AI Studio 查看</span>
+                </div>
+                <span class="ext-arrow">›</span>
+            </a>
+        </div>
+
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        function fmt(n) { return '$' + Number(n).toFixed(4); }
+        function fmtNum(n) { return Number(n).toLocaleString(); }
+
+        function setBar(barId, pctId, amountId, cost, budget) {
+            const bar = document.getElementById(barId);
+            const pctEl = document.getElementById(pctId);
+            const amountEl = document.getElementById(amountId);
+
+            const remaining = budget - cost;
+            const pct = budget > 0 ? Math.min(100, (cost / budget) * 100) : 0;
+
+            amountEl.textContent = fmt(Math.max(0, remaining));
+            pctEl.textContent = budget > 0 ? `${pct.toFixed(1)}%` : '—';
+            bar.style.width = pct + '%';
+
+            // 顏色
+            const cls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '';
+            bar.className = 'progress-fill' + (cls ? ' ' + cls : '');
+            amountEl.className = 'balance-amount' + (cls ? ' ' + cls : '');
+        }
+
+        async function loadUsage() {
+            try {
+                const res = await fetch('/usage');
+                const d = await res.json();
+
+                // Anthropic
+                document.getElementById('a-budget').textContent = fmt(d.anthropic.budget_usd);
+                document.getElementById('a-cost').textContent = fmt(d.anthropic.cost_usd);
+                document.getElementById('a-in').textContent = fmtNum(d.anthropic.input_tokens);
+                document.getElementById('a-out').textContent = fmtNum(d.anthropic.output_tokens);
+                setBar('a-bar', 'a-pct', 'a-remaining', d.anthropic.cost_usd, d.anthropic.budget_usd);
+
+                // Gemini
+                document.getElementById('g-budget').textContent = fmt(d.gemini.budget_usd);
+                document.getElementById('g-cost').textContent = fmt(d.gemini.cost_usd);
+                document.getElementById('g-in').textContent = fmtNum(d.gemini.input_tokens);
+                document.getElementById('g-out').textContent = fmtNum(d.gemini.output_tokens);
+                setBar('g-bar', 'g-pct', 'g-remaining', d.gemini.cost_usd, d.gemini.budget_usd);
+
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        async function saveBudget(api) {
+            const inputId = api === 'anthropic' ? 'a-budget-input' : 'g-budget-input';
+            const val = parseFloat(document.getElementById(inputId).value);
+            if (isNaN(val) || val < 0) { showToast('請輸入正確金額'); return; }
+
+            const payload = {};
+            payload[api + '_budget'] = val;
+
+            try {
+                await fetch('/usage/budget', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast('已更新');
+                document.getElementById(inputId).value = '';
+                await loadUsage();
+            } catch(e) {
+                showToast('更新失敗');
+            }
+        }
+
+        let toastTimer;
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        loadUsage();
+    </script>
+    <script src="/theme.js"></script>
+</body>
+</html>

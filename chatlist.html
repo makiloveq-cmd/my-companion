@@ -20,10 +20,16 @@
             padding: 18px 20px 14px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .header h1 {
-            font-size: 20px;
-            font-weight: 500;
+        .header h1 { font-size: 20px; font-weight: 500; }
+        .header-usage {
+            font-size: 13px; color: var(--text-3);
+            text-decoration: none;
+            display: flex; align-items: center; gap: 4px;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
         }
         .list {
             flex: 1;
@@ -41,56 +47,32 @@
             border-bottom: 1px solid var(--border);
             cursor: pointer;
         }
-        .chat-item:active {
-            background: var(--surface2);
-        }
+        .chat-item:active { background: var(--surface2); }
         .chat-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
+            width: 50px; height: 50px; border-radius: 50%;
             background: var(--accent-soft);
             color: var(--accent);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: 500;
-            flex-shrink: 0;
-        }
-        .chat-avatar.group {
-            background: var(--accent);
-            color: #fff;
-        }
-        .chat-info {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .chat-name {
-            font-size: 16px;
-            font-weight: 500;
-            color: var(--text);
-        }
-        .chat-preview {
-            font-size: 13px;
-            color: var(--text-3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: 500; flex-shrink: 0;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        }
+        .chat-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .chat-avatar.group { background: var(--accent); color: #fff; }
+        .chat-avatar.space { background: var(--surface3); color: var(--text-2); }
+        .chat-info {
+            flex: 1; min-width: 0;
+            display: flex; flex-direction: column; gap: 4px;
+        }
+        .chat-name { font-size: 16px; font-weight: 500; color: var(--text); }
+        .chat-preview {
+            font-size: 13px; color: var(--text-3);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .chat-right {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 6px;
-            flex-shrink: 0;
+            display: flex; flex-direction: column;
+            align-items: flex-end; gap: 6px; flex-shrink: 0;
         }
-        .chat-time {
-            font-size: 11px;
-            color: var(--text-3);
-        }
+        .chat-time { font-size: 11px; color: var(--text-3); }
         .tab-bar {
             background: var(--surface);
             border-top: 1px solid var(--border);
@@ -98,14 +80,9 @@
             padding: 10px 0 16px;
         }
         .tab {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            text-decoration: none;
-            color: var(--text-3);
-            font-size: 10px;
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; gap: 4px;
+            text-decoration: none; color: var(--text-3); font-size: 10px;
         }
         .tab.active { color: var(--accent); }
         .tab-icon { font-size: 20px; }
@@ -114,6 +91,7 @@
 <body>
     <div class="header">
         <h1>聊天</h1>
+        <a class="header-usage" href="/usage_page">⚡ 用量</a>
     </div>
     <div class="list" id="list"></div>
 
@@ -129,15 +107,41 @@
         function formatChatTime(ts) {
             if (!ts) return '';
             const d = new Date(ts);
-            const now = new Date();
-            const sameDay = d.toDateString() === now.toDateString();
-            if (sameDay) {
-                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+            const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+            const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+                         && tw.getUTCMonth() === nowTw.getUTCMonth()
+                         && tw.getUTCDate() === nowTw.getUTCDate();
+            if (isToday) return `${String(tw.getUTCHours()).padStart(2,'0')}:${String(tw.getUTCMinutes()).padStart(2,'0')}`;
+            return `${tw.getUTCMonth()+1}/${tw.getUTCDate()}`;
+        }
+
+        async function loadAvatars() {
+            try {
+                const res = await fetch('/personas');
+                const data = await res.json();
+                return {
+                    claude: data.claude?.avatar || null,
+                    gemini: data.gemini?.avatar || null,
+                };
+            } catch(e) { return {}; }
+        }
+
+        function makeAvatar(cls, initial, avatarSrc) {
+            const div = document.createElement('div');
+            div.className = `chat-avatar ${cls}`;
+            if (avatarSrc && avatarSrc.startsWith('data:')) {
+                const img = document.createElement('img');
+                img.src = avatarSrc;
+                div.appendChild(img);
+            } else {
+                div.textContent = initial;
             }
-            return `${d.getMonth()+1}/${d.getDate()}`;
+            return div;
         }
 
         async function loadChatList() {
+            const avatars = await loadAvatars();
             try {
                 const res = await fetch('/chat_list');
                 const data = await res.json();
@@ -145,9 +149,42 @@
                 list.innerHTML = '';
 
                 const items = [
-                    { key: 'claude', href: '/chatroom?ai=claude', data: data.claude, group: false },
-                    { key: 'gemini', href: '/chatroom?ai=gemini', data: data.gemini, group: false },
-                    { key: 'group', href: '/group_page', data: data.group, group: true }
+                    {
+                        href: '/chatroom?ai=claude',
+                        name: data.claude.name,
+                        preview: data.claude.preview,
+                        time: data.claude.time,
+                        avatarCls: '',
+                        initial: data.claude.name[0],
+                        avatarSrc: avatars.claude
+                    },
+                    {
+                        href: '/chatroom?ai=gemini',
+                        name: data.gemini.name,
+                        preview: data.gemini.preview,
+                        time: data.gemini.time,
+                        avatarCls: '',
+                        initial: data.gemini.name[0],
+                        avatarSrc: avatars.gemini
+                    },
+                    {
+                        href: '/group_page',
+                        name: data.group.name,
+                        preview: data.group.preview,
+                        time: data.group.time,
+                        avatarCls: 'group',
+                        initial: '✦',
+                        avatarSrc: null
+                    },
+                    {
+                        href: '/space_page',
+                        name: '共同空間',
+                        preview: '進入你們的空間…',
+                        time: null,
+                        avatarCls: 'space',
+                        initial: '◈',
+                        avatarSrc: null
+                    },
                 ];
 
                 items.forEach(item => {
@@ -155,18 +192,16 @@
                     a.className = 'chat-item';
                     a.href = item.href;
 
-                    const avatar = document.createElement('div');
-                    avatar.className = 'chat-avatar' + (item.group ? ' group' : '');
-                    avatar.textContent = item.group ? '✦' : item.data.name[0];
+                    const avatar = makeAvatar(item.avatarCls, item.initial, item.avatarSrc);
 
                     const info = document.createElement('div');
                     info.className = 'chat-info';
                     const name = document.createElement('div');
                     name.className = 'chat-name';
-                    name.textContent = item.data.name;
+                    name.textContent = item.name;
                     const preview = document.createElement('div');
                     preview.className = 'chat-preview';
-                    preview.textContent = item.data.preview;
+                    preview.textContent = item.preview;
                     info.appendChild(name);
                     info.appendChild(preview);
 
@@ -174,7 +209,7 @@
                     right.className = 'chat-right';
                     const time = document.createElement('div');
                     time.className = 'chat-time';
-                    time.textContent = formatChatTime(item.data.time);
+                    time.textContent = formatChatTime(item.time);
                     right.appendChild(time);
 
                     a.appendChild(avatar);
@@ -182,7 +217,7 @@
                     a.appendChild(right);
                     list.appendChild(a);
                 });
-            } catch (e) {}
+            } catch(e) {}
         }
 
         loadChatList();

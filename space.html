@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>共同空間 - Rifugio</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.2s, color 0.2s;
+        }
+        .header {
+            padding: 14px 20px;
+            background: var(--surface);
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .header-back {
+            font-size: 14px; color: var(--accent);
+            cursor: pointer; padding: 4px 8px 4px 0;
+        }
+        .header h1 { font-size: 17px; font-weight: 400; flex: 1; }
+        .header-setting {
+            font-size: 20px; cursor: pointer; color: var(--text-3);
+            padding: 4px;
+        }
+
+        /* 訊息區 */
+        .messages {
+            flex: 1; overflow-y: auto;
+            padding: 24px 20px;
+            display: flex; flex-direction: column; gap: 24px;
+        }
+
+        /* 然然的輸入（右側，對話泡泡風格） */
+        .entry-user {
+            align-self: flex-end;
+            max-width: 75%;
+            background: var(--bubble-user);
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 16px 16px 4px 16px;
+            font-size: 15px; line-height: 1.7;
+            white-space: pre-wrap;
+        }
+        .entry-user .entry-time {
+            font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right;
+        }
+
+        /* AI 的回應（左側，小說敘述風格） */
+        .entry-ai {
+            align-self: flex-start;
+            max-width: 88%;
+            display: flex; gap: 10px; align-items: flex-start;
+        }
+        .entry-ai .av {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--surface3); color: var(--text-2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 500; flex-shrink: 0;
+            overflow: hidden;
+        }
+        .entry-ai .av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .entry-ai .content-wrap {
+            display: flex; flex-direction: column; gap: 4px;
+        }
+        .entry-ai .speaker-name {
+            font-size: 12px; color: var(--text-3); padding: 0 2px;
+        }
+        .entry-ai .bubble {
+            background: var(--bubble-ai);
+            border: 1px solid var(--border);
+            border-radius: 4px 16px 16px 16px;
+            padding: 14px 16px;
+            font-size: 15px; line-height: 1.9;
+            color: var(--text);
+            white-space: pre-wrap;
+        }
+        .entry-ai .entry-time {
+            font-size: 11px; color: var(--text-3); padding: 0 2px;
+        }
+
+        /* 載入中 */
+        .loading-wrap {
+            display: flex; gap: 10px; align-items: flex-start;
+        }
+        .loading-wrap .av {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--surface3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; color: var(--text-2); flex-shrink: 0;
+        }
+        .loading-dots {
+            background: var(--bubble-ai); border: 1px solid var(--border);
+            border-radius: 4px 16px 16px 16px;
+            padding: 14px 20px; font-size: 20px;
+            color: var(--text-3); letter-spacing: 4px;
+            animation: pulse 1.2s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+        /* 輸入區 */
+        .input-area {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 12px 16px 16px;
+        }
+        .input-hint {
+            font-size: 12px; color: var(--text-3);
+            margin-bottom: 8px; padding: 0 2px;
+        }
+        .input-row {
+            display: flex; gap: 8px; align-items: flex-end;
+        }
+        .input-wrapper { flex: 1; position: relative; }
+        .input-wrapper textarea {
+            width: 100%; padding: 10px 14px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 18px; color: var(--text);
+            font-size: 15px; outline: none; resize: none;
+            font-family: inherit; max-height: 140px; line-height: 1.6;
+        }
+        .send-btn {
+            width: 38px; height: 38px; flex-shrink: 0;
+            background: var(--accent); border: none; border-radius: 50%;
+            color: #fff; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .send-btn:active { opacity: 0.8; }
+        .send-btn:disabled { opacity: 0.4; cursor: default; }
+
+        /* 空間設定 modal */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 100;
+            align-items: flex-end; justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--surface); border-radius: 20px 20px 0 0;
+            padding: 24px 20px 36px; width: 100%; max-width: 600px;
+            display: flex; flex-direction: column; gap: 16px;
+        }
+        .modal-title {
+            font-size: 16px; font-weight: 500;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-close { font-size: 20px; cursor: pointer; color: var(--text-3); }
+        .modal-field { display: flex; flex-direction: column; gap: 6px; }
+        .modal-label { font-size: 13px; color: var(--text-2); }
+        .modal-field textarea {
+            padding: 10px 14px; background: var(--bg);
+            border: 1px solid var(--border); border-radius: 12px;
+            color: var(--text); font-size: 14px; outline: none;
+            resize: none; font-family: inherit; line-height: 1.5;
+        }
+        .modal-save {
+            padding: 12px; background: var(--accent);
+            border: none; border-radius: 12px;
+            color: #fff; font-size: 15px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-back" onclick="history.back()">‹</div>
+        <h1>✦ 共同空間</h1>
+        <div class="header-setting" onclick="openSettings()" title="空間設定">⚙</div>
+    </div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="input-area">
+        <div class="input-hint">描述你在做什麼，或對他們說話…</div>
+        <div class="input-row">
+            <div class="input-wrapper">
+                <textarea id="input" rows="1" placeholder="「我回來了！」推開門，把包包放到玄關…"
+                    onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+            </div>
+            <button class="send-btn" id="sendBtn" onclick="sendAction()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 空間設定 -->
+    <div class="modal-overlay" id="settingModal">
+        <div class="modal">
+            <div class="modal-title">
+                空間設定
+                <span class="modal-close" onclick="closeSettings()">✕</span>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label">空間描述</div>
+                <textarea id="s-room_desc" rows="3" placeholder="這是一間什麼樣的空間？大小、格局、整體感受…"></textarea>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label">家具擺設</div>
+                <textarea id="s-furniture" rows="2" placeholder="沙發、書桌、燈、植物…有什麼家具？"></textarea>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label">氛圍</div>
+                <textarea id="s-atmosphere" rows="2" placeholder="溫暖、安靜、昏黃的燈光、總是放著音樂…"></textarea>
+            </div>
+            <button class="modal-save" onclick="saveSettings()">儲存</button>
+        </div>
+    </div>
+
+    <script>
+        let names = { user: '然然', claude: '晏', gemini: '熠' };
+        let avatars = { user: null, claude: null, gemini: null };
+        let isSending = false;
+
+        // ===== 時間格式化 =====
+        function formatTime(isoStr) {
+            if (!isoStr) return '';
+            const d = new Date(isoStr);
+            const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+            const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+            const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+                         && tw.getUTCMonth() === nowTw.getUTCMonth()
+                         && tw.getUTCDate() === nowTw.getUTCDate();
+            const hh = String(tw.getUTCHours()).padStart(2, '0');
+            const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+            if (isToday) return `${hh}:${mm}`;
+            return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
+        }
+
+        // ===== 載入人物設定 =====
+        async function loadPersonas() {
+            try {
+                const res = await fetch('/personas');
+                const data = await res.json();
+                names.user = data.user?.name || names.user;
+                names.claude = data.claude?.name || names.claude;
+                names.gemini = data.gemini?.name || names.gemini;
+                avatars.claude = data.claude?.avatar || null;
+                avatars.gemini = data.gemini?.avatar || null;
+                avatars.user = data.user?.avatar || null;
+            } catch(e) {}
+        }
+
+        function makeAv(speaker) {
+            const av = document.createElement('div');
+            av.className = 'av';
+            const src = avatars[speaker];
+            if (src && src.startsWith('data:')) {
+                const img = document.createElement('img');
+                img.src = src;
+                av.appendChild(img);
+            } else {
+                av.textContent = (names[speaker] || speaker)[0];
+            }
+            return av;
+        }
+
+        // ===== 渲染訊息 =====
+        function renderUser(content, createdAt) {
+            const el = document.createElement('div');
+            el.className = 'entry-user';
+            el.innerHTML = `<div>${escHtml(content)}</div><div class="entry-time">${formatTime(createdAt)}</div>`;
+            document.getElementById('messages').appendChild(el);
+            scrollBottom();
+        }
+
+        function renderAI(speaker, content, createdAt) {
+            const wrap = document.createElement('div');
+            wrap.className = 'entry-ai';
+            const av = makeAv(speaker);
+            const contentWrap = document.createElement('div');
+            contentWrap.className = 'content-wrap';
+            contentWrap.innerHTML = `
+                <div class="speaker-name">${escHtml(names[speaker] || speaker)}</div>
+                <div class="bubble">${escHtml(content)}</div>
+                <div class="entry-time">${formatTime(createdAt)}</div>
+            `;
+            wrap.appendChild(av);
+            wrap.appendChild(contentWrap);
+            document.getElementById('messages').appendChild(wrap);
+            scrollBottom();
+        }
+
+        function addLoadingRow(speaker) {
+            const wrap = document.createElement('div');
+            wrap.className = 'loading-wrap';
+            const av = makeAv(speaker);
+            const dots = document.createElement('div');
+            dots.className = 'loading-dots';
+            dots.textContent = '···';
+            wrap.appendChild(av);
+            wrap.appendChild(dots);
+            document.getElementById('messages').appendChild(wrap);
+            scrollBottom();
+            return wrap;
+        }
+
+        function escHtml(str) {
+            return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function scrollBottom() {
+            const m = document.getElementById('messages');
+            m.scrollTop = m.scrollHeight;
+        }
+
+        // ===== 載入歷史 =====
+        async function loadMessages() {
+            try {
+                const res = await fetch('/space/messages');
+                const data = await res.json();
+                document.getElementById('messages').innerHTML = '';
+                data.messages.forEach(m => {
+                    if (m.speaker === 'user') {
+                        renderUser(m.content, m.created_at);
+                    } else {
+                        renderAI(m.speaker, m.content, m.created_at);
+                    }
+                });
+            } catch(e) {}
+        }
+
+        // ===== 送出動作 =====
+        async function sendAction() {
+            const input = document.getElementById('input');
+            const text = input.value.trim();
+            if (!text || isSending) return;
+
+            isSending = true;
+            document.getElementById('sendBtn').disabled = true;
+            input.value = '';
+            input.style.height = 'auto';
+
+            const sentAt = new Date().toISOString();
+            renderUser(text, sentAt);
+
+            // 存到後端
+            try {
+                await fetch('/space/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                });
+            } catch(e) {}
+
+            // 晏和熠同時回應
+            const claudeLoading = addLoadingRow('claude');
+            const geminiLoading = addLoadingRow('gemini');
+
+            const [claudeRes, geminiRes] = await Promise.allSettled([
+                fetch('/space/reply/claude', { method: 'POST' }).then(r => r.json()),
+                fetch('/space/reply/gemini', { method: 'POST' }).then(r => r.json())
+            ]);
+
+            claudeLoading.remove();
+            geminiLoading.remove();
+
+            const now = new Date().toISOString();
+
+            if (claudeRes.status === 'fulfilled' && claudeRes.value.reply) {
+                renderAI('claude', claudeRes.value.reply, now);
+            }
+            if (geminiRes.status === 'fulfilled' && geminiRes.value.reply) {
+                renderAI('gemini', geminiRes.value.reply, now);
+            }
+
+            isSending = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        // ===== 輸入框 =====
+        function handleKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendAction();
+            }
+        }
+        function autoGrow(el) {
+            el.style.height = 'auto';
+            el.style.height = el.scrollHeight + 'px';
+        }
+
+        // ===== 空間設定 =====
+        async function openSettings() {
+            try {
+                const res = await fetch('/space_settings');
+                const data = await res.json();
+                document.getElementById('s-room_desc').value = data.room_desc || '';
+                document.getElementById('s-furniture').value = data.furniture || '';
+                document.getElementById('s-atmosphere').value = data.atmosphere || '';
+            } catch(e) {}
+            document.getElementById('settingModal').classList.add('show');
+        }
+
+        function closeSettings() {
+            document.getElementById('settingModal').classList.remove('show');
+        }
+
+        async function saveSettings() {
+            const payload = {
+                room_desc: document.getElementById('s-room_desc').value,
+                furniture: document.getElementById('s-furniture').value,
+                atmosphere: document.getElementById('s-atmosphere').value,
+            };
+            try {
+                await fetch('/space_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch(e) {}
+            closeSettings();
+        }
+
+        async function init() {
+            await loadPersonas();
+            await loadMessages();
+        }
+        init();
+    </script>
+    <script src="/theme.js"></script>
+</body>
+</html>
