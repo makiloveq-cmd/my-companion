@@ -1310,7 +1310,7 @@ def generate_perspective(key):
             "key": key,
             "content": content,
             "updated_at": datetime.utcnow().isoformat()
-        }).execute()
+        }, on_conflict="key").execute()
     except:
         pass
 
