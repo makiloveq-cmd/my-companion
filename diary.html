@@ -20,8 +20,16 @@
             transition: background 0.2s, color 0.2s;
         }
         .header {
-            padding: 20px 24px 12px;
-            text-align: center;
+            padding: max(20px, env(safe-area-inset-top)) 24px 12px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .header h1 { flex: 1; text-align: center; }
+        .header-back {
+            font-size: 16px; color: var(--accent);
+            cursor: pointer; text-decoration: none;
+            position: absolute; left: 24px;
         }
         .header h1 {
             font-family: 'Playfair Display', serif;
@@ -290,7 +298,7 @@
             background: var(--surface);
             border-top: 1px solid var(--border);
             display: flex;
-            padding: 10px 0 16px;
+            padding: 10px 0 max(16px, env(safe-area-inset-bottom));
         }
         .tab {
             flex: 1;
@@ -319,7 +327,7 @@
 </style>
 </head>
 <body>
-    <div class="header"><h1>Diary</h1></div>
+    <div class="header"><a class="header-back" href="/">‹ 返回</a><h1>Diary</h1></div>
 
     <div class="main" id="main">
         <div class="compose">
