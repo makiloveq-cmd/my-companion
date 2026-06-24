@@ -165,7 +165,7 @@ def build_system_prompt(bot_key):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    maybe_summarize_space()
+    # maybe_summarize_space()
     space_summary_text = get_latest_space_summary()
     space_recent = supabase.table("space_messages").select("speaker, content").order("id", desc=True).limit(20).execute().data
     if space_recent:
