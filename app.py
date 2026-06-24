@@ -165,17 +165,10 @@ def build_system_prompt(bot_key):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # maybe_summarize_space()  # 暫時停用避免卡住
-    space_summary_text = get_latest_space_summary()
-    space_recent = supabase.table("space_messages").select("speaker, content").order("id", desc=True).limit(20).execute().data
-    if space_recent:
-        space_recent.reverse()
-        space_lines = "\n".join([f"{'然然' if m['speaker']=='user' else m['speaker']}：{m['content']}" for m in space_recent])
-        if space_summary_text:
-            space_block = f"[空間記憶摘要]\n{space_summary_text}\n\n[最近互動]\n{space_lines}"
-        else:
-            space_block = space_lines
-        lines.append(f"【你們在共同空間的互動】\n{space_block}")
+    # 暫時停用空間資料讀取，避免聊天超時
+    # maybe_summarize_space()
+    # space_summary_text = get_latest_space_summary()
+    # space_recent = ...
 
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，包含段落，簡短有力，不可超過。禁止用星號動作描述或第三人稱敘述動作，直接說話。")
 
