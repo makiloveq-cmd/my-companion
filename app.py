@@ -1056,7 +1056,7 @@ def maybe_delayed_ai_comments(entries):
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    maybe_ai_diary_entry()
+    # maybe_ai_diary_entry()  # 暫時停用
     entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
     for entry in entries:
         comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
@@ -1199,7 +1199,7 @@ def maybe_ai_rename():
 
 @app.route("/names", methods=["GET"])
 def names_get():
-    maybe_ai_rename()
+    # maybe_ai_rename()  # 暫時停用
     return jsonify(get_names())
 
 @app.route("/names", methods=["POST"])
