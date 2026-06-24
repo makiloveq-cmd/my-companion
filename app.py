@@ -42,6 +42,12 @@ def save_message(bot, role, content, message_id=None, image_url=None):
         "message_id": message_id,
         "image_url": image_url
     }).execute()
+    # 每次存訊息後檢查是否要更新關係背景
+    if role in ("user", "assistant", "model"):
+        try:
+            maybe_evolve_rel_bg(bot)
+        except:
+            pass
 
 def get_personas():
     rows = supabase.table("personas").select("*").execute().data
@@ -207,6 +213,68 @@ def maybe_summarize(bot):
     for rid in ids_to_delete:
         supabase.table("memories").delete().eq("id", rid).execute()
 
+# ===== 關係背景自動演化 =====
+
+def maybe_evolve_rel_bg(bot):
+    """每累積 30 條對話，自動更新關係背景"""
+    rows = load_memory(bot)
+    if len(rows) % 30 != 0 or len(rows) == 0:
+        return
+
+    personas = get_personas()
+    bot_data = personas.get(bot, {})
+    name = bot_data.get("name") or ("晏" if bot == "claude" else "熠")
+    you_name = personas.get("user", {}).get("name") or "然然"
+    old_rel_bg = bot_data.get("rel_bg") or ""
+
+    recent = rows[-30:]
+    context = "\n".join([
+        f"{'然然' if r['role'] == 'user' else name}：{r['content']}"
+        for r in recent
+    ])
+
+    old_context = f"【現有的關係背景】\n{old_rel_bg}\n\n" if old_rel_bg else ""
+    user_prompt = (
+        f"{old_context}"
+        f"【最近 30 條對話】\n{context}\n\n"
+        f"請根據以上內容，更新你和{you_name}之間的關係背景描述。"
+        f"保留原本的重要記錄，加入新發生的事、新的情感變化、新的默契或習慣。"
+        f"用第三人稱描述，像在記錄一段關係的演變，不超過 150 字。"
+    )
+
+    try:
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            system=f"你是一個記錄人物關係演變的旁白者。請根據對話內容，客觀地更新{name}與{you_name}之間的關係背景描述。",
+            messages=[{"role": "user", "content": user_prompt}],
+            timeout=60
+        )
+        new_rel_bg = response.content[0].text.strip()
+        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+
+        # 更新 personas 表
+        supabase.table("personas").update({
+            "rel_bg": new_rel_bg,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("key", bot).execute()
+
+        # 記錄這次演化到 rel_bg_history 表（可選，方便查看歷史）
+        try:
+            supabase.table("rel_bg_history").insert({
+                "bot_key": bot,
+                "bot_name": name,
+                "old_rel_bg": old_rel_bg,
+                "new_rel_bg": new_rel_bg,
+                "message_count": len(rows)
+            }).execute()
+        except:
+            pass  # 表不存在也沒關係，不影響主功能
+
+    except:
+        pass
+
 def build_history(bot):
     maybe_summarize(bot)
     summary = get_latest_summary(bot)
@@ -272,7 +340,6 @@ def space_settings_post():
 # ===== 背景行動 =====
 
 def get_random_spot(bot_key, space):
-    """從慣常位置隨機選一個"""
     key = "claude_spots" if bot_key == "claude" else "gemini_spots"
     spots_raw = space.get(key, "")
     if spots_raw:
@@ -282,7 +349,6 @@ def get_random_spot(bot_key, space):
     return None
 
 def generate_background_action(bot_key):
-    """生成一條背景行動並存入 space_messages"""
     personas = get_personas()
     bot = personas.get(bot_key, {})
     name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
@@ -352,7 +418,6 @@ def generate_background_action(bot_key):
         return None
 
 def maybe_generate_background_actions():
-    """進入空間時，隨機決定是否生成背景行動"""
     last = supabase.table("space_messages").select("created_at").eq("message_type", "background").order("id", desc=True).limit(1).execute().data
     if last:
         last_time_str = last[0]["created_at"].replace("Z", "")
@@ -387,7 +452,6 @@ def build_space_system_prompt(bot_key):
     if bot.get("persona"):
         lines.append(f"【你的個性】{bot['persona']}")
 
-    # 空間資訊（擴充版）
     space_parts = []
     if space.get("room_desc"):
         space_parts.append(f"空間描述：{space['room_desc']}")
@@ -400,7 +464,6 @@ def build_space_system_prompt(bot_key):
     if space.get("atmosphere"):
         space_parts.append(f"氛圍：{space['atmosphere']}")
 
-    # 慣常位置
     spot = get_random_spot(bot_key, space)
     if spot:
         space_parts.append(f"你現在在：{spot}")
@@ -468,7 +531,6 @@ def space_reply(bot_key):
         elif m["speaker"] == "user":
             history.append({"role": "user", "content": m["content"]})
         else:
-            # 背景行動也納入上下文，但標記一下
             msg_type = m.get("message_type", "chat")
             if msg_type == "background":
                 history.append({"role": "user", "content": f"（{other_name} 之前：{m['content']}）"})
@@ -528,7 +590,6 @@ def space_reply(bot_key):
 
 @app.route("/space/background/<bot_key>", methods=["POST"])
 def space_background(bot_key):
-    """手動觸發背景行動（前端用）"""
     if bot_key not in ["claude", "gemini"]:
         return jsonify({"error": "invalid bot"}), 400
     action = generate_background_action(bot_key)
@@ -580,7 +641,6 @@ def build_group_system_prompt(bot_key):
     lines.append(f"群裡還有{other_name}，個性：{other.get('persona') or '（未設定）'}。")
     lines.append(f"{you_name}的個性：{me.get('persona') or ''}。")
 
-    # 注入聊天室記憶摘要
     summary = get_latest_summary(bot_key)
     if summary:
         lines.append(f"【你和{you_name}在私訊裡的記憶摘要】\n{summary}")
@@ -1151,6 +1211,16 @@ def names_post():
     if key in DEFAULT_NAMES and value:
         supabase.table("identities").upsert({"key": key, "value": value, "updated_at": datetime.utcnow().isoformat()}).execute()
     return jsonify({"status": "ok"})
+
+# ===== 關係背景演化記錄（可選路由，查看歷史用）=====
+
+@app.route("/rel_bg_history/<bot_key>", methods=["GET"])
+def rel_bg_history(bot_key):
+    try:
+        rows = supabase.table("rel_bg_history").select("*").eq("bot_key", bot_key).order("id", desc=True).limit(10).execute().data
+        return jsonify({"history": rows})
+    except:
+        return jsonify({"history": []})
 
 # ===== 聊天列表 =====
 
