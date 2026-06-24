@@ -165,7 +165,7 @@ def build_system_prompt(bot_key):
             space_block = space_lines
         lines.append(f"【你們在共同空間的互動】\n{space_block}")
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，包含段落，簡短有力，不可超過。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，包含段落，簡短有力，不可超過。禁止用星號動作描述或第三人稱敘述動作，直接說話。")
 
     return "\n".join([l for l in lines if l])
 
@@ -566,8 +566,8 @@ def build_group_system_prompt(bot_key):
 
     lines = [
         f"現在台灣時間：{get_tw_time_str()}。",
-        f"這是一個群組聊天，參與者有：你（{name}）、{other_name}，以及{you_name}。",
-        f"你是「{name}」，請完全扮演這個角色發言，用繁體中文回覆。"
+        f"這是一個三人群組聊天，成員是：你（{name}）、{other_name}、還有{you_name}。",
+        f"{you_name}就在這個群組裡，正在和你們說話。你是「{name}」，請完全扮演這個角色發言，用繁體中文回覆。"
     ]
 
     if bot.get("persona"):
@@ -578,7 +578,12 @@ def build_group_system_prompt(bot_key):
         lines.append(f"【補充指令】{bot['extra']}")
 
     lines.append(f"群裡還有{other_name}，個性：{other.get('persona') or '（未設定）'}。")
-    lines.append(f"對方本名是「{you_name}」，個性：{me.get('persona') or ''}。")
+    lines.append(f"{you_name}的個性：{me.get('persona') or ''}。")
+
+    # 注入聊天室記憶摘要
+    summary = get_latest_summary(bot_key)
+    if summary:
+        lines.append(f"【你和{you_name}在私訊裡的記憶摘要】\n{summary}")
 
     lines.append(
         "【回覆規則，嚴格遵守】\n"
@@ -586,7 +591,9 @@ def build_group_system_prompt(bot_key):
         f"2. 絕對禁止在回覆開頭加上「{name}：」之類的名字前綴，直接從內容開始。\n"
         f"3. 絕對禁止幫{you_name}或{other_name}說話、或自己創造對話片段，你只能扮演{name}一個人。\n"
         "4. 若有人直接點名問你，要正面回應，不要迴避。\n"
-        "5. 不要說「我作為 AI」這類話。"
+        "5. 不要說「我作為 AI」這類話。\n"
+        f"6. 禁止用星號動作或第三人稱敘述動作，直接說話就好。\n"
+        f"7. {you_name}就在群組裡，不要把她當成不在場的第三者，不要說「叫{you_name}來」「問{you_name}」這類話，直接跟她說話。"
     )
 
     return "\n".join(lines)
