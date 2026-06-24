@@ -69,16 +69,17 @@
         .message-time {
             font-size: 11px; color: var(--text-3); padding: 0 4px;
         }
-        /* 回覆按鈕列 */
+
+        /* 手動觸發列 */
         .reply-bar {
-            padding: 10px 20px;
+            padding: 8px 20px;
             background: var(--surface);
             border-top: 1px solid var(--border);
             display: flex; gap: 10px; justify-content: center;
         }
         .reply-btn {
             display: flex; align-items: center; gap: 8px;
-            padding: 8px 18px;
+            padding: 7px 16px;
             border: 1px solid var(--border);
             background: transparent; color: var(--text-2);
             border-radius: 20px; cursor: pointer; font-size: 13px;
@@ -86,8 +87,31 @@
         .reply-btn:active { opacity: 0.7; }
         .reply-btn:disabled { opacity: 0.4; cursor: default; }
         .reply-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
         /* 輸入區 */
         .input-area { background: var(--surface); border-top: 1px solid var(--border); }
+
+        /* 回應選擇器 */
+        .reply-selector {
+            display: flex; gap: 6px; padding: 8px 12px 0;
+        }
+        .reply-option {
+            display: flex; align-items: center; gap: 4px;
+            font-size: 12px; color: var(--text-3);
+            cursor: pointer; padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .reply-option.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+        .reply-option input { display: none; }
+
         .image-preview-bar {
             display: none; align-items: center;
             gap: 10px; padding: 8px 16px 0;
@@ -108,7 +132,7 @@
         }
         .input-row {
             display: flex; align-items: flex-end;
-            padding: 10px 12px 12px; gap: 8px;
+            padding: 8px 12px 12px; gap: 8px;
         }
         .toolbar-icon {
             width: 36px; height: 36px; flex-shrink: 0;
@@ -134,7 +158,6 @@
             display: flex; align-items: center; justify-content: center;
         }
         .send-btn:active { opacity: 0.8; }
-        /* 燈箱 */
         .lightbox {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.88); z-index: 200;
@@ -149,6 +172,8 @@
         <h1>✦ 三人空間</h1>
     </div>
     <div class="messages" id="messages"></div>
+
+    <!-- 手動觸發列 -->
     <div class="reply-bar">
         <button class="reply-btn" id="btn-claude-reply" onclick="triggerReply('claude')">
             <span class="dot"></span><span id="name-claude-btn">請晏說話</span>
@@ -157,7 +182,20 @@
             <span class="dot"></span><span id="name-gemini-btn">請熠說話</span>
         </button>
     </div>
+
     <div class="input-area">
+        <!-- 回應選擇器 -->
+        <div class="reply-selector">
+            <label class="reply-option active" id="opt-both" onclick="setReplyMode('both')">
+                <input type="radio" name="replyMode" value="both" checked> 兩個都回
+            </label>
+            <label class="reply-option" id="opt-claude" onclick="setReplyMode('claude')">
+                <input type="radio" name="replyMode" value="claude"> 只有晏
+            </label>
+            <label class="reply-option" id="opt-gemini" onclick="setReplyMode('gemini')">
+                <input type="radio" name="replyMode" value="gemini"> 只有熠
+            </label>
+        </div>
         <div class="image-preview-bar" id="imagePreviewBar">
             <div class="preview-thumb">
                 <img id="imagePreviewThumb" src="" alt="">
@@ -193,8 +231,24 @@
         let names = { user: '然然', claude: '晏', gemini: '熠' };
         let avatars = { user: null, claude: null, gemini: null };
         let pendingImageUrl = null;
+        let replyMode = 'both';
+        let isSending = false;
 
-        // ===== 時間格式化 =====
+        function setReplyMode(mode) {
+            replyMode = mode;
+            document.querySelectorAll('.reply-option').forEach(el => el.classList.remove('active'));
+            document.getElementById(`opt-${mode}`).classList.add('active');
+        }
+
+        function updateLabels() {
+            const cn = names.claude || '晏';
+            const gn = names.gemini || '熠';
+            document.getElementById('name-claude-btn').textContent = `請${cn}說話`;
+            document.getElementById('name-gemini-btn').textContent = `請${gn}說話`;
+            document.getElementById('opt-claude').childNodes[1].textContent = ` 只有${cn}`;
+            document.getElementById('opt-gemini').childNodes[1].textContent = ` 只有${gn}`;
+        }
+
         function formatTime(isoStr) {
             if (!isoStr) return '';
             const d = new Date(isoStr);
@@ -209,7 +263,6 @@
             return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
         }
 
-        // ===== 頭像與名字 =====
         async function loadPersonas() {
             try {
                 const res = await fetch('/personas');
@@ -221,8 +274,7 @@
                 avatars.claude = data.claude?.avatar || null;
                 avatars.gemini = data.gemini?.avatar || null;
             } catch(e) {}
-            document.getElementById('name-claude-btn').textContent = `請${names.claude}說話`;
-            document.getElementById('name-gemini-btn').textContent = `請${names.gemini}說話`;
+            updateLabels();
         }
 
         function makeAvatar(speaker) {
@@ -239,7 +291,6 @@
             return av;
         }
 
-        // ===== 燈箱 =====
         function openLightbox(src) {
             document.getElementById('lightboxImg').src = src;
             document.getElementById('lightbox').classList.add('show');
@@ -248,7 +299,6 @@
             document.getElementById('lightbox').classList.remove('show');
         }
 
-        // ===== 圖片上傳 =====
         async function handleImageSelect(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -279,14 +329,12 @@
             document.getElementById('imagePreviewThumb').src = '';
         }
 
-        // ===== 渲染訊息 =====
         function addMessage(content, speaker, imageUrl, createdAt) {
             const row = document.createElement('div');
             const isUser = speaker === 'user';
             row.className = `message-row ${isUser ? 'user' : ''}`;
 
             const avatar = makeAvatar(speaker);
-
             const block = document.createElement('div');
             block.className = 'message-block';
 
@@ -327,7 +375,24 @@
             document.getElementById('messages').scrollTop = 999999;
         }
 
-        // ===== 載入訊息 =====
+        function addPending(speaker) {
+            const row = document.createElement('div');
+            row.className = 'message-row';
+            const av = makeAvatar(speaker);
+            const block = document.createElement('div');
+            block.className = 'message-block';
+            const bubble = document.createElement('div');
+            bubble.className = 'message bot';
+            bubble.style.opacity = '0.5';
+            bubble.textContent = '…';
+            block.appendChild(bubble);
+            row.appendChild(av);
+            row.appendChild(block);
+            document.getElementById('messages').appendChild(row);
+            document.getElementById('messages').scrollTop = 999999;
+            return row;
+        }
+
         async function loadMessages() {
             const res = await fetch('/group/messages');
             const data = await res.json();
@@ -351,11 +416,13 @@
             }
         }
 
-        // ===== 送出 =====
         async function sendMessage() {
             const input = document.getElementById('input');
             const msg = input.value.trim();
             if (!msg && !pendingImageUrl) return;
+            if (isSending) return;
+
+            isSending = true;
             input.value = '';
             input.style.height = 'auto';
 
@@ -371,33 +438,48 @@
                     body: JSON.stringify({ content: msg, message_id: generateMessageId(), image_url: imageUrl || null })
                 });
             } catch(e) {}
+
+            // 根據 replyMode 自動回應
+            const speakers = replyMode === 'both' ? ['claude', 'gemini'] : [replyMode];
+            const pendings = {};
+            speakers.forEach(s => { pendings[s] = addPending(s); });
+
+            await Promise.all(speakers.map(async s => {
+                try {
+                    const res = await fetch(`/group/reply/${s}`, { method: 'POST' });
+                    const data = await res.json();
+                    pendings[s].remove();
+                    if (data.reply) {
+                        addMessage(data.reply, s, null, new Date().toISOString());
+                    } else {
+                        addMessage('（連線失敗，請再試一次）', s, null, new Date().toISOString());
+                    }
+                } catch(e) {
+                    pendings[s].remove();
+                    addMessage('（連線失敗，請再試一次）', s, null, new Date().toISOString());
+                }
+            }));
+
+            isSending = false;
         }
 
-        // ===== 請角色說話 =====
         async function triggerReply(botKey) {
             const btn = document.getElementById(`btn-${botKey}-reply`);
             btn.disabled = true;
-
-            const pendingRow = document.createElement('div');
-            pendingRow.className = 'message-row';
-            pendingRow.innerHTML = `<div class="message-block"><div class="message bot" style="opacity:0.5;">…</div></div>`;
-            document.getElementById('messages').appendChild(pendingRow);
-            document.getElementById('messages').scrollTop = 999999;
-
+            const pending = addPending(botKey);
             try {
                 const res = await fetch(`/group/reply/${botKey}`, { method: 'POST' });
                 const data = await res.json();
-                pendingRow.remove();
+                pending.remove();
                 if (data.error) {
                     addMessage('（連線失敗，請再試一次）', botKey, null, new Date().toISOString());
                 } else {
                     addMessage(data.reply, botKey, null, new Date().toISOString());
                 }
             } catch(e) {
-                pendingRow.remove();
+                pending.remove();
                 addMessage('（連線失敗，請再試一次）', botKey, null, new Date().toISOString());
             }
-
             btn.disabled = false;
         }
 

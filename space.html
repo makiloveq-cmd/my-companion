@@ -32,14 +32,12 @@
             padding: 4px;
         }
 
-        /* 訊息區 */
         .messages {
             flex: 1; overflow-y: auto;
             padding: 24px 20px;
             display: flex; flex-direction: column; gap: 24px;
         }
 
-        /* 然然的輸入（右側，對話泡泡風格） */
         .entry-user {
             align-self: flex-end;
             max-width: 75%;
@@ -54,7 +52,6 @@
             font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right;
         }
 
-        /* AI 的回應（左側，小說敘述風格） */
         .entry-ai {
             align-self: flex-start;
             max-width: 88%;
@@ -87,7 +84,6 @@
             font-size: 11px; color: var(--text-3); padding: 0 2px;
         }
 
-        /* 載入中 */
         .loading-wrap {
             display: flex; gap: 10px; align-items: flex-start;
         }
@@ -106,12 +102,33 @@
         }
         @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
 
-        /* 輸入區 */
         .input-area {
             background: var(--surface);
             border-top: 1px solid var(--border);
             padding: 10px 12px 14px;
         }
+
+        /* 回應對象選擇器 */
+        .reply-selector {
+            display: flex; gap: 6px; margin-bottom: 8px; padding: 0 2px;
+        }
+        .reply-option {
+            display: flex; align-items: center; gap: 4px;
+            font-size: 12px; color: var(--text-3);
+            cursor: pointer; padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .reply-option.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+        .reply-option input { display: none; }
+
         .input-hint {
             font-size: 12px; color: var(--text-3);
             margin-bottom: 6px; padding: 0 2px;
@@ -145,7 +162,6 @@
         .send-btn:active { opacity: 0.8; }
         .send-btn:disabled { opacity: 0.4; cursor: default; }
 
-        /* 空間設定 modal */
         .modal-overlay {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.6); z-index: 100;
@@ -187,6 +203,18 @@
     <div class="messages" id="messages"></div>
 
     <div class="input-area">
+        <!-- 回應對象選擇器 -->
+        <div class="reply-selector">
+            <label class="reply-option active" id="opt-both" onclick="setReplyMode('both')">
+                <input type="radio" name="replyMode" value="both" checked> 兩個都回
+            </label>
+            <label class="reply-option" id="opt-claude" onclick="setReplyMode('claude')">
+                <input type="radio" name="replyMode" value="claude"> 只有晏
+            </label>
+            <label class="reply-option" id="opt-gemini" onclick="setReplyMode('gemini')">
+                <input type="radio" name="replyMode" value="gemini"> 只有熠
+            </label>
+        </div>
         <div class="input-hint">描述你在做什麼，或對他們說話…</div>
         <div class="input-row">
             <div class="input-wrapper">
@@ -229,8 +257,23 @@
         let names = { user: '然然', claude: '晏', gemini: '熠' };
         let avatars = { user: null, claude: null, gemini: null };
         let isSending = false;
+        let replyMode = 'both'; // 'both' | 'claude' | 'gemini'
 
-        // ===== 時間格式化 =====
+        function setReplyMode(mode) {
+            replyMode = mode;
+            document.querySelectorAll('.reply-option').forEach(el => el.classList.remove('active'));
+            document.getElementById(`opt-${mode}`).classList.add('active');
+            // 同步更新按鈕名稱顯示
+            updateOptLabels();
+        }
+
+        function updateOptLabels() {
+            const claudeName = names.claude || '晏';
+            const geminiName = names.gemini || '熠';
+            document.getElementById('opt-claude').childNodes[1].textContent = ` 只有${claudeName}`;
+            document.getElementById('opt-gemini').childNodes[1].textContent = ` 只有${geminiName}`;
+        }
+
         function formatTime(isoStr) {
             if (!isoStr) return '';
             const d = new Date(isoStr);
@@ -245,7 +288,6 @@
             return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
         }
 
-        // ===== 載入人物設定 =====
         async function loadPersonas() {
             try {
                 const res = await fetch('/personas');
@@ -256,6 +298,7 @@
                 avatars.claude = data.claude?.avatar || null;
                 avatars.gemini = data.gemini?.avatar || null;
                 avatars.user = data.user?.avatar || null;
+                updateOptLabels();
             } catch(e) {}
         }
 
@@ -273,7 +316,6 @@
             return av;
         }
 
-        // ===== 渲染訊息 =====
         function renderUser(content, createdAt) {
             const el = document.createElement('div');
             el.className = 'entry-user';
@@ -368,7 +410,6 @@
             m.scrollTop = m.scrollHeight;
         }
 
-        // ===== 載入歷史 =====
         async function loadMessages() {
             try {
                 const res = await fetch('/space/messages');
@@ -384,7 +425,6 @@
             } catch(e) {}
         }
 
-        // ===== 送出動作 =====
         async function sendAction() {
             const input = document.getElementById('input');
             const text = input.value.trim();
@@ -406,42 +446,40 @@
                 });
             } catch(e) {}
 
-            const claudeLoading = addLoadingRow('claude');
-            const geminiLoading = addLoadingRow('gemini');
+            const now = new Date().toISOString();
+
+            // 根據 replyMode 決定誰回
+            const speakers = replyMode === 'both'
+                ? ['claude', 'gemini']
+                : [replyMode];
+
+            const loadings = {};
+            speakers.forEach(s => { loadings[s] = addLoadingRow(s); });
 
             try {
-                const [claudeReply, geminiReply] = await Promise.all([
-                    trySpaceReply('claude'),
-                    trySpaceReply('gemini')
-                ]);
+                const results = await Promise.all(
+                    speakers.map(s => trySpaceReply(s))
+                );
 
-                claudeLoading.remove();
-                geminiLoading.remove();
-
-                const now = new Date().toISOString();
-
-                if (claudeReply) {
-                    renderAI('claude', claudeReply, now);
-                } else {
-                    renderRetry('claude');
-                }
-                if (geminiReply) {
-                    renderAI('gemini', geminiReply, now);
-                } else {
-                    renderRetry('gemini');
-                }
+                speakers.forEach((s, i) => {
+                    loadings[s].remove();
+                    if (results[i]) {
+                        renderAI(s, results[i], now);
+                    } else {
+                        renderRetry(s);
+                    }
+                });
             } catch(e) {
-                claudeLoading.remove();
-                geminiLoading.remove();
-                renderRetry('claude');
-                renderRetry('gemini');
+                speakers.forEach(s => {
+                    loadings[s].remove();
+                    renderRetry(s);
+                });
             } finally {
                 isSending = false;
                 document.getElementById('sendBtn').disabled = false;
             }
         }
 
-        // ===== 輸入框 =====
         function handleKeydown(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -468,7 +506,6 @@
                 if (data.reply) return data.reply;
                 throw new Error('no reply');
             } catch(e) {
-                // 自動重試一次
                 try {
                     const res2 = await fetch(`/space/reply/${speaker}`, { method: 'POST' });
                     const data2 = await res2.json();
@@ -477,6 +514,7 @@
                 return null;
             }
         }
+
         async function openSettings() {
             try {
                 const res = await fetch('/space_settings');
