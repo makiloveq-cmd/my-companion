@@ -1,569 +1,537 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的陪伴空間</title>
-    <link rel="stylesheet" href="/theme.css">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            transition: background 0.2s, color 0.2s;
-        }
-        .header {
-            padding: 16px 20px;
-            background: var(--surface);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        .header h1 { font-size: 18px; font-weight: 400; }
-        .ai-switch { margin-left: auto; display: flex; gap: 8px; }
-        .ai-btn {
-            padding: 6px 14px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-2);
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .ai-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-        .messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .message-row { display: flex; align-items: flex-end; gap: 10px; }
-        .message-row.user { flex-direction: row-reverse; }
-        .avatar {
-            width: 36px; height: 36px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 500; flex-shrink: 0;
-            cursor: pointer; user-select: none; transition: opacity 0.15s;
-            overflow: hidden;
-        }
-        .avatar:active { opacity: 0.7; }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-        .avatar.user { background: var(--accent); color: #fff; }
-        .avatar.ai { background: var(--surface3); color: var(--text-2); }
-        .message-block { display: flex; flex-direction: column; gap: 4px; max-width: 70%; }
-        .message-row.user .message-block { align-items: flex-end; }
-        .message-name { font-size: 12px; color: var(--text-3); padding: 0 4px; }
-        .message {
-            padding: 12px 16px; border-radius: 16px;
-            font-size: 15px; line-height: 1.6; white-space: pre-wrap;
-        }
-        .message.user {
-            background: var(--bubble-user); color: #fff;
-            border-radius: 16px 16px 4px 16px;
-        }
-        .message.ai {
-            background: var(--bubble-ai); color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 16px 16px 16px 4px;
-        }
-        .message.has-img { padding: 0; background: transparent; border: none; }
-        .message.has-img .chat-img {
-            max-width: 200px; max-height: 260px;
-            border-radius: 14px; display: block; cursor: pointer;
-            border: 1px solid var(--border);
-        }
-        .message.has-img .img-caption {
-            margin-top: 4px; padding: 8px 12px;
-            font-size: 14px; line-height: 1.5;
-        }
-        /* 時間戳 */
-        .message-time {
-            font-size: 11px;
-            color: var(--text-3);
-            padding: 0 4px;
-            align-self: flex-end;
-        }
-        .message-row.user .message-time { align-self: flex-end; }
-
-        .input-area {
-            background: var(--surface);
-            border-top: 1px solid var(--border);
-        }
-        .image-preview-bar {
-            display: none; align-items: center;
-            gap: 10px; padding: 8px 16px 0;
-        }
-        .image-preview-bar.show { display: flex; }
-        .preview-thumb { position: relative; width: 60px; height: 60px; }
-        .preview-thumb img {
-            width: 60px; height: 60px;
-            object-fit: cover; border-radius: 10px;
-            border: 1px solid var(--border);
-        }
-        .remove-img-btn {
-            position: absolute; top: -6px; right: -6px;
-            width: 18px; height: 18px;
-            background: var(--text-2); color: var(--surface);
-            border: none; border-radius: 50%; font-size: 10px;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-        }
-        .input-row {
-            display: flex; align-items: flex-end;
-            padding: 10px 12px 12px; gap: 8px;
-        }
-        .toolbar-icon {
-            width: 36px; height: 36px; flex-shrink: 0;
-            background: transparent; border: none;
-            color: var(--text-3); cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 50%; transition: background 0.15s; padding: 0;
-        }
-        .toolbar-icon:hover { background: var(--surface2); }
-        .toolbar-icon:active { opacity: 0.6; }
-        .input-wrapper { position: relative; flex: 1; }
-        .input-wrapper textarea {
-            width: 100%; padding: 9px 36px 9px 14px;
-            background: var(--bg); border: 1px solid var(--border);
-            border-radius: 22px; color: var(--text);
-            font-size: 15px; outline: none; resize: none;
-            font-family: inherit; max-height: 120px;
-            overflow-y: auto; line-height: 1.5;
-        }
-        .newline-btn {
-            position: absolute; right: 8px; bottom: 7px;
-            width: 24px; height: 24px;
-            border: none; background: transparent;
-            color: var(--text-3); border-radius: 6px; font-size: 13px;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-        }
-        .send-btn {
-            width: 36px; height: 36px; flex-shrink: 0;
-            background: var(--accent); border: none; border-radius: 50%;
-            color: #fff; cursor: pointer; font-size: 17px;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .send-btn:active { opacity: 0.8; }
-        .lightbox {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.88); z-index: 200;
-            align-items: center; justify-content: center;
-        }
-        .lightbox.show { display: flex; }
-        .lightbox img { max-width: 94vw; max-height: 90vh; border-radius: 10px; }
-        .modal-overlay {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.6); z-index: 100;
-            align-items: center; justify-content: center;
-        }
-        .modal-overlay.show { display: flex; }
-        .modal {
-            background: var(--surface); border: 1px solid var(--border);
-            border-radius: 16px; padding: 24px; width: 280px;
-            display: flex; flex-direction: column; gap: 16px;
-        }
-        .modal h3 { font-size: 15px; font-weight: 500; color: var(--text-2); }
-        .modal input {
-            padding: 10px 14px; background: var(--bg);
-            border: 1px solid var(--border); border-radius: 10px;
-            color: var(--text); font-size: 15px; outline: none; width: 100%;
-        }
-        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
-        .modal-btns button { padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; }
-        .btn-cancel { background: var(--surface2); color: var(--text-2); }
-        .btn-confirm { background: var(--accent); color: #fff; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>我的陪伴空間</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s, color 0.2s;
+}
+.header {
+  padding: 16px 20px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+.header-back { font-size: 22px; color: var(--accent); cursor: pointer; padding: 0 8px 0 0; line-height: 1; }
+.header h1 { font-size: 18px; font-weight: 400; }
+.ai-switch { margin-left: auto; display: flex; gap: 8px; }
+.ai-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ai-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.message-row { display: flex; align-items: flex-end; gap: 10px; }
+.message-row.user { flex-direction: row-reverse; }
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 500; flex-shrink: 0;
+  cursor: pointer; user-select: none; transition: opacity 0.15s;
+  overflow: hidden;
+}
+.avatar:active { opacity: 0.7; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.avatar.user { background: var(--accent); color: #fff; }
+.avatar.ai { background: var(--surface3); color: var(--text-2); }
+.message-block { display: flex; flex-direction: column; gap: 4px; max-width: 70%; }
+.message-row.user .message-block { align-items: flex-end; }
+.message-name { font-size: 12px; color: var(--text-3); padding: 0 4px; }
+.message {
+  padding: 12px 16px; border-radius: 16px;
+  font-size: 15px; line-height: 1.6; white-space: pre-wrap;
+}
+.message.user {
+  background: var(--bubble-user); color: #fff;
+  border-radius: 16px 16px 4px 16px;
+}
+.message.ai {
+  background: var(--bubble-ai); color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 16px 4px;
+}
+.message.has-img { padding: 0; background: transparent; border: none; }
+.message.has-img .chat-img {
+  max-width: 200px; max-height: 260px;
+  border-radius: 14px; display: block; cursor: pointer;
+  border: 1px solid var(--border);
+}
+.message.has-img .img-caption {
+  margin-top: 4px; padding: 8px 12px;
+  font-size: 14px; line-height: 1.5;
+}
+.message-time {
+  font-size: 11px; color: var(--text-3); padding: 0 4px; align-self: flex-end;
+}
+.input-area {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.image-preview-bar {
+  display: none; align-items: center;
+  gap: 10px; padding: 8px 16px 0;
+}
+.image-preview-bar.show { display: flex; }
+.preview-thumb { position: relative; width: 60px; height: 60px; }
+.preview-thumb img {
+  width: 60px; height: 60px;
+  object-fit: cover; border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.remove-img-btn {
+  position: absolute; top: -6px; right: -6px;
+  width: 18px; height: 18px;
+  background: var(--text-2); color: var(--surface);
+  border: none; border-radius: 50%; font-size: 10px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.input-row {
+  display: flex; align-items: flex-end;
+  padding: 10px 12px 12px; gap: 8px;
+}
+.toolbar-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  background: transparent; border: none;
+  color: var(--text-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; transition: background 0.15s; padding: 0;
+}
+.toolbar-icon:hover { background: var(--surface2); }
+.toolbar-icon:active { opacity: 0.6; }
+.input-wrapper { position: relative; flex: 1; }
+.input-wrapper textarea {
+  width: 100%; padding: 9px 36px 9px 14px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 22px; color: var(--text);
+  font-size: 15px; outline: none; resize: none;
+  font-family: inherit; max-height: 120px;
+  overflow-y: auto; line-height: 1.5;
+}
+.newline-btn {
+  position: absolute; right: 8px; bottom: 7px;
+  width: 24px; height: 24px;
+  border: none; background: transparent;
+  color: var(--text-3); border-radius: 6px; font-size: 13px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.send-btn {
+  width: 36px; height: 36px; flex-shrink: 0;
+  background: var(--accent); border: none; border-radius: 50%;
+  color: #fff; cursor: pointer; font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+}
+.send-btn:active { opacity: 0.8; }
+.lightbox {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.88); z-index: 200;
+  align-items: center; justify-content: center;
+}
+.lightbox.show { display: flex; }
+.lightbox img { max-width: 94vw; max-height: 90vh; border-radius: 10px; }
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; width: 280px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.modal h3 { font-size: 15px; font-weight: 500; color: var(--text-2); }
+.modal input {
+  padding: 10px 14px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 15px; outline: none; width: 100%;
+}
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+.modal-btns button { padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; }
+.btn-cancel { background: var(--surface2); color: var(--text-2); }
+.btn-confirm { background: var(--accent); color: #fff; }
+</style>
 </head>
 <body>
-    <div class="header">
-        <h1>✦ 我的陪伴空間</h1>
-        <div class="ai-switch">
-            <button class="ai-btn active" id="btn-claude" onclick="switchAI('claude', event)">晏</button>
-            <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)">Gemini</button>
-        </div>
+<div class="header">
+  <span class="header-back" onclick="location.href='/chatlist_page'">‹</span>
+  <h1>✦ 我的陪伴空間</h1>
+  <div class="ai-switch">
+    <button class="ai-btn active" id="btn-claude" onclick="switchAI('claude', event)">晏</button>
+    <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)">Gemini</button>
+  </div>
+</div>
+<div class="messages" id="messages"></div>
+<div class="input-area">
+  <div class="image-preview-bar" id="imagePreviewBar">
+    <div class="preview-thumb">
+      <img id="imagePreviewThumb" src="" alt="">
+      <button class="remove-img-btn" onclick="removeImage()">✕</button>
     </div>
-
-    <div class="messages" id="messages"></div>
-
-    <div class="input-area">
-        <div class="image-preview-bar" id="imagePreviewBar">
-            <div class="preview-thumb">
-                <img id="imagePreviewThumb" src="" alt="">
-                <button class="remove-img-btn" onclick="removeImage()">✕</button>
-            </div>
-        </div>
-        <div class="input-row">
-            <button class="toolbar-icon" onclick="document.getElementById('imageInput').click()" title="傳送圖片">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="3"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                </svg>
-            </button>
-            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
-            <div class="input-wrapper">
-                <textarea id="input" placeholder="說點什麼…" rows="1"
-                    onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
-                <button class="newline-btn" onclick="insertNewline()">⏎</button>
-            </div>
-            <button class="send-btn" onclick="sendMessage()">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
-                </svg>
-            </button>
-        </div>
+  </div>
+  <div class="input-row">
+    <button class="toolbar-icon" onclick="document.getElementById('imageInput').click()" title="傳送圖片">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+    </button>
+    <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImageSelect(event)">
+    <div class="input-wrapper">
+      <textarea id="input" placeholder="說點什麼…" rows="1"
+        onkeydown="handleKeydown(event)" oninput="autoGrow(this)"></textarea>
+      <button class="newline-btn" onclick="insertNewline()">⏎</button>
     </div>
-
-    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
-        <img id="lightboxImg" src="" alt="">
+    <button class="send-btn" onclick="sendMessage()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="">
+</div>
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">修改名稱</h3>
+    <input type="text" id="modal-input" placeholder="輸入新名稱">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-confirm" onclick="confirmName()">確認</button>
     </div>
+  </div>
+</div>
+<script>
+let currentAI = 'claude';
+let names = { user: '然然', claude: '晏', gemini: 'Gemini' };
+let avatars = { user: null, claude: null, gemini: null };
+let editingTarget = null;
+let holdTimer = null;
+let pendingImageUrl = null;
 
-    <div class="modal-overlay" id="modal">
-        <div class="modal">
-            <h3 id="modal-title">修改名稱</h3>
-            <input type="text" id="modal-input" placeholder="輸入新名稱">
-            <div class="modal-btns">
-                <button class="btn-cancel" onclick="closeModal()">取消</button>
-                <button class="btn-confirm" onclick="confirmName()">確認</button>
-            </div>
-        </div>
-    </div>
+// 讀取 URL 參數決定預設 AI
+const urlAI = new URLSearchParams(location.search).get('ai');
+if (urlAI === 'gemini') currentAI = 'gemini';
 
-    <script>
-        let currentAI = 'claude';
-        let names = { user: '然然', claude: '晏', gemini: 'Gemini' };
-        let avatars = { user: null, claude: null, gemini: null };
-        let editingTarget = null;
-        let holdTimer = null;
-        let pendingImageUrl = null;
+function formatTime(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+               && tw.getUTCMonth() === nowTw.getUTCMonth()
+               && tw.getUTCDate() === nowTw.getUTCDate();
+  const hh = String(tw.getUTCHours()).padStart(2, '0');
+  const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+  if (isToday) return `${hh}:${mm}`;
+  return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
+}
 
-        // ===== 時間格式化（UTC → 台灣時間）=====
-        function formatTime(isoStr) {
-            if (!isoStr) return '';
-            const d = new Date(isoStr);
-            // 轉台灣時間 UTC+8
-            const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-            const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
-            const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
-                         && tw.getUTCMonth() === nowTw.getUTCMonth()
-                         && tw.getUTCDate() === nowTw.getUTCDate();
-            const hh = String(tw.getUTCHours()).padStart(2, '0');
-            const mm = String(tw.getUTCMinutes()).padStart(2, '0');
-            if (isToday) return `${hh}:${mm}`;
-            const mo = tw.getUTCMonth() + 1;
-            const dd = tw.getUTCDate();
-            return `${mo}/${dd} ${hh}:${mm}`;
-        }
+async function loadAvatars() {
+  try {
+    const res = await fetch('/personas');
+    const data = await res.json();
+    avatars.user = data.user?.avatar || null;
+    avatars.claude = data.claude?.avatar || null;
+    avatars.gemini = data.gemini?.avatar || null;
+  } catch(e) {}
+}
 
-        // ===== 頭像 =====
-        async function loadAvatars() {
-            try {
-                const res = await fetch('/personas');
-                const data = await res.json();
-                avatars.user = data.user?.avatar || null;
-                avatars.claude = data.claude?.avatar || null;
-                avatars.gemini = data.gemini?.avatar || null;
-            } catch(e) {}
-        }
+function makeAvatar(role) {
+  const target = role === 'user' ? 'user' : currentAI;
+  const av = document.createElement('div');
+  av.className = `avatar ${role}`;
+  const src = avatars[target];
+  if (src && src.startsWith('data:')) {
+    const img = document.createElement('img');
+    img.src = src;
+    av.appendChild(img);
+  } else {
+    av.textContent = names[target]?.[0] || '？';
+  }
+  av.addEventListener('mousedown', () => startHold(target));
+  av.addEventListener('touchstart', () => startHold(target), { passive: true });
+  av.addEventListener('mouseup', cancelHold);
+  av.addEventListener('touchend', cancelHold);
+  av.addEventListener('mouseleave', cancelHold);
+  return av;
+}
 
-        function makeAvatar(role) {
-            const target = role === 'user' ? 'user' : currentAI;
-            const av = document.createElement('div');
-            av.className = `avatar ${role}`;
-            const src = avatars[target];
-            if (src && src.startsWith('data:')) {
-                const img = document.createElement('img');
-                img.src = src;
-                av.appendChild(img);
-            } else {
-                av.textContent = names[target]?.[0] || '？';
-            }
-            av.addEventListener('mousedown', () => startHold(target));
-            av.addEventListener('touchstart', () => startHold(target), { passive: true });
-            av.addEventListener('mouseup', cancelHold);
-            av.addEventListener('touchend', cancelHold);
-            av.addEventListener('mouseleave', cancelHold);
-            return av;
-        }
+async function handleImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('imagePreviewThumb').src = URL.createObjectURL(file);
+  document.getElementById('imagePreviewBar').classList.add('show');
+  pendingImageUrl = null;
+  const formData = new FormData();
+  formData.append('image', file);
+  try {
+    const res = await fetch('/upload_image', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.url) {
+      pendingImageUrl = data.url;
+    } else {
+      alert('圖片上傳失敗：' + (data.error || '未知錯誤'));
+      removeImage();
+    }
+  } catch(err) {
+    alert('圖片上傳失敗');
+    removeImage();
+  }
+  e.target.value = '';
+}
 
-        // ===== 圖片上傳 =====
-        async function handleImageSelect(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const objectUrl = URL.createObjectURL(file);
-            document.getElementById('imagePreviewThumb').src = objectUrl;
-            document.getElementById('imagePreviewBar').classList.add('show');
-            pendingImageUrl = null;
-            const formData = new FormData();
-            formData.append('image', file);
-            try {
-                const res = await fetch('/upload_image', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.url) {
-                    pendingImageUrl = data.url;
-                } else {
-                    alert('圖片上傳失敗：' + (data.error || '未知錯誤'));
-                    removeImage();
-                }
-            } catch(err) {
-                alert('圖片上傳失敗');
-                removeImage();
-            }
-            e.target.value = '';
-        }
+function removeImage() {
+  pendingImageUrl = null;
+  document.getElementById('imagePreviewBar').classList.remove('show');
+  document.getElementById('imagePreviewThumb').src = '';
+}
 
-        function removeImage() {
-            pendingImageUrl = null;
-            document.getElementById('imagePreviewBar').classList.remove('show');
-            document.getElementById('imagePreviewThumb').src = '';
-        }
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox() { document.getElementById('lightbox').classList.remove('show'); }
 
-        // ===== 燈箱 =====
-        function openLightbox(src) {
-            document.getElementById('lightboxImg').src = src;
-            document.getElementById('lightbox').classList.add('show');
-        }
-        function closeLightbox() {
-            document.getElementById('lightbox').classList.remove('show');
-        }
+async function loadNames() {
+  try {
+    const res = await fetch('/names');
+    const data = await res.json();
+    names.user = data.name_user || names.user;
+    names.claude = data.name_claude || names.claude;
+    names.gemini = data.name_gemini || names.gemini;
+  } catch(e) {}
+  document.getElementById('btn-claude').textContent = names.claude;
+  document.getElementById('btn-gemini').textContent = names.gemini;
+  // 初始化 active 狀態
+  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(currentAI === 'claude' ? 'btn-claude' : 'btn-gemini').classList.add('active');
+}
 
-        // ===== 名字 =====
-        async function loadNames() {
-            try {
-                const res = await fetch('/names');
-                const data = await res.json();
-                names.user = data.name_user || names.user;
-                names.claude = data.name_claude || names.claude;
-                names.gemini = data.name_gemini || names.gemini;
-            } catch(e) {}
-            document.getElementById('btn-claude').textContent = names.claude;
-            document.getElementById('btn-gemini').textContent = names.gemini;
-        }
+async function loadHistory() {
+  const messages = document.getElementById('messages');
+  messages.innerHTML = '';
+  try {
+    const res = await fetch(`/history/${currentAI}`);
+    const data = await res.json();
+    data.history.forEach(m => {
+      const role = m.role === 'user' ? 'user' : 'ai';
+      addMessage(m.content, role, m.image_url, m.created_at);
+    });
+  } catch(e) {}
+}
 
-        // ===== 歷史 =====
-        async function loadHistory() {
-            const messages = document.getElementById('messages');
-            messages.innerHTML = '';
-            try {
-                const res = await fetch(`/history/${currentAI}`);
-                const data = await res.json();
-                data.history.forEach(m => {
-                    const role = m.role === 'user' ? 'user' : 'ai';
-                    addMessage(m.content, role, m.image_url, m.created_at);
-                });
-            } catch(e) {}
-        }
+function switchAI(ai, e) {
+  currentAI = ai;
+  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  loadHistory();
+}
 
-        function switchAI(ai, e) {
-            currentAI = ai;
-            document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            loadHistory();
-        }
+function addMessage(text, role, imageUrl, createdAt) {
+  const target = role === 'user' ? 'user' : currentAI;
+  const displayName = names[target];
+  const row = document.createElement('div');
+  row.className = `message-row ${role}`;
+  const avatar = makeAvatar(role);
+  const block = document.createElement('div');
+  block.className = 'message-block';
+  const nameEl = document.createElement('div');
+  nameEl.className = 'message-name';
+  nameEl.textContent = displayName;
+  const bubble = document.createElement('div');
+  if (imageUrl) {
+    bubble.className = `message ${role} has-img`;
+    const img = document.createElement('img');
+    img.className = 'chat-img';
+    img.src = imageUrl;
+    img.onclick = () => openLightbox(imageUrl);
+    bubble.appendChild(img);
+    if (text) {
+      const cap = document.createElement('div');
+      cap.className = 'img-caption';
+      cap.textContent = text;
+      bubble.appendChild(cap);
+    }
+  } else {
+    bubble.className = `message ${role}`;
+    bubble.textContent = text;
+  }
+  const timeEl = document.createElement('div');
+  timeEl.className = 'message-time';
+  timeEl.textContent = formatTime(createdAt || new Date().toISOString());
+  block.appendChild(nameEl);
+  block.appendChild(bubble);
+  block.appendChild(timeEl);
+  row.appendChild(avatar);
+  row.appendChild(block);
+  document.getElementById('messages').appendChild(row);
+  document.getElementById('messages').scrollTop = 999999;
+}
 
-        // ===== 渲染訊息 =====
-        function addMessage(text, role, imageUrl, createdAt) {
-            const target = role === 'user' ? 'user' : currentAI;
-            const displayName = names[target];
+function startHold(target) { holdTimer = setTimeout(() => openModal(target), 600); }
+function cancelHold() { clearTimeout(holdTimer); }
+function openModal(target) {
+  editingTarget = target;
+  document.getElementById('modal-title').textContent =
+    target === 'user' ? '修改你的名稱' : `修改 ${names[target]} 的名稱`;
+  document.getElementById('modal-input').value = names[target];
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modal-input').focus();
+}
+function closeModal() { document.getElementById('modal').classList.remove('show'); editingTarget = null; }
+async function confirmName() {
+  const val = document.getElementById('modal-input').value.trim();
+  if (!val || !editingTarget) return;
+  names[editingTarget] = val;
+  const keyMap = { user: 'name_user', claude: 'name_claude', gemini: 'name_gemini' };
+  await fetch('/names', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: keyMap[editingTarget], name: val })
+  });
+  if (editingTarget === 'claude') document.getElementById('btn-claude').textContent = val;
+  if (editingTarget === 'gemini') document.getElementById('btn-gemini').textContent = val;
+  closeModal();
+  loadHistory();
+}
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmName();
+  if (e.key === 'Escape') closeModal();
+});
 
-            const row = document.createElement('div');
-            row.className = `message-row ${role}`;
+function handleKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+function insertNewline() {
+  const el = document.getElementById('input');
+  const s = el.selectionStart, end = el.selectionEnd;
+  el.value = el.value.slice(0, s) + '\n' + el.value.slice(end);
+  el.selectionStart = el.selectionEnd = s + 1;
+  autoGrow(el);
+  el.focus();
+}
+function generateMessageId() {
+  return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+}
 
-            const avatar = makeAvatar(role);
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const msg = input.value.trim();
+  if (!msg && !pendingImageUrl) return;
+  input.value = '';
+  input.style.height = 'auto';
+  const imageUrl = pendingImageUrl;
+  removeImage();
+  const messageId = generateMessageId();
+  const sentAt = new Date().toISOString();
+  addMessage(msg, 'user', imageUrl, sentAt);
+  await sendToServer(msg, messageId, currentAI, imageUrl);
+}
 
-            const block = document.createElement('div');
-            block.className = 'message-block';
-
-            const nameEl = document.createElement('div');
-            nameEl.className = 'message-name';
-            nameEl.textContent = displayName;
-
-            const bubble = document.createElement('div');
-
-            if (imageUrl) {
-                bubble.className = `message ${role} has-img`;
-                const img = document.createElement('img');
-                img.className = 'chat-img';
-                img.src = imageUrl;
-                img.alt = '圖片';
-                img.onclick = () => openLightbox(imageUrl);
-                bubble.appendChild(img);
-                if (text) {
-                    const cap = document.createElement('div');
-                    cap.className = 'img-caption';
-                    cap.textContent = text;
-                    bubble.appendChild(cap);
-                }
-            } else {
-                bubble.className = `message ${role}`;
-                bubble.textContent = text;
-            }
-
-            // 時間戳
-            const timeEl = document.createElement('div');
-            timeEl.className = 'message-time';
-            timeEl.textContent = formatTime(createdAt || new Date().toISOString());
-
-            block.appendChild(nameEl);
-            block.appendChild(bubble);
-            block.appendChild(timeEl);
-            row.appendChild(avatar);
-            row.appendChild(block);
-            document.getElementById('messages').appendChild(row);
-            document.getElementById('messages').scrollTop = 999999;
-        }
-
-        // ===== 長按改名 =====
-        function startHold(target) { holdTimer = setTimeout(() => openModal(target), 600); }
-        function cancelHold() { clearTimeout(holdTimer); }
-        function openModal(target) {
-            editingTarget = target;
-            document.getElementById('modal-title').textContent =
-                target === 'user' ? '修改你的名稱' : `修改 ${names[target]} 的名稱`;
-            document.getElementById('modal-input').value = names[target];
-            document.getElementById('modal').classList.add('show');
-            document.getElementById('modal-input').focus();
-        }
-        function closeModal() {
-            document.getElementById('modal').classList.remove('show');
-            editingTarget = null;
-        }
-        async function confirmName() {
-            const val = document.getElementById('modal-input').value.trim();
-            if (!val || !editingTarget) return;
-            names[editingTarget] = val;
-            const keyMap = { user: 'name_user', claude: 'name_claude', gemini: 'name_gemini' };
-            await fetch('/names', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: keyMap[editingTarget], name: val })
-            });
-            if (editingTarget === 'claude') document.getElementById('btn-claude').textContent = val;
-            if (editingTarget === 'gemini') document.getElementById('btn-gemini').textContent = val;
-            closeModal();
-            loadHistory();
-        }
-        document.getElementById('modal-input').addEventListener('keydown', e => {
-            if (e.key === 'Enter') confirmName();
-            if (e.key === 'Escape') closeModal();
+async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
+  const row = addPendingRow();
+  try {
+    const res = await fetch(`/chat/${ai}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
+    });
+    if (!res.ok) throw new Error('server error');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    row.remove();
+    addMessage(data.reply, 'ai', null, new Date().toISOString());
+  } catch(e) {
+    row.remove();
+    if (!isRetry) {
+      const retryRow = addPendingRow();
+      try {
+        const res2 = await fetch(`/chat/${ai}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
         });
+        if (!res2.ok) throw new Error('server error');
+        const data2 = await res2.json();
+        if (data2.error) throw new Error(data2.error);
+        retryRow.remove();
+        addMessage(data2.reply, 'ai', null, new Date().toISOString());
+        return;
+      } catch(e2) { retryRow.remove(); }
+    }
+    addFailedRow(msg, messageId, ai, imageUrl);
+  }
+}
 
-        // ===== 輸入框 =====
-        function handleKeydown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-        }
-        function autoGrow(el) {
-            el.style.height = 'auto';
-            el.style.height = el.scrollHeight + 'px';
-        }
-        function insertNewline() {
-            const el = document.getElementById('input');
-            const s = el.selectionStart, end = el.selectionEnd;
-            el.value = el.value.slice(0, s) + '\n' + el.value.slice(end);
-            el.selectionStart = el.selectionEnd = s + 1;
-            autoGrow(el);
-            el.focus();
-        }
-        function generateMessageId() {
-            return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-        }
+function addPendingRow() {
+  const row = document.createElement('div');
+  row.className = 'message-row ai';
+  row.innerHTML = `<div class="message-block"><div class="message ai" style="opacity:0.5;">…</div></div>`;
+  document.getElementById('messages').appendChild(row);
+  document.getElementById('messages').scrollTop = 999999;
+  return row;
+}
 
-        // ===== 送出 =====
-        async function sendMessage() {
-            const input = document.getElementById('input');
-            const msg = input.value.trim();
-            if (!msg && !pendingImageUrl) return;
-            input.value = '';
-            input.style.height = 'auto';
+function addFailedRow(msg, messageId, ai, imageUrl) {
+  const row = document.createElement('div');
+  row.className = 'message-row ai';
+  const block = document.createElement('div');
+  block.className = 'message-block';
+  const bubble = document.createElement('div');
+  bubble.className = 'message ai';
+  bubble.style.color = 'var(--danger)';
+  bubble.textContent = '連線失敗，訊息可能未送達。';
+  const retryBtn = document.createElement('button');
+  retryBtn.textContent = '重試';
+  retryBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:14px;font-size:13px;cursor:pointer;align-self:flex-start;';
+  retryBtn.onclick = async () => { row.remove(); await sendToServer(msg, messageId, ai, imageUrl); };
+  block.appendChild(bubble);
+  block.appendChild(retryBtn);
+  row.appendChild(block);
+  document.getElementById('messages').appendChild(row);
+  document.getElementById('messages').scrollTop = 999999;
+}
 
-            const imageUrl = pendingImageUrl;
-            removeImage();
-            const messageId = generateMessageId();
-            const sentAt = new Date().toISOString();
-            addMessage(msg, 'user', imageUrl, sentAt);
-            await sendToServer(msg, messageId, currentAI, imageUrl);
-        }
-
-        async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
-            const row = addPendingRow();
-            try {
-                const res = await fetch(`/chat/${ai}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
-                });
-                if (!res.ok) throw new Error('server error');
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                row.remove();
-                addMessage(data.reply, 'ai', null, new Date().toISOString());
-            } catch(e) {
-                row.remove();
-                if (!isRetry) {
-                    // 自動重試一次
-                    const retryRow = addPendingRow();
-                    try {
-                        const res2 = await fetch(`/chat/${ai}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
-                        });
-                        if (!res2.ok) throw new Error('server error');
-                        const data2 = await res2.json();
-                        if (data2.error) throw new Error(data2.error);
-                        retryRow.remove();
-                        addMessage(data2.reply, 'ai', null, new Date().toISOString());
-                        return;
-                    } catch(e2) {
-                        retryRow.remove();
-                    }
-                }
-                addFailedRow(msg, messageId, ai, imageUrl);
-            }
-        }
-
-        function addPendingRow() {
-            const row = document.createElement('div');
-            row.className = 'message-row ai';
-            row.innerHTML = `<div class="message-block"><div class="message ai" style="opacity:0.5;">…</div></div>`;
-            document.getElementById('messages').appendChild(row);
-            document.getElementById('messages').scrollTop = 999999;
-            return row;
-        }
-
-        function addFailedRow(msg, messageId, ai, imageUrl) {
-            const row = document.createElement('div');
-            row.className = 'message-row ai';
-            const block = document.createElement('div');
-            block.className = 'message-block';
-            const bubble = document.createElement('div');
-            bubble.className = 'message ai';
-            bubble.style.color = 'var(--danger)';
-            bubble.textContent = '連線失敗，訊息可能未送達。';
-            const retryBtn = document.createElement('button');
-            retryBtn.textContent = '重試';
-            retryBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:14px;font-size:13px;cursor:pointer;align-self:flex-start;';
-            retryBtn.onclick = async () => { row.remove(); await sendToServer(msg, messageId, ai, imageUrl); };
-            block.appendChild(bubble);
-            block.appendChild(retryBtn);
-            row.appendChild(block);
-            document.getElementById('messages').appendChild(row);
-            document.getElementById('messages').scrollTop = 999999;
-        }
-
-        async function init() {
-            await loadAvatars();
-            await loadNames();
-            await loadHistory();
-        }
-        init();
-    </script>
-    <script src="/theme.js"></script>
+async function init() {
+  await loadAvatars();
+  await loadNames();
+  await loadHistory();
+}
+init();
+</script>
+<script src="/theme.js"></script>
 </body>
 </html>

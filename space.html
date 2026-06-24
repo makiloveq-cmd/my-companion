@@ -2,7 +2,8 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>共同空間 - Rifugio</title>
     <link rel="stylesheet" href="/theme.css">
     <style>
@@ -180,7 +181,19 @@
             border: none; border-radius: 12px;
             color: #fff; font-size: 15px; cursor: pointer; margin-top: 4px;
         }
-    </style>
+    
+    /* iPhone safe area */
+    .input-area, .tab-bar, .reply-bar {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    
+
+    /* Header safe area top */
+    .header, .ph {
+      padding-top: max(14px, env(safe-area-inset-top));
+    }
+    
+</style>
 </head>
 <body>
     <div class="header">

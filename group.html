@@ -2,7 +2,8 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>群聊 - Rifugio</title>
     <link rel="stylesheet" href="/theme.css">
     <style>
@@ -165,10 +166,26 @@
         }
         .lightbox.show { display: flex; }
         .lightbox img { max-width: 94vw; max-height: 90vh; border-radius: 10px; }
-    </style>
+    
+    /* iPhone safe area */
+    .input-area, .tab-bar, .reply-bar {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    
+
+    /* Header safe area top */
+    .header, .ph {
+      padding-top: max(14px, env(safe-area-inset-top));
+    }
+    
+
+    .header-back { font-size: 22px; color: var(--accent); cursor: pointer; padding: 0 8px 0 0; line-height: 1; text-decoration: none; }
+    
+</style>
 </head>
 <body>
     <div class="header">
+    <a class="header-back" href="/chatlist_page">‹</a>
         <h1>✦ 三人空間</h1>
     </div>
     <div class="messages" id="messages"></div>
