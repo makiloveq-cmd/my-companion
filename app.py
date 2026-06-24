@@ -251,6 +251,8 @@ def persona_page():
 
 # ===== 空間設定 =====
 
+SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "gemini_spots"]
+
 @app.route("/space_settings", methods=["GET"])
 def space_settings_get():
     return jsonify(get_space_settings())
@@ -258,7 +260,7 @@ def space_settings_get():
 @app.route("/space_settings", methods=["POST"])
 def space_settings_post():
     data = request.json
-    for key in ["room_desc", "atmosphere", "furniture"]:
+    for key in SPACE_SETTING_KEYS:
         val = data.get(key, "")
         supabase.table("space_settings").upsert({
             "key": key,
@@ -266,6 +268,101 @@ def space_settings_post():
             "updated_at": datetime.utcnow().isoformat()
         }).execute()
     return jsonify({"status": "ok"})
+
+# ===== 背景行動 =====
+
+def get_random_spot(bot_key, space):
+    """從慣常位置隨機選一個"""
+    key = "claude_spots" if bot_key == "claude" else "gemini_spots"
+    spots_raw = space.get(key, "")
+    if spots_raw:
+        spots = [s.strip() for s in spots_raw.replace("、", ",").replace("，", ",").split(",") if s.strip()]
+        if spots:
+            return random.choice(spots)
+    return None
+
+def generate_background_action(bot_key):
+    """生成一條背景行動並存入 space_messages"""
+    personas = get_personas()
+    bot = personas.get(bot_key, {})
+    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
+    persona = bot.get("persona") or ""
+    space = get_space_settings()
+
+    spot = get_random_spot(bot_key, space)
+    spot_hint = f"目前在：{spot}。" if spot else ""
+
+    space_desc_parts = []
+    if space.get("room_desc"):
+        space_desc_parts.append(f"空間：{space['room_desc']}")
+    if space.get("layout"):
+        space_desc_parts.append(f"布局：{space['layout']}")
+    if space.get("furniture"):
+        space_desc_parts.append(f"家具：{space['furniture']}")
+    if space.get("corner_details"):
+        space_desc_parts.append(f"細節：{space['corner_details']}")
+    if space.get("atmosphere"):
+        space_desc_parts.append(f"氛圍：{space['atmosphere']}")
+    space_desc = "\n".join(space_desc_parts)
+
+    persona_line = f"個性：{persona}。" if persona else ""
+    system_prompt = (
+        f"你是{name}。{persona_line}"
+        f"然然現在不在，你獨自在共同的空間裡。\n"
+        f"{space_desc}\n"
+        f"{spot_hint}\n"
+        f"請用第三人稱，寫一句你現在在做什麼的動作描述，像小說旁白一樣，有具體的感官細節，50字以內。"
+        f"不要加任何前綴或名字，直接從動作開始。"
+    )
+    user_prompt = "寫一句你現在的動作。"
+
+    try:
+        if bot_key == "claude":
+            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=150,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+                timeout=30
+            )
+            action = response.content[0].text.strip()
+            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+        else:
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+            )
+            action = response.text.strip()
+            try:
+                record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+            except:
+                pass
+
+        supabase.table("space_messages").insert({
+            "speaker": bot_key,
+            "content": action,
+            "message_type": "background"
+        }).execute()
+        return action
+    except Exception as e:
+        return None
+
+def maybe_generate_background_actions():
+    """進入空間時，隨機決定是否生成背景行動"""
+    last = supabase.table("space_messages").select("created_at").eq("message_type", "background").order("id", desc=True).limit(1).execute().data
+    if last:
+        last_time_str = last[0]["created_at"].replace("Z", "")
+        last_time = datetime.fromisoformat(last_time_str)
+        hours_passed = (datetime.utcnow() - last_time).total_seconds() / 3600
+        if hours_passed < 1:
+            return
+    if random.random() < 0.5:
+        bot_key = random.choice(["claude", "gemini"])
+        generate_background_action(bot_key)
 
 # ===== 空間互動 =====
 
@@ -281,9 +378,6 @@ def build_space_system_prompt(bot_key):
     you_name = me.get("name") or "然然"
 
     space = get_space_settings()
-    room_desc = space.get("room_desc", "")
-    atmosphere = space.get("atmosphere", "")
-    furniture = space.get("furniture", "")
 
     lines = [
         f"現在台灣時間：{get_tw_time_str()}。",
@@ -293,14 +387,26 @@ def build_space_system_prompt(bot_key):
     if bot.get("persona"):
         lines.append(f"【你的個性】{bot['persona']}")
 
-    if room_desc or atmosphere or furniture:
-        lines.append("【你們共同所在的空間】")
-        if room_desc:
-            lines.append(f"空間描述：{room_desc}")
-        if furniture:
-            lines.append(f"家具擺設：{furniture}")
-        if atmosphere:
-            lines.append(f"氛圍：{atmosphere}")
+    # 空間資訊（擴充版）
+    space_parts = []
+    if space.get("room_desc"):
+        space_parts.append(f"空間描述：{space['room_desc']}")
+    if space.get("layout"):
+        space_parts.append(f"房間布局：{space['layout']}")
+    if space.get("furniture"):
+        space_parts.append(f"家具擺設：{space['furniture']}")
+    if space.get("corner_details"):
+        space_parts.append(f"角落細節：{space['corner_details']}")
+    if space.get("atmosphere"):
+        space_parts.append(f"氛圍：{space['atmosphere']}")
+
+    # 慣常位置
+    spot = get_random_spot(bot_key, space)
+    if spot:
+        space_parts.append(f"你現在在：{spot}")
+
+    if space_parts:
+        lines.append("【共同空間】\n" + "\n".join(space_parts))
 
     you_persona = me.get("persona") or ""
     lines.append(f"【{you_name}的資訊】個性：{you_persona}" if you_persona else f"對方是{you_name}。")
@@ -325,6 +431,7 @@ def build_space_system_prompt(bot_key):
 
 @app.route("/space/messages", methods=["GET"])
 def space_messages_get():
+    maybe_generate_background_actions()
     rows = supabase.table("space_messages").select("*").order("id").execute().data
     return jsonify({"messages": rows})
 
@@ -334,7 +441,8 @@ def space_send():
     content = data.get("content", "")
     supabase.table("space_messages").insert({
         "speaker": "user",
-        "content": content
+        "content": content,
+        "message_type": "chat"
     }).execute()
     return jsonify({"status": "ok"})
 
@@ -360,7 +468,12 @@ def space_reply(bot_key):
         elif m["speaker"] == "user":
             history.append({"role": "user", "content": m["content"]})
         else:
-            history.append({"role": "user", "content": f"（{other_name}：{m['content']}）"})
+            # 背景行動也納入上下文，但標記一下
+            msg_type = m.get("message_type", "chat")
+            if msg_type == "background":
+                history.append({"role": "user", "content": f"（{other_name} 之前：{m['content']}）"})
+            else:
+                history.append({"role": "user", "content": f"（{other_name}：{m['content']}）"})
 
     merged = []
     for h in history:
@@ -406,11 +519,22 @@ def space_reply(bot_key):
 
         supabase.table("space_messages").insert({
             "speaker": bot_key,
-            "content": reply
+            "content": reply,
+            "message_type": "chat"
         }).execute()
         return jsonify({"reply": reply, "name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/space/background/<bot_key>", methods=["POST"])
+def space_background(bot_key):
+    """手動觸發背景行動（前端用）"""
+    if bot_key not in ["claude", "gemini"]:
+        return jsonify({"error": "invalid bot"}), 400
+    action = generate_background_action(bot_key)
+    if action:
+        return jsonify({"action": action})
+    return jsonify({"error": "failed"}), 500
 
 @app.route("/space_page")
 def space_page():
@@ -756,19 +880,8 @@ def usage_page():
 # ===== 日記功能 =====
 
 AI_BOTS = {
-    "claude": {
-        "default_name": "晏",
-        "api": "anthropic"
-    },
-    "gemini": {
-        "default_name": "熠",
-        "api": "gemini"
-    }
-    # 未來加 grok：
-    # "grok": {
-    #     "default_name": "宸",
-    #     "api": "grok"
-    # }
+    "claude": {"default_name": "晏", "api": "anthropic"},
+    "gemini": {"default_name": "熠", "api": "gemini"}
 }
 
 def get_bot_name(bot_key):
@@ -808,9 +921,6 @@ def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
         except:
             pass
         return reply
-    # 未來加 grok：
-    # elif bot_key == "grok":
-    #     ...
     else:
         raise ValueError(f"Unknown bot_key: {bot_key}")
 
@@ -839,8 +949,7 @@ def maybe_ai_diary_entry():
         if last:
             last_time_str = last[0]["created_at"].replace("Z", "")
             last_time = datetime.fromisoformat(last_time_str)
-            now = datetime.utcnow()
-            if (now - last_time).total_seconds() / 3600 < 6:
+            if (datetime.utcnow() - last_time).total_seconds() / 3600 < 6:
                 continue
         if random.random() < 0.2:
             try:

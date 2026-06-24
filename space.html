@@ -22,71 +22,72 @@
             display: flex; align-items: center; gap: 12px;
             border-bottom: 1px solid var(--border);
         }
-        .header-back {
-            font-size: 14px; color: var(--accent);
-            cursor: pointer; padding: 4px 8px 4px 0;
-        }
+        .header-back { font-size: 14px; color: var(--accent); cursor: pointer; padding: 4px 8px 4px 0; }
         .header h1 { font-size: 17px; font-weight: 400; flex: 1; }
-        .header-setting {
-            font-size: 20px; cursor: pointer; color: var(--text-3);
-            padding: 4px;
-        }
+        .header-setting { font-size: 20px; cursor: pointer; color: var(--text-3); padding: 4px; }
 
         .messages {
             flex: 1; overflow-y: auto;
             padding: 24px 20px;
-            display: flex; flex-direction: column; gap: 24px;
+            display: flex; flex-direction: column; gap: 20px;
         }
 
+        /* 然然 */
         .entry-user {
-            align-self: flex-end;
-            max-width: 75%;
-            background: var(--bubble-user);
-            color: #fff;
+            align-self: flex-end; max-width: 75%;
+            background: var(--bubble-user); color: #fff;
             padding: 12px 16px;
             border-radius: 16px 16px 4px 16px;
-            font-size: 15px; line-height: 1.7;
-            white-space: pre-wrap;
+            font-size: 15px; line-height: 1.7; white-space: pre-wrap;
         }
-        .entry-user .entry-time {
-            font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right;
-        }
+        .entry-user .entry-time { font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right; }
 
+        /* AI 對話 */
         .entry-ai {
-            align-self: flex-start;
-            max-width: 88%;
+            align-self: flex-start; max-width: 88%;
             display: flex; gap: 10px; align-items: flex-start;
         }
         .entry-ai .av {
             width: 36px; height: 36px; border-radius: 50%;
             background: var(--surface3); color: var(--text-2);
             display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 500; flex-shrink: 0;
-            overflow: hidden;
+            font-size: 13px; font-weight: 500; flex-shrink: 0; overflow: hidden;
         }
         .entry-ai .av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-        .entry-ai .content-wrap {
-            display: flex; flex-direction: column; gap: 4px;
-        }
-        .entry-ai .speaker-name {
-            font-size: 12px; color: var(--text-3); padding: 0 2px;
-        }
+        .entry-ai .content-wrap { display: flex; flex-direction: column; gap: 4px; }
+        .entry-ai .speaker-name { font-size: 12px; color: var(--text-3); padding: 0 2px; }
         .entry-ai .bubble {
-            background: var(--bubble-ai);
-            border: 1px solid var(--border);
+            background: var(--bubble-ai); border: 1px solid var(--border);
             border-radius: 4px 16px 16px 16px;
-            padding: 14px 16px;
-            font-size: 15px; line-height: 1.9;
-            color: var(--text);
-            white-space: pre-wrap;
+            padding: 14px 16px; font-size: 15px; line-height: 1.9;
+            color: var(--text); white-space: pre-wrap;
         }
-        .entry-ai .entry-time {
-            font-size: 11px; color: var(--text-3); padding: 0 2px;
-        }
+        .entry-ai .entry-time { font-size: 11px; color: var(--text-3); padding: 0 2px; }
 
-        .loading-wrap {
+        /* 背景行動 — 淡色斜體敘述 */
+        .entry-background {
+            align-self: flex-start; max-width: 88%;
             display: flex; gap: 10px; align-items: flex-start;
         }
+        .entry-background .av {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--surface2); color: var(--text-3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; flex-shrink: 0; overflow: hidden; opacity: 0.6;
+        }
+        .entry-background .av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .entry-background .content-wrap { display: flex; flex-direction: column; gap: 3px; }
+        .entry-background .speaker-name { font-size: 11px; color: var(--text-3); padding: 0 2px; opacity: 0.7; }
+        .entry-background .bg-text {
+            font-size: 13px; line-height: 1.7;
+            color: var(--text-3); font-style: italic;
+            padding: 2px 4px;
+            white-space: pre-wrap;
+        }
+        .entry-background .entry-time { font-size: 11px; color: var(--text-3); padding: 0 2px; opacity: 0.6; }
+
+        /* 載入 */
+        .loading-wrap { display: flex; gap: 10px; align-items: flex-start; }
         .loading-wrap .av {
             width: 36px; height: 36px; border-radius: 50%;
             background: var(--surface3);
@@ -107,48 +108,29 @@
             border-top: 1px solid var(--border);
             padding: 10px 12px 14px;
         }
-
-        /* 回應對象選擇器 */
-        .reply-selector {
-            display: flex; gap: 6px; margin-bottom: 8px; padding: 0 2px;
-        }
+        .reply-selector { display: flex; gap: 6px; margin-bottom: 8px; padding: 0 2px; }
         .reply-option {
             display: flex; align-items: center; gap: 4px;
             font-size: 12px; color: var(--text-3);
             cursor: pointer; padding: 4px 10px;
-            border-radius: 20px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            transition: all 0.15s;
-            user-select: none;
+            border-radius: 20px; border: 1px solid var(--border);
+            background: var(--bg); transition: all 0.15s; user-select: none;
         }
-        .reply-option.active {
-            background: var(--accent);
-            color: #fff;
-            border-color: var(--accent);
-        }
+        .reply-option.active { background: var(--accent); color: #fff; border-color: var(--accent); }
         .reply-option input { display: none; }
-
-        .input-hint {
-            font-size: 12px; color: var(--text-3);
-            margin-bottom: 6px; padding: 0 2px;
-        }
-        .input-row {
-            display: flex; gap: 8px; align-items: flex-end;
-        }
+        .input-hint { font-size: 12px; color: var(--text-3); margin-bottom: 6px; padding: 0 2px; }
+        .input-row { display: flex; gap: 8px; align-items: flex-end; }
         .input-wrapper { flex: 1; position: relative; }
         .input-wrapper textarea {
             width: 100%; padding: 9px 36px 9px 14px;
             background: var(--bg); border: 1px solid var(--border);
             border-radius: 22px; color: var(--text);
             font-size: 15px; outline: none; resize: none;
-            font-family: inherit; max-height: 140px; line-height: 1.6;
-            overflow-y: auto;
+            font-family: inherit; max-height: 140px; line-height: 1.6; overflow-y: auto;
         }
         .newline-btn {
             position: absolute; right: 8px; bottom: 7px;
-            width: 24px; height: 24px;
-            border: none; background: transparent;
+            width: 24px; height: 24px; border: none; background: transparent;
             color: var(--text-3); border-radius: 6px; font-size: 13px;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
@@ -162,6 +144,7 @@
         .send-btn:active { opacity: 0.8; }
         .send-btn:disabled { opacity: 0.4; cursor: default; }
 
+        /* 設定 Modal */
         .modal-overlay {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.6); z-index: 100;
@@ -171,13 +154,19 @@
         .modal {
             background: var(--surface); border-radius: 20px 20px 0 0;
             padding: 24px 20px 36px; width: 100%; max-width: 600px;
-            display: flex; flex-direction: column; gap: 16px;
+            display: flex; flex-direction: column; gap: 14px;
+            max-height: 85vh; overflow-y: auto;
         }
         .modal-title {
             font-size: 16px; font-weight: 500;
             display: flex; justify-content: space-between; align-items: center;
         }
         .modal-close { font-size: 20px; cursor: pointer; color: var(--text-3); }
+        .modal-section-title {
+            font-size: 11px; color: var(--text-3); text-transform: uppercase;
+            letter-spacing: 0.08em; padding-top: 4px;
+            border-top: 1px solid var(--border); margin-top: 4px;
+        }
         .modal-field { display: flex; flex-direction: column; gap: 6px; }
         .modal-label { font-size: 13px; color: var(--text-2); }
         .modal-field textarea {
@@ -189,7 +178,7 @@
         .modal-save {
             padding: 12px; background: var(--accent);
             border: none; border-radius: 12px;
-            color: #fff; font-size: 15px; cursor: pointer;
+            color: #fff; font-size: 15px; cursor: pointer; margin-top: 4px;
         }
     </style>
 </head>
@@ -203,7 +192,6 @@
     <div class="messages" id="messages"></div>
 
     <div class="input-area">
-        <!-- 回應對象選擇器 -->
         <div class="reply-selector">
             <label class="reply-option active" id="opt-both" onclick="setReplyMode('both')">
                 <input type="radio" name="replyMode" value="both" checked> 兩個都回
@@ -230,25 +218,48 @@
         </div>
     </div>
 
-    <!-- 空間設定 -->
+    <!-- 空間設定 Modal -->
     <div class="modal-overlay" id="settingModal">
         <div class="modal">
             <div class="modal-title">
                 空間設定
                 <span class="modal-close" onclick="closeSettings()">✕</span>
             </div>
+
+            <div class="modal-section-title">基本氛圍</div>
             <div class="modal-field">
                 <div class="modal-label">空間描述</div>
-                <textarea id="s-room_desc" rows="3" placeholder="這是一間什麼樣的空間？大小、格局、整體感受…"></textarea>
-            </div>
-            <div class="modal-field">
-                <div class="modal-label">家具擺設</div>
-                <textarea id="s-furniture" rows="2" placeholder="沙發、書桌、燈、植物…有什麼家具？"></textarea>
+                <textarea id="s-room_desc" rows="2" placeholder="這是一間什麼樣的空間？整體感受…"></textarea>
             </div>
             <div class="modal-field">
                 <div class="modal-label">氛圍</div>
                 <textarea id="s-atmosphere" rows="2" placeholder="溫暖、安靜、昏黃的燈光、總是放著音樂…"></textarea>
             </div>
+
+            <div class="modal-section-title">空間細節</div>
+            <div class="modal-field">
+                <div class="modal-label">房間布局</div>
+                <textarea id="s-layout" rows="2" placeholder="客廳在入口右側、廚房在走廊盡頭、你的房間在二樓…"></textarea>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label">家具擺設</div>
+                <textarea id="s-furniture" rows="2" placeholder="沙發、書桌、燈、植物…"></textarea>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label">角落細節</div>
+                <textarea id="s-corner_details" rows="2" placeholder="書架第二層有仙人掌、玄關有舊木椅、窗邊常有貓…"></textarea>
+            </div>
+
+            <div class="modal-section-title">慣常位置（用逗號或頓號分隔多個地點）</div>
+            <div class="modal-field">
+                <div class="modal-label" id="label-claude-spots">晏常待的地方</div>
+                <textarea id="s-claude_spots" rows="2" placeholder="書房、沙發角落、廚房流理台旁…"></textarea>
+            </div>
+            <div class="modal-field">
+                <div class="modal-label" id="label-gemini-spots">熠常待的地方</div>
+                <textarea id="s-gemini_spots" rows="2" placeholder="窗邊、地板、你的房間門口…"></textarea>
+            </div>
+
             <button class="modal-save" onclick="saveSettings()">儲存</button>
         </div>
     </div>
@@ -257,21 +268,22 @@
         let names = { user: '然然', claude: '晏', gemini: '熠' };
         let avatars = { user: null, claude: null, gemini: null };
         let isSending = false;
-        let replyMode = 'both'; // 'both' | 'claude' | 'gemini'
+        let replyMode = 'both';
 
         function setReplyMode(mode) {
             replyMode = mode;
             document.querySelectorAll('.reply-option').forEach(el => el.classList.remove('active'));
             document.getElementById(`opt-${mode}`).classList.add('active');
-            // 同步更新按鈕名稱顯示
             updateOptLabels();
         }
 
         function updateOptLabels() {
-            const claudeName = names.claude || '晏';
-            const geminiName = names.gemini || '熠';
-            document.getElementById('opt-claude').childNodes[1].textContent = ` 只有${claudeName}`;
-            document.getElementById('opt-gemini').childNodes[1].textContent = ` 只有${geminiName}`;
+            const cn = names.claude || '晏';
+            const gn = names.gemini || '熠';
+            document.getElementById('opt-claude').childNodes[1].textContent = ` 只有${cn}`;
+            document.getElementById('opt-gemini').childNodes[1].textContent = ` 只有${gn}`;
+            document.getElementById('label-claude-spots').textContent = `${cn}常待的地方`;
+            document.getElementById('label-gemini-spots').textContent = `${gn}常待的地方`;
         }
 
         function formatTime(isoStr) {
@@ -285,6 +297,12 @@
             const hh = String(tw.getUTCHours()).padStart(2, '0');
             const mm = String(tw.getUTCMinutes()).padStart(2, '0');
             if (isToday) return `${hh}:${mm}`;
+            const yesterday = new Date(nowTw);
+            yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+            const isYesterday = tw.getUTCFullYear() === yesterday.getUTCFullYear()
+                             && tw.getUTCMonth() === yesterday.getUTCMonth()
+                             && tw.getUTCDate() === yesterday.getUTCDate();
+            if (isYesterday) return `昨天 ${hh}:${mm}`;
             return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
         }
 
@@ -302,9 +320,10 @@
             } catch(e) {}
         }
 
-        function makeAv(speaker) {
+        function makeAv(speaker, dim=false) {
             const av = document.createElement('div');
             av.className = 'av';
+            if (dim) av.style.opacity = '0.5';
             const src = avatars[speaker];
             if (src && src.startsWith('data:')) {
                 const img = document.createElement('img');
@@ -333,6 +352,23 @@
             contentWrap.innerHTML = `
                 <div class="speaker-name">${escHtml(names[speaker] || speaker)}</div>
                 <div class="bubble">${escHtml(content)}</div>
+                <div class="entry-time">${formatTime(createdAt)}</div>
+            `;
+            wrap.appendChild(av);
+            wrap.appendChild(contentWrap);
+            document.getElementById('messages').appendChild(wrap);
+            scrollBottom();
+        }
+
+        function renderBackground(speaker, content, createdAt) {
+            const wrap = document.createElement('div');
+            wrap.className = 'entry-background';
+            const av = makeAv(speaker, true);
+            const contentWrap = document.createElement('div');
+            contentWrap.className = 'content-wrap';
+            contentWrap.innerHTML = `
+                <div class="speaker-name">${escHtml(names[speaker] || speaker)}</div>
+                <div class="bg-text">${escHtml(content)}</div>
                 <div class="entry-time">${formatTime(createdAt)}</div>
             `;
             wrap.appendChild(av);
@@ -381,11 +417,8 @@
                     const res = await fetch(`/space/reply/${speaker}`, { method: 'POST' });
                     const data = await res.json();
                     loading.remove();
-                    if (data.reply) {
-                        renderAI(speaker, data.reply, new Date().toISOString());
-                    } else {
-                        renderRetry(speaker);
-                    }
+                    if (data.reply) renderAI(speaker, data.reply, new Date().toISOString());
+                    else renderRetry(speaker);
                 } catch(e) {
                     loading.remove();
                     renderRetry(speaker);
@@ -418,6 +451,8 @@
                 data.messages.forEach(m => {
                     if (m.speaker === 'user') {
                         renderUser(m.content, m.created_at);
+                    } else if (m.message_type === 'background') {
+                        renderBackground(m.speaker, m.content, m.created_at);
                     } else {
                         renderAI(m.speaker, m.content, m.created_at);
                     }
@@ -447,27 +482,16 @@
             } catch(e) {}
 
             const now = new Date().toISOString();
-
-            // 根據 replyMode 決定誰回
-            const speakers = replyMode === 'both'
-                ? ['claude', 'gemini']
-                : [replyMode];
-
+            const speakers = replyMode === 'both' ? ['claude', 'gemini'] : [replyMode];
             const loadings = {};
             speakers.forEach(s => { loadings[s] = addLoadingRow(s); });
 
             try {
-                const results = await Promise.all(
-                    speakers.map(s => trySpaceReply(s))
-                );
-
+                const results = await Promise.all(speakers.map(s => trySpaceReply(s)));
                 speakers.forEach((s, i) => {
                     loadings[s].remove();
-                    if (results[i]) {
-                        renderAI(s, results[i], now);
-                    } else {
-                        renderRetry(s);
-                    }
+                    if (results[i]) renderAI(s, results[i], now);
+                    else renderRetry(s);
                 });
             } catch(e) {
                 speakers.forEach(s => {
@@ -481,10 +505,7 @@
         }
 
         function handleKeydown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendAction();
-            }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAction(); }
         }
         function autoGrow(el) {
             el.style.height = 'auto';
@@ -520,8 +541,12 @@
                 const res = await fetch('/space_settings');
                 const data = await res.json();
                 document.getElementById('s-room_desc').value = data.room_desc || '';
-                document.getElementById('s-furniture').value = data.furniture || '';
                 document.getElementById('s-atmosphere').value = data.atmosphere || '';
+                document.getElementById('s-layout').value = data.layout || '';
+                document.getElementById('s-furniture').value = data.furniture || '';
+                document.getElementById('s-corner_details').value = data.corner_details || '';
+                document.getElementById('s-claude_spots').value = data.claude_spots || '';
+                document.getElementById('s-gemini_spots').value = data.gemini_spots || '';
             } catch(e) {}
             document.getElementById('settingModal').classList.add('show');
         }
@@ -533,8 +558,12 @@
         async function saveSettings() {
             const payload = {
                 room_desc: document.getElementById('s-room_desc').value,
-                furniture: document.getElementById('s-furniture').value,
                 atmosphere: document.getElementById('s-atmosphere').value,
+                layout: document.getElementById('s-layout').value,
+                furniture: document.getElementById('s-furniture').value,
+                corner_details: document.getElementById('s-corner_details').value,
+                claude_spots: document.getElementById('s-claude_spots').value,
+                gemini_spots: document.getElementById('s-gemini_spots').value,
             };
             try {
                 await fetch('/space_settings', {
