@@ -146,6 +146,8 @@ def build_system_prompt(bot_key):
 
     you_persona = me.get("persona") or ""
     you_job = me.get("job") or ""
+    you_appearance = me.get("appearance") or ""
+    you_outfit = me.get("outfit") or ""
     you_info = f"對方本名是「{you_name}」"
     if you_job:
         you_info += f"，身份：{you_job}"
@@ -153,6 +155,10 @@ def build_system_prompt(bot_key):
         you_info += f"，個性：{you_persona}"
     you_info += "。"
     lines.append(f"【對方資訊】{you_info}")
+    if you_appearance:
+        lines.append(f"【對方外觀】{you_appearance}")
+    if you_outfit:
+        lines.append(f"【對方穿搭】{you_outfit}")
 
     if bot.get("taboo"):
         lines.append(f"【禁止話題】{bot['taboo']}")
@@ -1221,6 +1227,112 @@ def rel_bg_history(bot_key):
         return jsonify({"history": rows})
     except:
         return jsonify({"history": []})
+
+
+# ===== 我的視角（關係分析）=====
+
+def get_perspective(key):
+    """從 Supabase 取得關係分析內容"""
+    try:
+        rows = supabase.table("perspectives").select("*").eq("key", key).order("id", desc=True).limit(1).execute().data
+        return rows[0] if rows else None
+    except:
+        return None
+
+def generate_perspective(key):
+    """生成關係分析"""
+    personas = get_personas()
+    claude_data = personas.get("claude", {})
+    gemini_data = personas.get("gemini", {})
+    user_data = personas.get("user", {})
+
+    claude_name = claude_data.get("name") or "晏"
+    gemini_name = gemini_data.get("name") or "熠"
+    user_name = user_data.get("name") or "然然"
+
+    if key == "claude":
+        # 然然 × 晏
+        memories = load_memory("claude")[-50:]
+        context = "\n".join([f"{'然然' if m['role']=='user' else claude_name}：{m['content']}" for m in memories])
+        rel_bg = claude_data.get("rel_bg") or ""
+        summary = get_latest_summary("claude") or ""
+        user_prompt = (
+            f"【關係背景】{rel_bg}\n\n"
+            f"【記憶摘要】{summary}\n\n"
+            f"【最近對話片段】\n{context}\n\n"
+            f"請用100字以內，客觀描述{user_name}與{claude_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
+        )
+        system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{claude_name}的關係。"
+
+    elif key == "gemini":
+        # 然然 × 熠
+        memories = load_memory("gemini")[-50:]
+        context = "\n".join([f"{'然然' if m['role']=='user' else gemini_name}：{m['content']}" for m in memories])
+        rel_bg = gemini_data.get("rel_bg") or ""
+        summary = get_latest_summary("gemini") or ""
+        user_prompt = (
+            f"【關係背景】{rel_bg}\n\n"
+            f"【記憶摘要】{summary}\n\n"
+            f"【最近對話片段】\n{context}\n\n"
+            f"請用100字以內，客觀描述{user_name}與{gemini_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
+        )
+        system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{gemini_name}的關係。"
+
+    else:
+        # 晏 × 熠
+        space_msgs = supabase.table("space_messages").select("*").order("id", desc=True).limit(40).execute().data
+        space_msgs.reverse()
+        context = "\n".join([
+            f"{'然然' if m['speaker']=='user' else m['speaker']}：{m['content']}"
+            for m in space_msgs
+        ])
+        space_summary = get_latest_space_summary() or ""
+        user_prompt = (
+            f"【空間互動摘要】{space_summary}\n\n"
+            f"【最近空間互動】\n{context}\n\n"
+            f"請用100字以內，描述{claude_name}與{gemini_name}彼此之間的關係與互動模式，從旁觀者角度觀察他們對彼此的態度。"
+        )
+        system = f"你是一個觀察人物關係的旁白者，請根據以下空間互動資料分析{claude_name}與{gemini_name}的關係。"
+
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=300,
+        system=system,
+        messages=[{"role": "user", "content": user_prompt}],
+        timeout=60
+    )
+    content = response.content[0].text.strip()
+    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+
+    try:
+        supabase.table("perspectives").upsert({
+            "key": key,
+            "content": content,
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
+    except:
+        pass
+
+    return content
+
+@app.route("/perspective", methods=["GET"])
+def perspective_get():
+    result = {}
+    for key in ["claude", "gemini", "between"]:
+        row = get_perspective(key)
+        result[key] = {"content": row["content"], "updated_at": row["updated_at"]} if row else None
+    return jsonify(result)
+
+@app.route("/perspective/<key>", methods=["POST"])
+def perspective_post(key):
+    if key not in ["claude", "gemini", "between"]:
+        return jsonify({"error": "invalid key"}), 400
+    try:
+        content = generate_perspective(key)
+        return jsonify({"content": content})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ===== 聊天列表 =====
 

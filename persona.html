@@ -54,6 +54,7 @@
       white-space: nowrap; transition: color .15s, border-color .15s;
     }
     .tab-item.active { color: var(--accent); border-color: var(--accent); }
+    .tab-item.hidden { display: none; }
 
     .tab-body { flex: 1; overflow-y: auto; }
     .tab-panel { display: none; padding-bottom: 40px; }
@@ -86,6 +87,15 @@
     .form-input::placeholder { color: var(--text-3); }
     textarea.form-input { min-height: 60px; }
 
+    /* 唯讀顯示 */
+    .readonly-text {
+      font-size: 14px; color: var(--text); line-height: 1.7;
+      white-space: pre-wrap; min-height: 40px;
+    }
+    .readonly-hint {
+      font-size: 11px; color: var(--text-3); margin-top: 4px;
+    }
+
     .av-hero {
       display: flex; flex-direction: column; align-items: center;
       padding: 24px 16px 8px;
@@ -117,6 +127,37 @@
     }
     .opt-btn.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+    /* 我的視角 */
+    .perspective-card {
+      background: var(--surface);
+      border-top: .5px solid var(--border);
+      border-bottom: .5px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .perspective-header {
+      padding: 14px 16px 6px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .perspective-title { font-size: 14px; font-weight: 500; }
+    .perspective-refresh {
+      font-size: 12px; color: var(--accent);
+      cursor: pointer; padding: 4px 8px;
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+    }
+    .perspective-refresh:disabled { opacity: 0.4; pointer-events: none; }
+    .perspective-body {
+      padding: 8px 16px 14px;
+      font-size: 14px; line-height: 1.8;
+      color: var(--text); white-space: pre-wrap;
+      min-height: 60px;
+    }
+    .perspective-body.loading { color: var(--text-3); font-style: italic; }
+    .perspective-time {
+      padding: 0 16px 10px;
+      font-size: 11px; color: var(--text-3);
+    }
+
     .toast {
       position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.75); color: #fff;
@@ -132,7 +173,7 @@
   <div class="ph">
     <div class="ph-back" onclick="history.back()">‹ 返回</div>
     <div class="ph-title">人物書</div>
-    <div class="ph-save" onclick="savePersona()">儲存</div>
+    <div class="ph-save" id="saveBtn" onclick="savePersona()">儲存</div>
   </div>
 
   <div class="persona-switch">
@@ -144,8 +185,9 @@
   <div class="tab-bar">
     <div class="tab-item active" onclick="switchTab(0)">基本資訊</div>
     <div class="tab-item" onclick="switchTab(1)">個性背景</div>
-    <div class="tab-item" onclick="switchTab(2)">關係設定</div>
-    <div class="tab-item" onclick="switchTab(3)">進階設定</div>
+    <div class="tab-item" id="tab-relation" onclick="switchTab(2)">關係設定</div>
+    <div class="tab-item" id="tab-advanced" onclick="switchTab(3)">進階設定</div>
+    <div class="tab-item hidden" id="tab-perspective" onclick="switchTab(4)">我的視角</div>
   </div>
 
   <input type="file" id="avInput" accept="image/*" style="display:none" onchange="onAvChange(event)">
@@ -194,7 +236,7 @@
       <div class="form-group">
         <div class="form-row">
           <div class="form-label">個性描述 <span class="badge">必填</span></div>
-          <textarea class="form-input" id="f-persona" rows="5" placeholder="描述他的性格，例：外表隨性但內心細膩，不擅長直接說出感受…"></textarea>
+          <textarea class="form-input" id="f-persona" rows="5" placeholder="描述他的性格…"></textarea>
         </div>
         <div class="form-row">
           <div class="form-label">性格標籤 <span id="tagCount" style="font-size:11px;color:var(--text-3)">（最多5個）</span></div>
@@ -206,7 +248,7 @@
       <div class="form-group">
         <div class="form-row">
           <div class="form-label">喜好與興趣</div>
-          <textarea class="form-input" id="f-hobby" rows="2" placeholder="例：深夜騎車、黑膠唱片、討厭人際應酬…"></textarea>
+          <textarea class="form-input" id="f-hobby" rows="2" placeholder="例：深夜騎車、黑膠唱片…"></textarea>
         </div>
       </div>
     </div>
@@ -219,9 +261,15 @@
           <div class="form-label">關係類型</div>
           <div class="opt-group" id="relationGroup"></div>
         </div>
-        <div class="form-row">
+        <div class="form-row" id="rel-bg-row">
           <div class="form-label">關係背景</div>
-          <textarea class="form-input" id="f-rel_bg" rows="4" placeholder="你們是怎麼認識的、相處的故事、特別的回憶…"></textarea>
+          <!-- AI 角色：唯讀 -->
+          <div id="rel-bg-readonly" style="display:none">
+            <div class="readonly-text" id="rel-bg-display">（尚未生成，累積對話後會自動更新）</div>
+            <div class="readonly-hint">由系統根據對話自動更新，不可手動編輯</div>
+          </div>
+          <!-- 然然：可編輯（實際上然然不會進這個 tab）-->
+          <textarea class="form-input" id="f-rel_bg" rows="4" placeholder="你們是怎麼認識的、相處的故事…"></textarea>
         </div>
       </div>
     </div>
@@ -242,6 +290,44 @@
           <textarea class="form-input" id="f-extra" rows="4" placeholder="其他特殊設定或行為指令…"></textarea>
         </div>
       </div>
+    </div>
+
+    <!-- Tab 4: 我的視角（只有然然看到）-->
+    <div class="tab-panel" id="tp4">
+      <div class="sec-label">系統分析的關係總結</div>
+
+      <!-- 然然 × 晏 -->
+      <div class="perspective-card">
+        <div class="perspective-header">
+          <div class="perspective-title" id="title-claude-user">然然 × 晏</div>
+          <button class="perspective-refresh" id="refresh-claude" onclick="refreshPerspective('claude')">重新分析</button>
+        </div>
+        <div class="perspective-body loading" id="body-claude">載入中…</div>
+        <div class="perspective-time" id="time-claude"></div>
+      </div>
+
+      <!-- 然然 × 熠 -->
+      <div class="perspective-card">
+        <div class="perspective-header">
+          <div class="perspective-title" id="title-gemini-user">然然 × 熠</div>
+          <button class="perspective-refresh" id="refresh-gemini" onclick="refreshPerspective('gemini')">重新分析</button>
+        </div>
+        <div class="perspective-body loading" id="body-gemini">載入中…</div>
+        <div class="perspective-time" id="time-gemini"></div>
+      </div>
+
+      <!-- 晏 × 熠 -->
+      <div class="perspective-card">
+        <div class="perspective-header">
+          <div class="perspective-title" id="title-between">晏 × 熠</div>
+          <button class="perspective-refresh" id="refresh-between" onclick="refreshPerspective('between')">重新分析</button>
+        </div>
+        <div class="perspective-body loading" id="body-between">載入中…</div>
+        <div class="perspective-time" id="time-between"></div>
+      </div>
+
+      <!-- 未來：溫珩 -->
+      <!-- <div class="perspective-card">然然 × 溫珩</div> -->
     </div>
 
   </div>
@@ -362,6 +448,30 @@
       document.querySelectorAll('.tab-item').forEach((t, i) => t.classList.toggle('active', i === n));
       document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === n));
       curTab = n;
+      if (n === 4) loadPerspectives();
+    }
+
+    function applyUserMode(isUser) {
+      // 然然模式：隱藏關係設定、進階設定，顯示我的視角
+      document.getElementById('tab-relation').classList.toggle('hidden', isUser);
+      document.getElementById('tab-advanced').classList.toggle('hidden', isUser);
+      document.getElementById('tab-perspective').classList.toggle('hidden', !isUser);
+      // 儲存按鈕
+      document.getElementById('saveBtn').style.display = isUser ? 'block' : 'block';
+      // rel_bg 唯讀（AI 角色）
+      const readonly = document.getElementById('rel-bg-readonly');
+      const editable = document.getElementById('f-rel_bg');
+      if (!isUser) {
+        readonly.style.display = 'block';
+        editable.style.display = 'none';
+        const relBg = allData[currentPersona]?.rel_bg || '';
+        document.getElementById('rel-bg-display').textContent = relBg || '（尚未生成，累積對話後會自動更新）';
+      } else {
+        readonly.style.display = 'none';
+        editable.style.display = 'block';
+      }
+      // 然然切換時跳回 tab 0
+      if (isUser && curTab > 1) switchTab(0);
     }
 
     function switchPersona(key) {
@@ -370,6 +480,7 @@
       document.querySelectorAll('.ps-btn').forEach(b => b.classList.remove('active'));
       document.getElementById(`ps-${key}`).classList.add('active');
       loadCurrentFromCache();
+      applyUserMode(key === 'user');
     }
 
     const TEXT_FIELDS = ['name','job','appearance','outfit','persona','hobby','rel_bg','taboo','extra'];
@@ -416,6 +527,71 @@
       }
     }
 
+    // ===== 我的視角 =====
+
+    function formatTime(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+      return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${String(tw.getUTCHours()).padStart(2,'0')}:${String(tw.getUTCMinutes()).padStart(2,'0')} 更新`;
+    }
+
+    async function loadPerspectives() {
+      const names = {
+        claude: allData.claude?.name || '晏',
+        gemini: allData.gemini?.name || '熠',
+        user: allData.user?.name || '然然'
+      };
+      document.getElementById('title-claude-user').textContent = `${names.user} × ${names.claude}`;
+      document.getElementById('title-gemini-user').textContent = `${names.user} × ${names.gemini}`;
+      document.getElementById('title-between').textContent = `${names.claude} × ${names.gemini}`;
+
+      try {
+        const res = await fetch('/perspective');
+        const data = await res.json();
+        ['claude', 'gemini', 'between'].forEach(key => {
+          const body = document.getElementById(`body-${key}`);
+          const time = document.getElementById(`time-${key}`);
+          if (data[key]?.content) {
+            body.textContent = data[key].content;
+            body.classList.remove('loading');
+            time.textContent = formatTime(data[key].updated_at);
+          } else {
+            body.textContent = '尚未生成，點右上角重新分析。';
+            body.classList.add('loading');
+          }
+        });
+      } catch(e) {
+        ['claude', 'gemini', 'between'].forEach(key => {
+          document.getElementById(`body-${key}`).textContent = '載入失敗';
+        });
+      }
+    }
+
+    async function refreshPerspective(key) {
+      const btn = document.getElementById(`refresh-${key}`);
+      btn.disabled = true;
+      btn.textContent = '分析中…';
+      const body = document.getElementById(`body-${key}`);
+      body.textContent = '分析中，請稍候…';
+      body.classList.add('loading');
+      try {
+        const res = await fetch(`/perspective/${key}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.content) {
+          body.textContent = data.content;
+          body.classList.remove('loading');
+          document.getElementById(`time-${key}`).textContent = formatTime(new Date().toISOString());
+        } else {
+          body.textContent = '分析失敗，請稍後再試。';
+        }
+      } catch(e) {
+        body.textContent = '分析失敗，請稍後再試。';
+      }
+      btn.disabled = false;
+      btn.textContent = '重新分析';
+    }
+
     let toastTimer;
     function showToast(msg) {
       const t = document.getElementById('toast');
@@ -440,6 +616,7 @@
       document.getElementById('ps-gemini').textContent = gn;
       document.getElementById('ps-user').textContent = un;
       loadCurrentFromCache();
+      applyUserMode(false);
     }
 
     init();
