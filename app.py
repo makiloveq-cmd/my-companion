@@ -804,7 +804,6 @@ def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
             model="gemini-2.5-flash",
             contents=contents,
             config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
-            timeout=90
         )
         reply = response.text
         try:
