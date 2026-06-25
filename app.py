@@ -748,7 +748,14 @@ def group_reply(bot_key):
             contents = []
             for h in merged:
                 role = "model" if h["role"] == "assistant" else "user"
+                if role not in ["user", "model"]:
+                    continue
                 contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=h["content"])]))
+            # 確保第一則不是 model
+            while contents and contents[0].role == "model":
+                contents.pop(0)
+            if not contents:
+                contents = [genai_types.Content(role="user", parts=[genai_types.Part(text="（請回應群組）")])]
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=contents,
