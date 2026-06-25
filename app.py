@@ -741,6 +741,8 @@ def group_reply(bot_key):
                 messages=merged,
                 timeout=60
             )
+            if not response.content:
+                return jsonify({"error": "empty response"}), 500
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
@@ -759,7 +761,10 @@ def group_reply(bot_key):
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=contents,
-                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
+                ),
             )
             reply = response.text
             try:
