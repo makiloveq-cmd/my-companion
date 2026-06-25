@@ -746,7 +746,7 @@ def group_reply(bot_key):
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 60})
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 120})
             contents = []
             for h in merged:
                 role = "model" if h["role"] == "assistant" else "user"
@@ -763,6 +763,7 @@ def group_reply(bot_key):
                 contents=contents,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
+                    max_output_tokens=200,
                     thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
                 ),
             )
