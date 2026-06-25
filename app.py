@@ -3,8 +3,7 @@ load_dotenv()
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import anthropic
-from google import genai
-from google.genai import types as genai_types
+from openai import OpenAI
 import os
 import random
 import uuid
@@ -394,16 +393,18 @@ def generate_background_action(bot_key):
             action = response.content[0].text.strip()
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
+            response = client.chat.completions.create(
+                model="grok-4.3",
+                max_tokens=150,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
             )
-            action = response.text.strip()
+            action = response.choices[0].message.content.strip()
             try:
-                record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
             except:
                 pass
 
@@ -565,19 +566,19 @@ def space_reply(bot_key):
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            contents = []
+            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
+            grok_messages = [{"role": "system", "content": system_prompt}]
             for h in merged:
-                role = "model" if h["role"] == "assistant" else "user"
-                contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=h["content"])]))
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+                role = "assistant" if h["role"] == "assistant" else "user"
+                grok_messages.append({"role": role, "content": h["content"]})
+            response = client.chat.completions.create(
+                model="grok-4.3",
+                max_tokens=400,
+                messages=grok_messages
             )
-            reply = response.text
+            reply = response.choices[0].message.content
             try:
-                record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
             except:
                 pass
 
@@ -767,29 +768,19 @@ def group_reply(bot_key):
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            contents = []
+            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
+            grok_messages = [{"role": "system", "content": system_prompt}]
             for h in merged:
-                role = "model" if h["role"] == "assistant" else "user"
-                if role not in ["user", "model"]:
-                    continue
-                contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=h["content"])]))
-            # 確保第一則不是 model
-            while contents and contents[0].role == "model":
-                contents.pop(0)
-            if not contents:
-                contents = [genai_types.Content(role="user", parts=[genai_types.Part(text="（請回應群組）")])]
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=200,
-                ),
+                role = "assistant" if h["role"] == "assistant" else "user"
+                grok_messages.append({"role": role, "content": h["content"]})
+            response = client.chat.completions.create(
+                model="grok-4.3",
+                max_tokens=200,
+                messages=grok_messages
             )
-            reply = response.text
+            reply = response.choices[0].message.content
             try:
-                record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
             except:
                 pass
 
@@ -888,22 +879,22 @@ def chat_gemini():
     history = load_memory("gemini")
 
     try:
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        contents = []
+        client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
+        grok_messages = [{"role": "system", "content": build_system_prompt("gemini")}]
         for h in history[:-1]:
-            if h["role"] not in ["user", "model"]:
+            role = "assistant" if h["role"] == "model" else h["role"]
+            if role not in ["user", "assistant"]:
                 continue
-            contents.append(genai_types.Content(role=h["role"], parts=[genai_types.Part(text=h["content"])]))
-        contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=user_message)]))
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=genai_types.GenerateContentConfig(system_instruction=build_system_prompt("gemini")),
+            grok_messages.append({"role": role, "content": h["content"]})
+        grok_messages.append({"role": "user", "content": user_message})
+        response = client.chat.completions.create(
+            model="grok-4.3",
+            max_tokens=400,
+            messages=grok_messages
         )
-        reply = response.text
+        reply = response.choices[0].message.content
         try:
-            record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+            record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
         except:
             pass
         save_message("gemini", "model", reply)
@@ -1007,16 +998,18 @@ def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
         record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         return reply
     elif bot_key == "gemini":
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+        client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
+        response = client.chat.completions.create(
+            model="grok-4.3",
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
         )
-        reply = response.text
+        reply = response.choices[0].message.content
         try:
-            record_usage("gemini", response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
+            record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
         except:
             pass
         return reply
