@@ -397,7 +397,7 @@ def generate_background_action(bot_key):
             client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
             )
@@ -568,7 +568,7 @@ def space_reply(bot_key):
                 role = "model" if h["role"] == "assistant" else "user"
                 contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=h["content"])]))
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
             )
@@ -759,7 +759,7 @@ def group_reply(bot_key):
             if not contents:
                 contents = [genai_types.Content(role="user", parts=[genai_types.Part(text="（請回應群組）")])]
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -876,7 +876,7 @@ def chat_gemini():
         contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=user_message)]))
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=contents,
             config=genai_types.GenerateContentConfig(system_instruction=build_system_prompt("gemini")),
         )
@@ -989,7 +989,7 @@ def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=contents,
             config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
         )
