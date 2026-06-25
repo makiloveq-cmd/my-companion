@@ -764,7 +764,6 @@ def group_reply(bot_key):
                 config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     max_output_tokens=200,
-                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0)
                 ),
             )
             reply = response.text
