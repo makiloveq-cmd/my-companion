@@ -660,12 +660,30 @@ def build_group_system_prompt(bot_key):
 
     return "\n".join(lines)
 
+def clean_action_sentences(text):
+    import re
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if "「" in line or "」" in line or "『" in line or "』" in line:
+            cleaned.append(line)
+        elif re.match(r"^[^，。！？、]*(?:看著|聽到|輕輕|緩緩|微微|抬起|低下|皺起|撥了|點了|笑了|嘆了|停頓|沉默|轉向|望向|瞥了|眨了|握著|放下)", line):
+            continue
+        else:
+            cleaned.append(line)
+    result = "\n".join(cleaned).strip()
+    return result if result else text.strip()
+
 def clean_group_reply(text, name, other_name):
     import re
     text = re.sub(rf"^{re.escape(name)}[：:]\s*", "", text.strip())
     match = re.search(rf"\n(?:{re.escape(other_name)})[：:]", text)
     if match:
         text = text[:match.start()]
+    text = clean_action_sentences(text)
     return text.strip()
 
 @app.route("/group/messages", methods=["GET"])
