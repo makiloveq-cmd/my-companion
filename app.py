@@ -48,18 +48,47 @@ def save_message(bot, role, content, message_id=None, image_url=None):
         except:
             pass
 
+_cache = {}
+_cache_ttl = {}
+CACHE_SECONDS = 60
+
+def _get_cache(key):
+    if key in _cache and (datetime.utcnow() - _cache_ttl[key]).total_seconds() < CACHE_SECONDS:
+        return _cache[key]
+    return None
+
+def _set_cache(key, value):
+    _cache[key] = value
+    _cache_ttl[key] = datetime.utcnow()
+
+def invalidate_cache(key=None):
+    if key:
+        _cache.pop(key, None)
+        _cache_ttl.pop(key, None)
+    else:
+        _cache.clear()
+        _cache_ttl.clear()
+
 def get_personas():
+    cached = _get_cache("personas")
+    if cached is not None:
+        return cached
     rows = supabase.table("personas").select("*").execute().data
     result = {}
     for r in rows:
         result[r["key"]] = r
+    _set_cache("personas", result)
     return result
 
 def get_space_settings():
+    cached = _get_cache("space_settings")
+    if cached is not None:
+        return cached
     rows = supabase.table("space_settings").select("*").execute().data
     result = {}
     for r in rows:
         result[r["key"]] = r["value"]
+    _set_cache("space_settings", result)
     return result
 
 def get_latest_space_summary():
@@ -309,6 +338,7 @@ def personas_post(key):
     update = {k: data.get(k, "") for k in PERSONA_FIELDS}
     update["updated_at"] = datetime.utcnow().isoformat()
     supabase.table("personas").update(update).eq("key", key).execute()
+    invalidate_cache("personas")
     return jsonify({"status": "ok"})
 
 @app.route("/persona_page")
@@ -333,6 +363,7 @@ def space_settings_post():
             "value": val,
             "updated_at": datetime.utcnow().isoformat()
         }).execute()
+    invalidate_cache("space_settings")
     return jsonify({"status": "ok"})
 
 # ===== 背景行動 =====
@@ -943,15 +974,15 @@ def usage_get():
             "input_tokens": gemini_in,
             "output_tokens": gemini_out,
             "cost_usd": round(gemini_cost, 4),
-            "budget_usd": budget.get("gemini_budget", 0),
-            "remaining_usd": round(budget.get("gemini_budget", 0) - gemini_cost, 4)
+            "budget_usd": budget.get("grok_budget", 0),
+            "remaining_usd": round(budget.get("grok_budget", 0) - gemini_cost, 4)
         }
     })
 
 @app.route("/usage/budget", methods=["POST"])
 def usage_budget_post():
     data = request.json
-    for key in ["anthropic_budget", "gemini_budget"]:
+    for key in ["anthropic_budget", "grok_budget"]:
         val = data.get(key)
         if val is not None:
             existing = supabase.table("api_budget").select("value").eq("key", key).execute().data
