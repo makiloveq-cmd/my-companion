@@ -184,7 +184,7 @@ body {
   <h1>✦ 我的陪伴空間</h1>
   <div class="ai-switch">
     <button class="ai-btn active" id="btn-claude" onclick="switchAI('claude', event)">晏</button>
-    <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)">Gemini</button>
+    <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)" id="label-gemini">溫珩</button>
   </div>
 </div>
 <div class="messages" id="messages"></div>
@@ -231,7 +231,7 @@ body {
 </div>
 <script>
 let currentAI = 'claude';
-let names = { user: '然然', claude: '晏', gemini: 'Gemini' };
+let names = { user: '然然', claude: '晏', gemini: '溫珩' };
 let avatars = { user: null, claude: null, gemini: null };
 let editingTarget = null;
 let holdTimer = null;
