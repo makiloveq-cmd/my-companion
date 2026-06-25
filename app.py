@@ -170,7 +170,7 @@ def build_system_prompt(bot_key):
     # space_summary_text = get_latest_space_summary()
     # space_recent = ...
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，包含段落，簡短有力，不可超過。禁止用星號動作描述或第三人稱敘述動作，直接說話。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，簡短有力，不可超過。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。")
 
     return "\n".join([l for l in lines if l])
 
