@@ -493,7 +493,10 @@ def build_space_system_prompt(bot_key):
 
 @app.route("/space/messages", methods=["GET"])
 def space_messages_get():
-    maybe_generate_background_actions()
+    try:
+        maybe_generate_background_actions()
+    except:
+        pass
     rows = supabase.table("space_messages").select("*").order("id").execute().data
     return jsonify({"messages": rows})
 
