@@ -394,7 +394,7 @@ def generate_background_action(bot_key):
             action = response.content[0].text.strip()
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 60})
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
@@ -562,7 +562,7 @@ def space_reply(bot_key):
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 60})
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             contents = []
             for h in merged:
                 role = "model" if h["role"] == "assistant" else "user"
@@ -746,7 +746,7 @@ def group_reply(bot_key):
             reply = response.content[0].text
             record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         else:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 120})
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             contents = []
             for h in merged:
                 role = "model" if h["role"] == "assistant" else "user"
@@ -867,7 +867,7 @@ def chat_gemini():
     history = load_memory("gemini")
 
     try:
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 60})
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         contents = []
         for h in history[:-1]:
             if h["role"] not in ["user", "model"]:
@@ -986,7 +986,7 @@ def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
         record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
         return reply
     elif bot_key == "gemini":
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"), http_options={"timeout": 60})
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         contents = [genai_types.Content(role="user", parts=[genai_types.Part(text=user_prompt)])]
         response = client.models.generate_content(
             model="gemini-2.0-flash",
