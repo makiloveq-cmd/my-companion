@@ -58,7 +58,6 @@ body {
   overflow: hidden;
 }
 .chat-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.chat-avatar.group { background: var(--accent); color: #fff; }
 .chat-avatar.space { background: var(--surface3); color: var(--text-2); }
 .chat-info {
   flex: 1; min-width: 0;
@@ -119,7 +118,7 @@ async function loadAvatars() {
   try {
     const res = await fetch('/personas');
     const data = await res.json();
-    return { claude: data.claude?.avatar || null, gemini: data.gemini?.avatar || null };
+    return { claude: data.claude?.avatar || null };
   } catch(e) { return {}; }
 }
 
@@ -144,9 +143,7 @@ async function loadChatList() {
     const list = document.getElementById('list');
     list.innerHTML = '';
     const items = [
-      { href: '/chatroom?ai=claude', name: data.claude.name, preview: data.claude.preview, time: data.claude.time, avatarCls: '', initial: data.claude.name[0], avatarSrc: avatars.claude },
-      { href: '/chatroom?ai=gemini', name: data.gemini.name, preview: data.gemini.preview, time: data.gemini.time, avatarCls: '', initial: data.gemini.name[0], avatarSrc: avatars.gemini },
-      { href: '/group_page', name: data.group.name, preview: data.group.preview, time: data.group.time, avatarCls: 'group', initial: '✦', avatarSrc: null },
+      { href: '/chatroom', name: data.claude.name, preview: data.claude.preview, time: data.claude.time, avatarCls: '', initial: data.claude.name[0], avatarSrc: avatars.claude },
       { href: '/space_page', name: '共同空間', preview: '進入你們的空間…', time: null, avatarCls: 'space', initial: '◈', avatarSrc: null },
     ];
     items.forEach(item => {
