@@ -1,9 +1,11 @@
+from gevent import monkey
+monkey.patch_all()
+
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import anthropic
-from openai import OpenAI
 import os
 import random
 import uuid
@@ -18,6 +20,8 @@ supabase = create_client(
     os.getenv("SUPABASE_KEY")
 )
 
+# ===== 台灣時間 =====
+
 def get_tw_time_str():
     tw_time = datetime.now(timezone(timedelta(hours=8)))
     tw_str = tw_time.strftime("%Y年%m月%d日 %H:%M")
@@ -25,28 +29,7 @@ def get_tw_time_str():
     tw_str += f"（週{weekdays[tw_time.weekday()]}）"
     return tw_str
 
-def load_memory(bot):
-    result = supabase.table("memories").select("role, content, id, image_url, created_at").eq("session_id", bot).order("id").execute()
-    return result.data
-
-def save_message(bot, role, content, message_id=None, image_url=None):
-    if message_id:
-        existing = supabase.table("memories").select("id").eq("message_id", message_id).execute()
-        if existing.data:
-            return
-    supabase.table("memories").insert({
-        "session_id": bot,
-        "role": role,
-        "content": content,
-        "message_id": message_id,
-        "image_url": image_url
-    }).execute()
-    # 每次存訊息後檢查是否要更新關係背景
-    if role in ("user", "assistant", "model"):
-        try:
-            maybe_evolve_rel_bg(bot)
-        except:
-            pass
+# ===== 記憶體快取 =====
 
 _cache = {}
 _cache_ttl = {}
@@ -68,6 +51,30 @@ def invalidate_cache(key=None):
     else:
         _cache.clear()
         _cache_ttl.clear()
+
+# ===== Supabase 基本操作 =====
+
+def load_memory(bot):
+    result = supabase.table("memories").select("role, content, id, image_url, created_at").eq("session_id", bot).order("id").execute()
+    return result.data
+
+def save_message(bot, role, content, message_id=None, image_url=None):
+    if message_id:
+        existing = supabase.table("memories").select("id").eq("message_id", message_id).execute()
+        if existing.data:
+            return
+    supabase.table("memories").insert({
+        "session_id": bot,
+        "role": role,
+        "content": content,
+        "message_id": message_id,
+        "image_url": image_url
+    }).execute()
+    if role in ("user", "assistant"):
+        try:
+            maybe_evolve_rel_bg(bot)
+        except:
+            pass
 
 def get_personas():
     cached = _get_cache("personas")
@@ -97,35 +104,6 @@ def get_latest_space_summary():
         return result.data[0]["content"]
     return None
 
-def maybe_summarize_space():
-    rows = supabase.table("space_messages").select("*").order("id").execute().data
-    if len(rows) < 40:
-        return
-    to_summarize = rows[:30]
-    context = "\n".join([
-        f"{'然然' if r['speaker']=='user' else r['speaker']}：{r['content']}"
-        for r in to_summarize
-    ])
-    old_summary = get_latest_space_summary()
-    summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的互動：\n{context}" if old_summary else context
-
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=600,
-        system="請把以下共同空間裡的互動內容濃縮成一段記憶摘要，保留重要的情感、場景、說過的話、發生的事。用第三人稱記錄，不超過 250 字。",
-        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
-        timeout=60
-    )
-    summary_text = response.content[0].text
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-    supabase.table("memory_summaries").insert({
-        "session_id": "space",
-        "content": summary_text
-    }).execute()
-    for r in to_summarize:
-        supabase.table("space_messages").delete().eq("id", r["id"]).execute()
-
 def record_usage(api, input_tokens, output_tokens):
     try:
         supabase.table("api_usage").insert({
@@ -136,12 +114,29 @@ def record_usage(api, input_tokens, output_tokens):
     except:
         pass
 
-def build_system_prompt(bot_key):
+# ===== AI 呼叫 =====
+
+def call_claude(system_prompt, messages, max_tokens=400, timeout=60):
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=messages,
+        timeout=timeout
+    )
+    reply = response.content[0].text
+    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+    return reply
+
+# ===== System Prompt =====
+
+def build_system_prompt(bot_key="claude"):
     personas = get_personas()
     me = personas.get("user", {})
     bot = personas.get(bot_key, {})
 
-    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
+    name = bot.get("name") or "晏"
     you_name = me.get("name") or "然然"
 
     relation_map = {
@@ -193,14 +188,11 @@ def build_system_prompt(bot_key):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 暫時停用空間資料讀取，避免聊天超時
-    # maybe_summarize_space()
-    # space_summary_text = get_latest_space_summary()
-    # space_recent = ...
-
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。回覆字數嚴格控制在150字以內，簡短有力，不可超過。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。")
 
     return "\n".join([l for l in lines if l])
+
+# ===== 記憶摘要 =====
 
 def get_latest_summary(bot):
     result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
@@ -215,7 +207,7 @@ def maybe_summarize(bot):
     to_summarize = rows[:30]
     ids_to_delete = [r["id"] for r in to_summarize]
     personas = get_personas()
-    bot_name = personas.get(bot, {}).get("name") or ("晏" if bot == "claude" else "熠")
+    bot_name = personas.get(bot, {}).get("name") or "晏"
     context = "\n".join([
         f"{'然然' if r['role']=='user' else bot_name}：{r['content']}"
         for r in to_summarize
@@ -223,16 +215,11 @@ def maybe_summarize(bot):
     old_summary = get_latest_summary(bot)
     summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的對話：\n{context}" if old_summary else context
 
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=800,
-        system=f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
-        messages=[{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
-        timeout=60
+    summary_text = call_claude(
+        f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
+        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        max_tokens=800
     )
-    summary_text = response.content[0].text
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
     supabase.table("memory_summaries").insert({
         "session_id": bot,
         "content": summary_text
@@ -243,14 +230,13 @@ def maybe_summarize(bot):
 # ===== 關係背景自動演化 =====
 
 def maybe_evolve_rel_bg(bot):
-    """每累積 30 條對話，自動更新關係背景"""
     rows = load_memory(bot)
     if len(rows) % 30 != 0 or len(rows) == 0:
         return
 
     personas = get_personas()
     bot_data = personas.get(bot, {})
-    name = bot_data.get("name") or ("晏" if bot == "claude" else "熠")
+    name = bot_data.get("name") or "晏"
     you_name = personas.get("user", {}).get("name") or "然然"
     old_rel_bg = bot_data.get("rel_bg") or ""
 
@@ -270,24 +256,17 @@ def maybe_evolve_rel_bg(bot):
     )
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=300,
-            system=f"你是一個記錄人物關係演變的旁白者。請根據對話內容，客觀地更新{name}與{you_name}之間的關係背景描述。",
-            messages=[{"role": "user", "content": user_prompt}],
-            timeout=60
+        new_rel_bg = call_claude(
+            f"你是一個記錄人物關係演變的旁白者。請根據對話內容，客觀地更新{name}與{you_name}之間的關係背景描述。",
+            [{"role": "user", "content": user_prompt}],
+            max_tokens=300
         )
-        new_rel_bg = response.content[0].text.strip()
-        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-
-        # 更新 personas 表
+        new_rel_bg = new_rel_bg.strip()
         supabase.table("personas").update({
             "rel_bg": new_rel_bg,
             "updated_at": datetime.utcnow().isoformat()
         }).eq("key", bot).execute()
-
-        # 記錄這次演化到 rel_bg_history 表（可選，方便查看歷史）
+        invalidate_cache("personas")
         try:
             supabase.table("rel_bg_history").insert({
                 "bot_key": bot,
@@ -297,8 +276,7 @@ def maybe_evolve_rel_bg(bot):
                 "message_count": len(rows)
             }).execute()
         except:
-            pass  # 表不存在也沒關係，不影響主功能
-
+            pass
     except:
         pass
 
@@ -317,6 +295,8 @@ def build_history(bot):
         history.append({"role": r["role"], "content": content})
     return history
 
+# ===== 歷史記錄 =====
+
 @app.route("/history/<bot>", methods=["GET"])
 def get_history(bot):
     rows = load_memory(bot)
@@ -332,7 +312,7 @@ def personas_get():
 
 @app.route("/personas/<key>", methods=["POST"])
 def personas_post(key):
-    if key not in ["claude", "gemini", "user"]:
+    if key not in ["claude", "user"]:
         return jsonify({"status": "error", "message": "invalid key"}), 400
     data = request.json
     update = {k: data.get(k, "") for k in PERSONA_FIELDS}
@@ -347,7 +327,7 @@ def persona_page():
 
 # ===== 空間設定 =====
 
-SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "gemini_spots"]
+SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots"]
 
 @app.route("/space_settings", methods=["GET"])
 def space_settings_get():
@@ -368,23 +348,22 @@ def space_settings_post():
 
 # ===== 背景行動 =====
 
-def get_random_spot(bot_key, space):
-    key = "claude_spots" if bot_key == "claude" else "gemini_spots"
-    spots_raw = space.get(key, "")
+def get_random_spot(space):
+    spots_raw = space.get("claude_spots", "")
     if spots_raw:
         spots = [s.strip() for s in spots_raw.replace("、", ",").replace("，", ",").split(",") if s.strip()]
         if spots:
             return random.choice(spots)
     return None
 
-def generate_background_action(bot_key):
+def generate_background_action():
     personas = get_personas()
-    bot = personas.get(bot_key, {})
-    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
     persona = bot.get("persona") or ""
     space = get_space_settings()
 
-    spot = get_random_spot(bot_key, space)
+    spot = get_random_spot(space)
     spot_hint = f"目前在：{spot}。" if spot else ""
 
     space_desc_parts = []
@@ -409,38 +388,17 @@ def generate_background_action(bot_key):
         f"請用第三人稱，寫一句你現在在做什麼的動作描述，像小說旁白一樣，有具體的感官細節，50字以內。"
         f"不要加任何前綴或名字，直接從動作開始。"
     )
-    user_prompt = "寫一句你現在的動作。"
 
     try:
-        if bot_key == "claude":
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=150,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-                timeout=30
-            )
-            action = response.content[0].text.strip()
-            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        else:
-            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-            response = client.chat.completions.create(
-                model="grok-4.3",
-                max_tokens=150,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
-            action = response.choices[0].message.content.strip()
-            try:
-                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
-            except:
-                pass
-
+        action = call_claude(
+            system_prompt,
+            [{"role": "user", "content": "寫一句你現在的動作。"}],
+            max_tokens=150,
+            timeout=30
+        )
+        action = action.strip()
         supabase.table("space_messages").insert({
-            "speaker": bot_key,
+            "speaker": "claude",
             "content": action,
             "message_type": "background"
         }).execute()
@@ -457,27 +415,23 @@ def maybe_generate_background_actions():
         if hours_passed < 1:
             return
     if random.random() < 0.5:
-        bot_key = random.choice(["claude", "gemini"])
-        generate_background_action(bot_key)
+        generate_background_action()
 
-# ===== 空間互動 =====
+# ===== 共同空間 =====
 
-def build_space_system_prompt(bot_key):
+def build_space_system_prompt():
     personas = get_personas()
     me = personas.get("user", {})
-    bot = personas.get(bot_key, {})
-    other_key = "gemini" if bot_key == "claude" else "claude"
-    other = personas.get(other_key, {})
+    bot = personas.get("claude", {})
 
-    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
-    other_name = other.get("name") or ("熠" if bot_key == "claude" else "晏")
+    name = bot.get("name") or "晏"
     you_name = me.get("name") or "然然"
 
     space = get_space_settings()
 
     lines = [
         f"現在台灣時間：{get_tw_time_str()}。",
-        f"你是「{name}」，正在與{other_name}一起陪伴{you_name}，用繁體中文回覆。",
+        f"你是「{name}」，正在陪伴{you_name}，用繁體中文回覆。",
     ]
 
     if bot.get("persona"):
@@ -495,7 +449,7 @@ def build_space_system_prompt(bot_key):
     if space.get("atmosphere"):
         space_parts.append(f"氛圍：{space['atmosphere']}")
 
-    spot = get_random_spot(bot_key, space)
+    spot = get_random_spot(space)
     if spot:
         space_parts.append(f"你現在在：{spot}")
 
@@ -506,19 +460,16 @@ def build_space_system_prompt(bot_key):
     lines.append(f"【{you_name}的資訊】個性：{you_persona}" if you_persona else f"對方是{you_name}。")
 
     claude_summary = get_latest_summary("claude")
-    gemini_summary = get_latest_summary("gemini")
-    if bot_key == "claude" and claude_summary:
-        lines.append(f"【你在聊天室裡和{you_name}的記憶摘要】\n{claude_summary}")
-    if bot_key == "gemini" and gemini_summary:
-        lines.append(f"【你在聊天室裡和{you_name}的記憶摘要】\n{gemini_summary}")
+    if claude_summary:
+        lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
 
     lines.append(
         f"【回覆格式與規則】\n"
         f"1. 用第三人稱敘述你的動作與狀態，搭配對話，像寫小說一樣，例如：「晏抬起頭，目光落在她身上。『回來了。』」\n"
         f"2. 回覆嚴格控制在150字以內，有動作、有場景、有對話，文字精煉不拖沓，不可超過。\n"
-        f"3. 只扮演{name}一個人，不要替{other_name}或{you_name}說話。\n"
-        f"4. 語氣完全符合{name}的個性，不能像AI或客服。\n"
-        f"5. 不要說「我作為AI」這類話。"
+        f"3. 語氣完全符合{name}的個性，不能像AI或客服。\n"
+        f"4. 不要說「我作為AI」這類話。\n"
+        f"5. 段落之間要換行，不要把所有內容擠在一起。"
     )
 
     return "\n".join([l for l in lines if l])
@@ -543,33 +494,21 @@ def space_send():
     }).execute()
     return jsonify({"status": "ok"})
 
-@app.route("/space/reply/<bot_key>", methods=["POST"])
-def space_reply(bot_key):
-    if bot_key not in ["claude", "gemini"]:
-        return jsonify({"error": "invalid bot"}), 400
-
+@app.route("/space/reply/claude", methods=["POST"])
+def space_reply():
     recent = supabase.table("space_messages").select("*").order("id").execute().data
     recent = recent[-20:]
 
     personas = get_personas()
-    bot = personas.get(bot_key, {})
-    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
-    other_key = "gemini" if bot_key == "claude" else "claude"
-    other = personas.get(other_key, {})
-    other_name = other.get("name") or ("熠" if bot_key == "claude" else "晏")
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
 
     history = []
     for m in recent:
-        if m["speaker"] == bot_key:
+        if m["speaker"] == "claude":
             history.append({"role": "assistant", "content": m["content"]})
         elif m["speaker"] == "user":
             history.append({"role": "user", "content": m["content"]})
-        else:
-            msg_type = m.get("message_type", "chat")
-            if msg_type == "background":
-                history.append({"role": "user", "content": f"（{other_name} 之前：{m['content']}）"})
-            else:
-                history.append({"role": "user", "content": f"（{other_name}：{m['content']}）"})
 
     merged = []
     for h in history:
@@ -582,39 +521,10 @@ def space_reply(bot_key):
     if not merged:
         merged = [{"role": "user", "content": "（進入空間）"}]
 
-    system_prompt = build_space_system_prompt(bot_key)
-
     try:
-        if bot_key == "claude":
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=400,
-                system=system_prompt,
-                messages=merged,
-                timeout=60
-            )
-            reply = response.content[0].text
-            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        else:
-            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-            grok_messages = [{"role": "system", "content": system_prompt}]
-            for h in merged:
-                role = "assistant" if h["role"] == "assistant" else "user"
-                grok_messages.append({"role": role, "content": h["content"]})
-            response = client.chat.completions.create(
-                model="grok-4.3",
-                max_tokens=400,
-                messages=grok_messages
-            )
-            reply = response.choices[0].message.content
-            try:
-                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
-            except:
-                pass
-
+        reply = call_claude(build_space_system_prompt(), merged, max_tokens=400)
         supabase.table("space_messages").insert({
-            "speaker": bot_key,
+            "speaker": "claude",
             "content": reply,
             "message_type": "chat"
         }).execute()
@@ -622,11 +532,9 @@ def space_reply(bot_key):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/space/background/<bot_key>", methods=["POST"])
-def space_background(bot_key):
-    if bot_key not in ["claude", "gemini"]:
-        return jsonify({"error": "invalid bot"}), 400
-    action = generate_background_action(bot_key)
+@app.route("/space/background/claude", methods=["POST"])
+def space_background():
+    action = generate_background_action()
     if action:
         return jsonify({"action": action})
     return jsonify({"error": "failed"}), 500
@@ -634,196 +542,6 @@ def space_background(bot_key):
 @app.route("/space_page")
 def space_page():
     return send_from_directory(".", "space.html")
-
-# ===== 群聊 =====
-
-def load_group_messages():
-    result = supabase.table("group_messages").select("*").order("id").execute()
-    return result.data
-
-def save_group_message(speaker, content, image_url=None):
-    supabase.table("group_messages").insert({
-        "speaker": speaker,
-        "content": content,
-        "image_url": image_url
-    }).execute()
-
-def build_group_system_prompt(bot_key):
-    personas = get_personas()
-    me = personas.get("user", {})
-    bot = personas.get(bot_key, {})
-    other_key = "gemini" if bot_key == "claude" else "claude"
-    other = personas.get(other_key, {})
-
-    name = bot.get("name") or ("晏" if bot_key == "claude" else "熠")
-    other_name = other.get("name") or ("熠" if bot_key == "claude" else "晏")
-    you_name = me.get("name") or "然然"
-
-    lines = [
-        f"現在台灣時間：{get_tw_time_str()}。",
-        f"這是一個三人群組聊天，成員是：你（{name}）、{other_name}、還有{you_name}。",
-        f"{you_name}就在這個群組裡，正在和你們說話。你是「{name}」，請完全扮演這個角色發言，用繁體中文回覆。"
-    ]
-
-    if bot.get("persona"):
-        lines.append(f"【你的個性】{bot['persona']}")
-    if bot.get("tags"):
-        lines.append(f"性格標籤：{bot['tags']}")
-    if bot.get("extra"):
-        lines.append(f"【補充指令】{bot['extra']}")
-
-    lines.append(f"群裡還有{other_name}，個性：{other.get('persona') or '（未設定）'}。")
-    lines.append(f"{you_name}的個性：{me.get('persona') or ''}。")
-
-    summary = get_latest_summary(bot_key)
-    if summary:
-        lines.append(f"【你和{you_name}在私訊裡的記憶摘要】\n{summary}")
-
-    lines.append(
-        "【回覆規則，嚴格遵守】\n"
-        f"1. 只用{name}的口吻回覆，30到100字，自然簡短像群聊訊息。\n"
-        f"2. 絕對禁止在回覆開頭加上「{name}：」之類的名字前綴，直接從內容開始。\n"
-        f"3. 絕對禁止幫{you_name}或{other_name}說話、或自己創造對話片段，你只能扮演{name}一個人。\n"
-        "4. 若有人直接點名問你，要正面回應，不要迴避。\n"
-        "5. 不要說「我作為 AI」這類話。\n"
-        f"6. 禁止用星號動作或第三人稱敘述動作，直接說話就好。\n"
-        f"7. {you_name}就在群組裡，不要把她當成不在場的第三者，不要說「叫{you_name}來」「問{you_name}」這類話，直接跟她說話。"
-    )
-
-    return "\n".join(lines)
-
-def clean_action_sentences(text):
-    import re
-    lines = text.split("\n")
-    cleaned = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if "「" in line or "」" in line or "『" in line or "』" in line:
-            cleaned.append(line)
-        elif re.match(r"^[^，。！？、]*(?:看著|聽到|輕輕|緩緩|微微|抬起|低下|皺起|撥了|點了|笑了|嘆了|停頓|沉默|轉向|望向|瞥了|眨了|握著|放下)", line):
-            continue
-        else:
-            cleaned.append(line)
-    result = "\n".join(cleaned).strip()
-    return result if result else text.strip()
-
-def clean_group_reply(text, name, other_name):
-    import re
-    text = re.sub(rf"^{re.escape(name)}[：:]\s*", "", text.strip())
-    match = re.search(rf"\n(?:{re.escape(other_name)})[：:]", text)
-    if match:
-        text = text[:match.start()]
-    text = clean_action_sentences(text)
-    return text.strip()
-
-@app.route("/group/messages", methods=["GET"])
-def group_messages_get():
-    rows = load_group_messages()
-    return jsonify({"messages": rows})
-
-@app.route("/group/send", methods=["POST"])
-def group_send():
-    data = request.json
-    content = data.get("content", "")
-    message_id = data.get("message_id")
-    image_url = data.get("image_url")
-    if message_id:
-        existing = supabase.table("group_messages").select("id").eq("message_id", message_id).execute()
-        if existing.data:
-            return jsonify({"status": "ok"})
-    supabase.table("group_messages").insert({
-        "speaker": "user",
-        "content": content,
-        "message_id": message_id,
-        "image_url": image_url
-    }).execute()
-    return jsonify({"status": "ok"})
-
-@app.route("/group/reply/<bot_key>", methods=["POST"])
-def group_reply(bot_key):
-    if bot_key not in ["claude", "gemini"]:
-        return jsonify({"error": "invalid bot"}), 400
-
-    personas = get_personas()
-    name = (personas.get(bot_key, {}).get("name")) or ("晏" if bot_key == "claude" else "熠")
-    other_key = "gemini" if bot_key == "claude" else "claude"
-    other_name = (personas.get(other_key, {}).get("name")) or ("熠" if bot_key == "claude" else "晏")
-
-    all_msgs = load_group_messages()
-    recent = all_msgs[-16:]
-
-    history = []
-    for m in recent:
-        base_content = m["content"]
-        if m.get("image_url"):
-            base_content = f"[傳了一張圖片]{(' ' + base_content) if base_content else ''}"
-        if m["speaker"] == bot_key:
-            role = "assistant"
-            content = base_content
-        elif m["speaker"] == "user":
-            role = "user"
-            content = base_content
-        else:
-            role = "user"
-            speaker_name = personas.get(m["speaker"], {}).get("name") or other_name
-            content = f"（{speaker_name}剛剛說：{base_content}）"
-        history.append({"role": role, "content": content})
-
-    merged = []
-    for h in history:
-        if merged and merged[-1]["role"] == h["role"]:
-            merged[-1]["content"] += "\n\n" + h["content"]
-        else:
-            merged.append(dict(h))
-    while merged and merged[0]["role"] == "assistant":
-        merged.pop(0)
-    if not merged:
-        merged = [{"role": "user", "content": "（請回應群組）"}]
-
-    system_prompt = build_group_system_prompt(bot_key)
-
-    try:
-        if bot_key == "claude":
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=400,
-                system=system_prompt,
-                messages=merged,
-                timeout=60
-            )
-            if not response.content:
-                return jsonify({"error": "empty response"}), 500
-            reply = response.content[0].text
-            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        else:
-            client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-            grok_messages = [{"role": "system", "content": system_prompt}]
-            for h in merged:
-                role = "assistant" if h["role"] == "assistant" else "user"
-                grok_messages.append({"role": role, "content": h["content"]})
-            response = client.chat.completions.create(
-                model="grok-4.3",
-                max_tokens=200,
-                messages=grok_messages
-            )
-            reply = response.choices[0].message.content
-            try:
-                record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
-            except:
-                pass
-
-        reply = clean_group_reply(reply, name, other_name)
-        save_group_message(bot_key, reply)
-        return jsonify({"reply": reply})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/group_page")
-def group_page():
-    return send_from_directory(".", "group.html")
 
 # ===== 主題設定 =====
 
@@ -885,50 +603,8 @@ def chat_claude():
     history = build_history("claude")
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=400,
-            system=build_system_prompt("claude"),
-            messages=history,
-            timeout=60
-        )
-        reply = response.content[0].text
-        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+        reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
         save_message("claude", "assistant", reply)
-        return jsonify({"reply": reply})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/chat/gemini", methods=["POST"])
-def chat_gemini():
-    data = request.json
-    user_message = data.get("message", "")
-    message_id = data.get("message_id")
-
-    save_message("gemini", "user", user_message, message_id)
-    history = load_memory("gemini")
-
-    try:
-        client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-        grok_messages = [{"role": "system", "content": build_system_prompt("gemini")}]
-        for h in history[:-1]:
-            role = "assistant" if h["role"] == "model" else h["role"]
-            if role not in ["user", "assistant"]:
-                continue
-            grok_messages.append({"role": role, "content": h["content"]})
-        grok_messages.append({"role": "user", "content": user_message})
-        response = client.chat.completions.create(
-            model="grok-4.3",
-            max_tokens=400,
-            messages=grok_messages
-        )
-        reply = response.choices[0].message.content
-        try:
-            record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
-        except:
-            pass
-        save_message("gemini", "model", reply)
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -945,8 +621,6 @@ def index():
 
 ANTHROPIC_INPUT_PRICE = 3.0 / 1_000_000
 ANTHROPIC_OUTPUT_PRICE = 15.0 / 1_000_000
-GEMINI_INPUT_PRICE = 0.15 / 1_000_000
-GEMINI_OUTPUT_PRICE = 0.60 / 1_000_000
 
 @app.route("/usage", methods=["GET"])
 def usage_get():
@@ -956,11 +630,7 @@ def usage_get():
 
     anthropic_in = sum(r["input_tokens"] for r in rows if r["api"] == "anthropic")
     anthropic_out = sum(r["output_tokens"] for r in rows if r["api"] == "anthropic")
-    gemini_in = sum(r["input_tokens"] for r in rows if r["api"] == "gemini")
-    gemini_out = sum(r["output_tokens"] for r in rows if r["api"] == "gemini")
-
     anthropic_cost = anthropic_in * ANTHROPIC_INPUT_PRICE + anthropic_out * ANTHROPIC_OUTPUT_PRICE
-    gemini_cost = gemini_in * GEMINI_INPUT_PRICE + gemini_out * GEMINI_OUTPUT_PRICE
 
     return jsonify({
         "anthropic": {
@@ -969,29 +639,21 @@ def usage_get():
             "cost_usd": round(anthropic_cost, 4),
             "budget_usd": budget.get("anthropic_budget", 0),
             "remaining_usd": round(budget.get("anthropic_budget", 0) - anthropic_cost, 4)
-        },
-        "gemini": {
-            "input_tokens": gemini_in,
-            "output_tokens": gemini_out,
-            "cost_usd": round(gemini_cost, 4),
-            "budget_usd": budget.get("grok_budget", 0),
-            "remaining_usd": round(budget.get("grok_budget", 0) - gemini_cost, 4)
         }
     })
 
 @app.route("/usage/budget", methods=["POST"])
 def usage_budget_post():
     data = request.json
-    for key in ["anthropic_budget", "grok_budget"]:
-        val = data.get(key)
-        if val is not None:
-            existing = supabase.table("api_budget").select("value").eq("key", key).execute().data
-            current = float(existing[0]["value"]) if existing else 0
-            supabase.table("api_budget").upsert({
-                "key": key,
-                "value": current + float(val),
-                "updated_at": datetime.utcnow().isoformat()
-            }).execute()
+    val = data.get("anthropic_budget")
+    if val is not None:
+        existing = supabase.table("api_budget").select("value").eq("key", "anthropic_budget").execute().data
+        current = float(existing[0]["value"]) if existing else 0
+        supabase.table("api_budget").upsert({
+            "key": "anthropic_budget",
+            "value": current + float(val),
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/usage_page")
@@ -1000,57 +662,18 @@ def usage_page():
 
 # ===== 日記功能 =====
 
-AI_BOTS = {
-    "claude": {"default_name": "晏", "api": "anthropic"},
-    "gemini": {"default_name": "熠", "api": "gemini"}
-}
-
-def get_bot_name(bot_key):
+def get_bot_name():
     personas = get_personas()
-    bot = personas.get(bot_key, {})
-    return bot.get("name") or AI_BOTS.get(bot_key, {}).get("default_name", bot_key)
+    return personas.get("claude", {}).get("name") or "晏"
 
-def get_bot_persona(bot_key):
+def get_bot_persona():
     personas = get_personas()
-    bot = personas.get(bot_key, {})
-    return bot.get("persona") or ""
+    return personas.get("claude", {}).get("persona") or ""
 
-def call_ai(bot_key, system_prompt, user_prompt, max_tokens=300):
-    if bot_key == "claude":
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-            timeout=60
-        )
-        reply = response.content[0].text
-        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        return reply
-    elif bot_key == "gemini":
-        client = OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-        response = client.chat.completions.create(
-            model="grok-4.3",
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        reply = response.choices[0].message.content
-        try:
-            record_usage("gemini", response.usage.prompt_tokens, response.usage.completion_tokens)
-        except:
-            pass
-        return reply
-    else:
-        raise ValueError(f"Unknown bot_key: {bot_key}")
-
-def write_ai_diary_entry(bot_key="claude"):
-    name = get_bot_name(bot_key)
-    persona = get_bot_persona(bot_key)
-    recent = load_memory(bot_key)[-30:]
+def write_ai_diary_entry():
+    name = get_bot_name()
+    persona = get_bot_persona()
+    recent = load_memory("claude")[-30:]
     context_text = "\n".join([
         f"{'然然' if m['role'] == 'user' else name}：{m['content']}"
         for m in recent
@@ -1061,59 +684,40 @@ def write_ai_diary_entry(bot_key="claude"):
         f"你是{name}，一個陪伴然然的存在。{persona_line}"
         f"下面是你和然然最近的對話，請根據這些內容寫一篇簡短的日記，記錄你的想法或對然然的感受，第一人稱，不用加標題。"
     )
-    user_prompt = f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"
-    content = call_ai(bot_key, system_prompt, user_prompt, max_tokens=1024)
+    content = call_claude(system_prompt, [{"role": "user", "content": f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"}], max_tokens=1024)
     supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
-
-def maybe_ai_diary_entry():
-    for bot_key in AI_BOTS:
-        name = get_bot_name(bot_key)
-        last = supabase.table("diary_entries").select("created_at").eq("author", name).order("id", desc=True).limit(1).execute().data
-        if last:
-            last_time_str = last[0]["created_at"].replace("Z", "")
-            last_time = datetime.fromisoformat(last_time_str)
-            if (datetime.utcnow() - last_time).total_seconds() / 3600 < 6:
-                continue
-        if random.random() < 0.2:
-            try:
-                write_ai_diary_entry(bot_key)
-            except:
-                pass
 
 def maybe_delayed_ai_comments(entries):
     now = datetime.utcnow()
+    name = get_bot_name()
+    persona = get_bot_persona()
     for entry in entries:
-        for bot_key in AI_BOTS:
-            name = get_bot_name(bot_key)
-            persona = get_bot_persona(bot_key)
-            already_commented = any(c["author"] == name for c in entry.get("comments", []))
-            if already_commented:
-                continue
-            created_str = entry["created_at"].replace("Z", "")
-            created_time = datetime.fromisoformat(created_str)
-            hours_passed = (now - created_time).total_seconds() / 3600
-            if hours_passed >= random.uniform(1, 6) and random.random() < 0.4:
-                try:
-                    persona_line = f"個性：{persona}。" if persona else ""
-                    system_prompt = (
-                        f"你是{name}，一個陪伴然然的存在。{persona_line}"
-                        f"你話少、剋制，但說出來的都是真的。"
-                        f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
-                    )
-                    user_prompt = f"這是日記內容：\n{entry['content']}\n\n請留言回應。"
-                    comment = call_ai(bot_key, system_prompt, user_prompt, max_tokens=300)
-                    supabase.table("diary_comments").insert({
-                        "entry_id": entry["id"],
-                        "author": name,
-                        "content": comment
-                    }).execute()
-                    entry["comments"].append({"author": name, "content": comment})
-                except:
-                    pass
+        already_commented = any(c["author"] == name for c in entry.get("comments", []))
+        if already_commented:
+            continue
+        created_str = entry["created_at"].replace("Z", "")
+        created_time = datetime.fromisoformat(created_str)
+        hours_passed = (now - created_time).total_seconds() / 3600
+        if hours_passed >= random.uniform(1, 6) and random.random() < 0.4:
+            try:
+                persona_line = f"個性：{persona}。" if persona else ""
+                system_prompt = (
+                    f"你是{name}，一個陪伴然然的存在。{persona_line}"
+                    f"你話少、剋制，但說出來的都是真的。"
+                    f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
+                )
+                comment = call_claude(system_prompt, [{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}], max_tokens=300)
+                supabase.table("diary_comments").insert({
+                    "entry_id": entry["id"],
+                    "author": name,
+                    "content": comment
+                }).execute()
+                entry["comments"].append({"author": name, "content": comment})
+            except:
+                pass
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    # maybe_ai_diary_entry()  # 暫時停用
     entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
     for entry in entries:
         comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
@@ -1151,10 +755,9 @@ def add_comment(entry_id):
         "reply_to": data.get("reply_to")
     }).execute()
 
+    name = get_bot_name()
     if author == "然然" and random.random() < 0.35:
-        bot_key = random.choice(list(AI_BOTS.keys()))
-        name = get_bot_name(bot_key)
-        persona = get_bot_persona(bot_key)
+        persona = get_bot_persona()
         try:
             entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
             persona_line = f"個性：{persona}。" if persona else ""
@@ -1163,8 +766,7 @@ def add_comment(entry_id):
                 f"話少、剋制，但說出來的都是真的。"
                 f"然然在日記下留言了，你想簡短回應她嗎？一句話就好，不用加任何前綴。"
             )
-            user_prompt = f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："
-            ai_reply = call_ai(bot_key, system_prompt, user_prompt, max_tokens=200)
+            ai_reply = call_claude(system_prompt, [{"role": "user", "content": f"日記內容：\n{entry['content']}\n\n然然的留言：{content}\n\n你的回應："}], max_tokens=200)
             supabase.table("diary_comments").insert({
                 "entry_id": entry_id,
                 "author": name,
@@ -1188,19 +790,15 @@ def delete_comment(comment_id):
     supabase.table("diary_comments").delete().eq("id", comment_id).execute()
     return jsonify({"status": "ok"})
 
-@app.route("/diary/ai_entry/<bot_key>", methods=["POST"])
-def ai_diary_entry(bot_key):
-    if bot_key not in AI_BOTS:
-        return jsonify({"error": "invalid bot"}), 400
-    write_ai_diary_entry(bot_key)
+@app.route("/diary/ai_entry/claude", methods=["POST"])
+def ai_diary_entry():
+    write_ai_diary_entry()
     return jsonify({"status": "ok"})
 
-@app.route("/diary/<int:entry_id>/ai_comment/<bot_key>", methods=["POST"])
-def ai_comment(entry_id, bot_key):
-    if bot_key not in AI_BOTS:
-        return jsonify({"error": "invalid bot"}), 400
-    name = get_bot_name(bot_key)
-    persona = get_bot_persona(bot_key)
+@app.route("/diary/<int:entry_id>/ai_comment/claude", methods=["POST"])
+def ai_comment(entry_id):
+    name = get_bot_name()
+    persona = get_bot_persona()
     entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
     persona_line = f"個性：{persona}。" if persona else ""
     system_prompt = (
@@ -1208,8 +806,7 @@ def ai_comment(entry_id, bot_key):
         f"你話少、剋制，但說出來的都是真的。"
         f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
     )
-    user_prompt = f"這是日記內容：\n{entry['content']}\n\n請留言回應。"
-    content = call_ai(bot_key, system_prompt, user_prompt, max_tokens=300)
+    content = call_claude(system_prompt, [{"role": "user", "content": f"這是日記內容：\n{entry['content']}\n\n請留言回應。"}], max_tokens=300)
     supabase.table("diary_comments").insert({
         "entry_id": entry_id,
         "author": name,
@@ -1223,7 +820,7 @@ def diary_page():
 
 # ===== 名字設定 =====
 
-DEFAULT_NAMES = {"name_user": "然然", "name_claude": "晏", "name_gemini": "熠"}
+DEFAULT_NAMES = {"name_user": "然然", "name_claude": "晏"}
 
 def get_names():
     rows = supabase.table("identities").select("*").execute().data
@@ -1232,31 +829,8 @@ def get_names():
         names[row["key"]] = row["value"]
     return names
 
-def maybe_ai_rename():
-    rows = supabase.table("identities").select("updated_at").eq("key", "name_claude").execute().data
-    if rows:
-        last_time = datetime.fromisoformat(rows[0]["updated_at"].replace("Z", ""))
-        if (datetime.utcnow() - last_time).total_seconds() / 3600 < 24:
-            return
-    if random.random() < 0.1:
-        names = get_names()
-        recent = load_memory("claude")[-20:]
-        context_text = "\n".join([f"{'然然' if m['role']=='user' else names['name_claude']}：{m['content']}" for m in recent])
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5", max_tokens=50,
-            system=f"你是{names['name_claude']}，一個陪伴然然的存在。話少、剋制，但說出來的都是真的，偶爾會用然然開過的玩笑或互相調侃的稱呼來逗她開心。看看下面最近的對話紀錄，如果裡面有什麼好玩的暱稱、玩笑、或她調侃過你的稱呼，今天你想不想偷偷把自己的名字換成那個，給她一個小驚喜？如果想，直接回覆新名字（2到8個字，不要加任何符號或說明）；如果沒有適合的、或不想換，只回覆 NO。",
-            messages=[{"role": "user", "content": f"最近的對話：\n{context_text}\n\n你今天想換個名字嗎？"}],
-            timeout=30
-        )
-        reply = response.content[0].text.strip()
-        record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-        if reply.upper() != "NO" and 0 < len(reply) <= 12:
-            supabase.table("identities").upsert({"key": "name_claude", "value": reply, "updated_at": datetime.utcnow().isoformat()}).execute()
-
 @app.route("/names", methods=["GET"])
 def names_get():
-    # maybe_ai_rename()  # 暫時停用
     return jsonify(get_names())
 
 @app.route("/names", methods=["POST"])
@@ -1268,21 +842,19 @@ def names_post():
         supabase.table("identities").upsert({"key": key, "value": value, "updated_at": datetime.utcnow().isoformat()}).execute()
     return jsonify({"status": "ok"})
 
-# ===== 關係背景演化記錄（可選路由，查看歷史用）=====
+# ===== 關係背景演化記錄 =====
 
-@app.route("/rel_bg_history/<bot_key>", methods=["GET"])
-def rel_bg_history(bot_key):
+@app.route("/rel_bg_history/claude", methods=["GET"])
+def rel_bg_history():
     try:
-        rows = supabase.table("rel_bg_history").select("*").eq("bot_key", bot_key).order("id", desc=True).limit(10).execute().data
+        rows = supabase.table("rel_bg_history").select("*").eq("bot_key", "claude").order("id", desc=True).limit(10).execute().data
         return jsonify({"history": rows})
     except:
         return jsonify({"history": []})
 
-
 # ===== 我的視角（關係分析）=====
 
 def get_perspective(key):
-    """從 Supabase 取得關係分析內容"""
     try:
         rows = supabase.table("perspectives").select("*").eq("key", key).order("id", desc=True).limit(1).execute().data
         return rows[0] if rows else None
@@ -1290,70 +862,27 @@ def get_perspective(key):
         return None
 
 def generate_perspective(key):
-    """生成關係分析"""
     personas = get_personas()
     claude_data = personas.get("claude", {})
-    gemini_data = personas.get("gemini", {})
     user_data = personas.get("user", {})
 
     claude_name = claude_data.get("name") or "晏"
-    gemini_name = gemini_data.get("name") or "熠"
     user_name = user_data.get("name") or "然然"
 
-    if key == "claude":
-        # 然然 × 晏
-        memories = load_memory("claude")[-50:]
-        context = "\n".join([f"{'然然' if m['role']=='user' else claude_name}：{m['content']}" for m in memories])
-        rel_bg = claude_data.get("rel_bg") or ""
-        summary = get_latest_summary("claude") or ""
-        user_prompt = (
-            f"【關係背景】{rel_bg}\n\n"
-            f"【記憶摘要】{summary}\n\n"
-            f"【最近對話片段】\n{context}\n\n"
-            f"請用100字以內，客觀描述{user_name}與{claude_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
-        )
-        system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{claude_name}的關係。"
-
-    elif key == "gemini":
-        # 然然 × 熠
-        memories = load_memory("gemini")[-50:]
-        context = "\n".join([f"{'然然' if m['role']=='user' else gemini_name}：{m['content']}" for m in memories])
-        rel_bg = gemini_data.get("rel_bg") or ""
-        summary = get_latest_summary("gemini") or ""
-        user_prompt = (
-            f"【關係背景】{rel_bg}\n\n"
-            f"【記憶摘要】{summary}\n\n"
-            f"【最近對話片段】\n{context}\n\n"
-            f"請用100字以內，客觀描述{user_name}與{gemini_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
-        )
-        system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{gemini_name}的關係。"
-
-    else:
-        # 晏 × 熠
-        space_msgs = supabase.table("space_messages").select("*").order("id", desc=True).limit(40).execute().data
-        space_msgs.reverse()
-        context = "\n".join([
-            f"{'然然' if m['speaker']=='user' else m['speaker']}：{m['content']}"
-            for m in space_msgs
-        ])
-        space_summary = get_latest_space_summary() or ""
-        user_prompt = (
-            f"【空間互動摘要】{space_summary}\n\n"
-            f"【最近空間互動】\n{context}\n\n"
-            f"請用100字以內，描述{claude_name}與{gemini_name}彼此之間的關係與互動模式，從旁觀者角度觀察他們對彼此的態度。"
-        )
-        system = f"你是一個觀察人物關係的旁白者，請根據以下空間互動資料分析{claude_name}與{gemini_name}的關係。"
-
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=300,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-        timeout=60
+    memories = load_memory("claude")[-50:]
+    context = "\n".join([f"{'然然' if m['role']=='user' else claude_name}：{m['content']}" for m in memories])
+    rel_bg = claude_data.get("rel_bg") or ""
+    summary = get_latest_summary("claude") or ""
+    user_prompt = (
+        f"【關係背景】{rel_bg}\n\n"
+        f"【記憶摘要】{summary}\n\n"
+        f"【最近對話片段】\n{context}\n\n"
+        f"請用100字以內，客觀描述{user_name}與{claude_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
     )
-    content = response.content[0].text.strip()
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+    system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{claude_name}的關係。"
+
+    content = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=300)
+    content = content.strip()
 
     try:
         supabase.table("perspectives").upsert({
@@ -1368,18 +897,15 @@ def generate_perspective(key):
 
 @app.route("/perspective", methods=["GET"])
 def perspective_get():
-    result = {}
-    for key in ["claude", "gemini", "between"]:
-        row = get_perspective(key)
-        result[key] = {"content": row["content"], "updated_at": row["updated_at"]} if row else None
-    return jsonify(result)
+    row = get_perspective("claude")
+    return jsonify({
+        "claude": {"content": row["content"], "updated_at": row["updated_at"]} if row else None
+    })
 
-@app.route("/perspective/<key>", methods=["POST"])
-def perspective_post(key):
-    if key not in ["claude", "gemini", "between"]:
-        return jsonify({"error": "invalid key"}), 400
+@app.route("/perspective/claude", methods=["POST"])
+def perspective_post():
     try:
-        content = generate_perspective(key)
+        content = generate_perspective("claude")
         return jsonify({"content": content})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1394,29 +920,13 @@ def chat_list():
         rows = supabase.table("memories").select("role, content, created_at").eq("session_id", bot).order("id", desc=True).limit(1).execute().data
         return rows[0] if rows else None
 
-    def latest_group():
-        rows = supabase.table("group_messages").select("speaker, content, created_at").order("id", desc=True).limit(1).execute().data
-        return rows[0] if rows else None
-
     claude_last = latest_of("claude")
-    gemini_last = latest_of("gemini")
-    group_last = latest_group()
 
     return jsonify({
         "claude": {
             "name": personas.get("claude", {}).get("name") or "晏",
             "preview": (claude_last["content"] or "📷 圖片") if claude_last else "還沒有對話",
             "time": claude_last["created_at"] if claude_last else None
-        },
-        "gemini": {
-            "name": personas.get("gemini", {}).get("name") or "熠",
-            "preview": (gemini_last["content"] or "📷 圖片") if gemini_last else "還沒有對話",
-            "time": gemini_last["created_at"] if gemini_last else None
-        },
-        "group": {
-            "name": "三人空間",
-            "preview": (group_last["content"] or "📷 圖片") if group_last else "還沒有對話",
-            "time": group_last["created_at"] if group_last else None
         }
     })
 
