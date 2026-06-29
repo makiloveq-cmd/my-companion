@@ -215,7 +215,7 @@ def maybe_summarize(bot):
     summary_text = call_claude(
         f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
         [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
-        max_tokens=800
+        max_tokens=1500
     )
     supabase.table("memory_summaries").insert({
         "session_id": bot,
