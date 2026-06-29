@@ -27,18 +27,8 @@ body {
   padding-top: max(16px, env(safe-area-inset-top));
 }
 .header-back { font-size: 22px; color: var(--accent); cursor: pointer; padding: 0 8px 0 0; line-height: 1; }
-.header h1 { font-size: 18px; font-weight: 400; }
-.ai-switch { margin-left: auto; display: flex; gap: 8px; }
-.ai-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-2);
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.ai-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.header h1 { font-size: 18px; font-weight: 400; flex: 1; }
+.header-name { font-size: 15px; color: var(--text-2); cursor: pointer; }
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -182,10 +172,7 @@ body {
 <div class="header">
   <span class="header-back" onclick="location.href='/chatlist_page'">‹</span>
   <h1>✦ 我的陪伴空間</h1>
-  <div class="ai-switch">
-    <button class="ai-btn active" id="btn-claude" onclick="switchAI('claude', event)">晏</button>
-    <button class="ai-btn" id="btn-gemini" onclick="switchAI('gemini', event)" id="label-gemini">溫珩</button>
-  </div>
+  <span class="header-name" id="header-ai-name" onmousedown="startHold('claude')" ontouchstart="startHold('claude')" onmouseup="cancelHold()" ontouchend="cancelHold()">晏</span>
 </div>
 <div class="messages" id="messages"></div>
 <div class="input-area">
@@ -230,16 +217,11 @@ body {
   </div>
 </div>
 <script>
-let currentAI = 'claude';
-let names = { user: '然然', claude: '晏', gemini: '溫珩' };
-let avatars = { user: null, claude: null, gemini: null };
+let names = { user: '然然', claude: '晏' };
+let avatars = { user: null, claude: null };
 let editingTarget = null;
 let holdTimer = null;
 let pendingImageUrl = null;
-
-// 讀取 URL 參數決定預設 AI
-const urlAI = new URLSearchParams(location.search).get('ai');
-if (urlAI === 'gemini') currentAI = 'gemini';
 
 function formatTime(isoStr) {
   if (!isoStr) return '';
@@ -261,12 +243,11 @@ async function loadAvatars() {
     const data = await res.json();
     avatars.user = data.user?.avatar || null;
     avatars.claude = data.claude?.avatar || null;
-    avatars.gemini = data.gemini?.avatar || null;
   } catch(e) {}
 }
 
 function makeAvatar(role) {
-  const target = role === 'user' ? 'user' : currentAI;
+  const target = role === 'user' ? 'user' : 'claude';
   const av = document.createElement('div');
   av.className = `avatar ${role}`;
   const src = avatars[target];
@@ -327,20 +308,15 @@ async function loadNames() {
     const data = await res.json();
     names.user = data.name_user || names.user;
     names.claude = data.name_claude || names.claude;
-    names.gemini = data.name_gemini || names.gemini;
   } catch(e) {}
-  document.getElementById('btn-claude').textContent = names.claude;
-  document.getElementById('btn-gemini').textContent = names.gemini;
-  // 初始化 active 狀態
-  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(currentAI === 'claude' ? 'btn-claude' : 'btn-gemini').classList.add('active');
+  document.getElementById('header-ai-name').textContent = names.claude;
 }
 
 async function loadHistory() {
   const messages = document.getElementById('messages');
   messages.innerHTML = '';
   try {
-    const res = await fetch(`/history/${currentAI}`);
+    const res = await fetch('/history/claude');
     const data = await res.json();
     data.history.forEach(m => {
       const role = m.role === 'user' ? 'user' : 'ai';
@@ -349,15 +325,8 @@ async function loadHistory() {
   } catch(e) {}
 }
 
-function switchAI(ai, e) {
-  currentAI = ai;
-  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-  e.target.classList.add('active');
-  loadHistory();
-}
-
 function addMessage(text, role, imageUrl, createdAt) {
-  const target = role === 'user' ? 'user' : currentAI;
+  const target = role === 'user' ? 'user' : 'claude';
   const displayName = names[target];
   const row = document.createElement('div');
   row.className = `message-row ${role}`;
@@ -412,14 +381,13 @@ async function confirmName() {
   const val = document.getElementById('modal-input').value.trim();
   if (!val || !editingTarget) return;
   names[editingTarget] = val;
-  const keyMap = { user: 'name_user', claude: 'name_claude', gemini: 'name_gemini' };
+  const keyMap = { user: 'name_user', claude: 'name_claude' };
   await fetch('/names', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: keyMap[editingTarget], name: val })
   });
-  if (editingTarget === 'claude') document.getElementById('btn-claude').textContent = val;
-  if (editingTarget === 'gemini') document.getElementById('btn-gemini').textContent = val;
+  if (editingTarget === 'claude') document.getElementById('header-ai-name').textContent = val;
   closeModal();
   loadHistory();
 }
@@ -458,13 +426,13 @@ async function sendMessage() {
   const messageId = generateMessageId();
   const sentAt = new Date().toISOString();
   addMessage(msg, 'user', imageUrl, sentAt);
-  await sendToServer(msg, messageId, currentAI, imageUrl);
+  await sendToServer(msg, messageId, imageUrl);
 }
 
-async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
+async function sendToServer(msg, messageId, imageUrl, isRetry = false) {
   const row = addPendingRow();
   try {
-    const res = await fetch(`/chat/${ai}`, {
+    const res = await fetch('/chat/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
@@ -479,7 +447,7 @@ async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
     if (!isRetry) {
       const retryRow = addPendingRow();
       try {
-        const res2 = await fetch(`/chat/${ai}`, {
+        const res2 = await fetch('/chat/claude', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg, message_id: messageId, image_url: imageUrl || null })
@@ -492,7 +460,7 @@ async function sendToServer(msg, messageId, ai, imageUrl, isRetry = false) {
         return;
       } catch(e2) { retryRow.remove(); }
     }
-    addFailedRow(msg, messageId, ai, imageUrl);
+    addFailedRow(msg, messageId, imageUrl);
   }
 }
 
@@ -505,7 +473,7 @@ function addPendingRow() {
   return row;
 }
 
-function addFailedRow(msg, messageId, ai, imageUrl) {
+function addFailedRow(msg, messageId, imageUrl) {
   const row = document.createElement('div');
   row.className = 'message-row ai';
   const block = document.createElement('div');
@@ -517,7 +485,7 @@ function addFailedRow(msg, messageId, ai, imageUrl) {
   const retryBtn = document.createElement('button');
   retryBtn.textContent = '重試';
   retryBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:14px;font-size:13px;cursor:pointer;align-self:flex-start;';
-  retryBtn.onclick = async () => { row.remove(); await sendToServer(msg, messageId, ai, imageUrl); };
+  retryBtn.onclick = async () => { row.remove(); await sendToServer(msg, messageId, imageUrl); };
   block.appendChild(bubble);
   block.appendChild(retryBtn);
   row.appendChild(block);

@@ -116,7 +116,6 @@
         }
         .avatar.然然 { background: var(--accent); color: #fff; }
         .avatar.晏 { background: var(--surface3); color: var(--text); }
-        .avatar.溫珩 { background: var(--surface3); color: var(--text); }
         .entry-meta {
             display: flex;
             flex-direction: column;
@@ -335,7 +334,6 @@
             <div class="compose-actions">
                 <div class="compose-ai-btns">
                     <button class="btn secondary" onclick="askAiEntry('claude')">邀晏寫日記</button>
-                    <button class="btn secondary" onclick="askAiEntry('gemini')">邀溫珩寫日記</button>
                 </div>
                 <button class="btn" onclick="postEntry()">發布</button>
             </div>
@@ -354,7 +352,7 @@
     <script>
         // 頭像首字對應（未來加宸：map['宸'] = '宸'）
         function avatarInitial(author) {
-            const map = { '然然': '然', '晏': '晏', '溫珩': '溫' };
+            const map = { '然然': '然', '晏': '晏' };
             return map[author] || author.charAt(0);
         }
 
@@ -460,7 +458,6 @@
                     <div class="reply-hint" id="reply-hint-${entry.id}"></div>
                     <div class="ai-comment-btns">
                         <button class="ai-comment-btn" id="ai-btn-claude-${entry.id}" onclick="askAiComment(${entry.id}, 'claude', this)">邀晏留言</button>
-                        <button class="ai-comment-btn" id="ai-btn-gemini-${entry.id}" onclick="askAiComment(${entry.id}, 'gemini', this)">邀溫珩留言</button>
                     </div>
                     <div class="comment-input">
                         <div class="comment-input-row">

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>人物書</title>
   <link rel="stylesheet" href="/theme.css">
   <style>
@@ -88,7 +88,6 @@
     .form-input::placeholder { color: var(--text-3); }
     textarea.form-input { min-height: 60px; }
 
-    /* 唯讀顯示 */
     .readonly-text {
       font-size: 14px; color: var(--text); line-height: 1.7;
       white-space: pre-wrap; min-height: 40px;
@@ -128,7 +127,6 @@
     }
     .opt-btn.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-    /* 我的視角 */
     .perspective-card {
       background: var(--surface);
       border-top: .5px solid var(--border);
@@ -167,19 +165,14 @@
       white-space: nowrap; z-index: 999;
     }
     .toast.show { opacity: 1; }
-  
-    /* iPhone safe area */
-    .input-area, .tab-bar, .reply-bar {
-      padding-bottom: max(12px, env(safe-area-inset-bottom));
-    }
-    
 
-    /* Header safe area top */
     .header, .ph {
       padding-top: max(14px, env(safe-area-inset-top));
     }
-    
-</style>
+    .input-area, .tab-bar, .reply-bar {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+  </style>
 </head>
 <body>
 
@@ -191,7 +184,6 @@
 
   <div class="persona-switch">
     <div class="ps-btn active" id="ps-claude" onclick="switchPersona('claude')">晏</div>
-    <div class="ps-btn" id="ps-gemini" onclick="switchPersona('gemini')">溫珩</div>
     <div class="ps-btn" id="ps-user" onclick="switchPersona('user')">然然</div>
   </div>
 
@@ -222,7 +214,7 @@
       <div class="form-group">
         <div class="form-row">
           <div class="form-label">名字 <span class="badge">必填</span></div>
-          <input class="form-input" type="text" id="f-name" placeholder="例：晏、溫珩…">
+          <input class="form-input" type="text" id="f-name" placeholder="例：晏、然然…">
         </div>
         <div class="form-row">
           <div class="form-label">職業 / 身份</div>
@@ -276,12 +268,10 @@
         </div>
         <div class="form-row" id="rel-bg-row">
           <div class="form-label">關係背景</div>
-          <!-- AI 角色：唯讀 -->
           <div id="rel-bg-readonly" style="display:none">
             <div class="readonly-text" id="rel-bg-display">（尚未生成，累積對話後會自動更新）</div>
             <div class="readonly-hint">由系統根據對話自動更新，不可手動編輯</div>
           </div>
-          <!-- 然然：可編輯（實際上然然不會進這個 tab）-->
           <textarea class="form-input" id="f-rel_bg" rows="4" placeholder="你們是怎麼認識的、相處的故事…"></textarea>
         </div>
       </div>
@@ -307,40 +297,16 @@
 
     <!-- Tab 4: 我的視角（只有然然看到）-->
     <div class="tab-panel" id="tp4">
-      <div class="sec-label">系統分析的關係總結</div>
+      <div class="sec-label">晏對然然的內心想法</div>
 
-      <!-- 然然 × 晏 -->
       <div class="perspective-card">
         <div class="perspective-header">
-          <div class="perspective-title" id="title-claude-user">然然 × 晏</div>
-          <button class="perspective-refresh" id="refresh-claude" onclick="refreshPerspective('claude')">重新分析</button>
+          <div class="perspective-title" id="title-claude">晏眼中的然然</div>
+          <button class="perspective-refresh" id="refresh-claude" onclick="refreshPerspective()">重新分析</button>
         </div>
         <div class="perspective-body loading" id="body-claude">載入中…</div>
         <div class="perspective-time" id="time-claude"></div>
       </div>
-
-      <!-- 然然 × 溫珩 -->
-      <div class="perspective-card">
-        <div class="perspective-header">
-          <div class="perspective-title" id="title-gemini-user">然然 × 溫珩</div>
-          <button class="perspective-refresh" id="refresh-gemini" onclick="refreshPerspective('gemini')">重新分析</button>
-        </div>
-        <div class="perspective-body loading" id="body-gemini">載入中…</div>
-        <div class="perspective-time" id="time-gemini"></div>
-      </div>
-
-      <!-- 晏 × 溫珩 -->
-      <div class="perspective-card">
-        <div class="perspective-header">
-          <div class="perspective-title" id="title-between">晏 × 溫珩</div>
-          <button class="perspective-refresh" id="refresh-between" onclick="refreshPerspective('between')">重新分析</button>
-        </div>
-        <div class="perspective-body loading" id="body-between">載入中…</div>
-        <div class="perspective-time" id="time-between"></div>
-      </div>
-
-      <!-- 未來：溫珩 -->
-      <!-- <div class="perspective-card">然然 × 溫珩</div> -->
     </div>
 
   </div>
@@ -461,17 +427,13 @@
       document.querySelectorAll('.tab-item').forEach((t, i) => t.classList.toggle('active', i === n));
       document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === n));
       curTab = n;
-      if (n === 4) loadPerspectives();
+      if (n === 4) loadPerspective();
     }
 
     function applyUserMode(isUser) {
-      // 然然模式：隱藏關係設定、進階設定，顯示我的視角
       document.getElementById('tab-relation').classList.toggle('hidden', isUser);
       document.getElementById('tab-advanced').classList.toggle('hidden', isUser);
       document.getElementById('tab-perspective').classList.toggle('hidden', !isUser);
-      // 儲存按鈕
-      document.getElementById('saveBtn').style.display = isUser ? 'block' : 'block';
-      // rel_bg 唯讀（AI 角色）
       const readonly = document.getElementById('rel-bg-readonly');
       const editable = document.getElementById('f-rel_bg');
       if (!isUser) {
@@ -483,7 +445,6 @@
         readonly.style.display = 'none';
         editable.style.display = 'block';
       }
-      // 然然切換時跳回 tab 0
       if (isUser && curTab > 1) switchTab(0);
     }
 
@@ -549,52 +510,43 @@
       return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${String(tw.getUTCHours()).padStart(2,'0')}:${String(tw.getUTCMinutes()).padStart(2,'0')} 更新`;
     }
 
-    async function loadPerspectives() {
-      const names = {
-        claude: allData.claude?.name || '晏',
-        gemini: allData.gemini?.name || '熠',
-        user: allData.user?.name || '然然'
-      };
-      document.getElementById('title-claude-user').textContent = `${names.user} × ${names.claude}`;
-      document.getElementById('title-gemini-user').textContent = `${names.user} × ${names.gemini}`;
-      document.getElementById('title-between').textContent = `${names.claude} × ${names.gemini}`;
+    async function loadPerspective() {
+      const claudeName = allData.claude?.name || '晏';
+      const userName = allData.user?.name || '然然';
+      document.getElementById('title-claude').textContent = `${claudeName}眼中的${userName}`;
 
       try {
         const res = await fetch('/perspective');
         const data = await res.json();
-        ['claude', 'gemini', 'between'].forEach(key => {
-          const body = document.getElementById(`body-${key}`);
-          const time = document.getElementById(`time-${key}`);
-          if (data[key]?.content) {
-            body.textContent = data[key].content;
-            body.classList.remove('loading');
-            time.textContent = formatTime(data[key].updated_at);
-          } else {
-            body.textContent = '尚未生成，點右上角重新分析。';
-            body.classList.add('loading');
-          }
-        });
+        const body = document.getElementById('body-claude');
+        const time = document.getElementById('time-claude');
+        if (data.claude?.content) {
+          body.textContent = data.claude.content;
+          body.classList.remove('loading');
+          time.textContent = formatTime(data.claude.updated_at);
+        } else {
+          body.textContent = '尚未生成，點右上角重新分析。';
+          body.classList.add('loading');
+        }
       } catch(e) {
-        ['claude', 'gemini', 'between'].forEach(key => {
-          document.getElementById(`body-${key}`).textContent = '載入失敗';
-        });
+        document.getElementById('body-claude').textContent = '載入失敗';
       }
     }
 
-    async function refreshPerspective(key) {
-      const btn = document.getElementById(`refresh-${key}`);
+    async function refreshPerspective() {
+      const btn = document.getElementById('refresh-claude');
       btn.disabled = true;
       btn.textContent = '分析中…';
-      const body = document.getElementById(`body-${key}`);
+      const body = document.getElementById('body-claude');
       body.textContent = '分析中，請稍候…';
       body.classList.add('loading');
       try {
-        const res = await fetch(`/perspective/${key}`, { method: 'POST' });
+        const res = await fetch('/perspective/claude', { method: 'POST' });
         const data = await res.json();
         if (data.content) {
           body.textContent = data.content;
           body.classList.remove('loading');
-          document.getElementById(`time-${key}`).textContent = formatTime(new Date().toISOString());
+          document.getElementById('time-claude').textContent = formatTime(new Date().toISOString());
         } else {
           body.textContent = '分析失敗，請稍後再試。';
         }
@@ -623,10 +575,8 @@
         allData = data;
       } catch(e) {}
       const cn = allData.claude?.name || '晏';
-      const gn = allData.gemini?.name || '熠';
       const un = allData.user?.name || '然然';
       document.getElementById('ps-claude').textContent = cn;
-      document.getElementById('ps-gemini').textContent = gn;
       document.getElementById('ps-user').textContent = un;
       loadCurrentFromCache();
       applyUserMode(false);

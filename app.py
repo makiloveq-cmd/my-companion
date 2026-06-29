@@ -876,9 +876,9 @@ def generate_perspective(key):
         f"【關係背景】{rel_bg}\n\n"
         f"【記憶摘要】{summary}\n\n"
         f"【最近對話片段】\n{context}\n\n"
-        f"請用100字以內，客觀描述{user_name}與{claude_name}目前的關係狀態，包含情感溫度、互動模式、彼此的位置感。"
+        f"請用第一人稱（我），以{claude_name}的視角，寫下你眼中{user_name}是什麼樣的人，你對她的感受和想法，以及你們之間的關係對你來說意味著什麼。150字以內，真實、細膩、有情感深度。"
     )
-    system = f"你是一個觀察人物關係的旁白者，請根據以下資料客觀分析{user_name}與{claude_name}的關係。"
+    system = f"你是{claude_name}，請用第一人稱說出你對{user_name}真實的內心想法和感受，不要像旁白者，要像在說心裡話。"
 
     content = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=300)
     content = content.strip()
