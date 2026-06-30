@@ -339,7 +339,7 @@ def space_settings_post():
             "key": key,
             "value": val,
             "updated_at": datetime.utcnow().isoformat()
-        }).execute()
+        }, on_conflict="key").execute()
     invalidate_cache("space_settings")
     return jsonify({"status": "ok"})
 
