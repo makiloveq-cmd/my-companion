@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Rifugio</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital@1&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  font-family: -apple-system, 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100%;
+  overscroll-behavior: none;
+}
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+#view {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.tab-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding: 10px 0 max(16px, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-decoration: none;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+.tab.active { color: var(--accent); }
+.tab-icon { font-size: 20px; }
+.tab-label { font-size: 10px; letter-spacing: 0.5px; }
+.fade-enter {
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view"></div>
+  <div class="tab-bar" id="tabBar">
+    <button class="tab active" data-route="home">
+      <div class="tab-icon">⌂</div><div class="tab-label">首頁</div>
+    </button>
+    <button class="tab" data-route="chatlist">
+      <div class="tab-icon">✦</div><div class="tab-label">聊天</div>
+    </button>
+    <button class="tab" data-route="moments">
+      <div class="tab-icon">◎</div><div class="tab-label">朋友圈</div>
+    </button>
+    <button class="tab" data-route="diary">
+      <div class="tab-icon">✐</div><div class="tab-label">日記</div>
+    </button>
+    <button class="tab" data-route="persona">
+      <div class="tab-icon">⋯</div><div class="tab-label">人物書</div>
+    </button>
+  </div>
+</div>
+
+<script src="/static/spa-router.js"></script>
+<script src="/static/view-home.js"></script>
+<script src="/static/view-chatlist.js"></script>
+<script src="/static/view-chat.js"></script>
+<script src="/static/view-space.js"></script>
+<script src="/static/view-diary.js"></script>
+<script src="/static/view-persona.js"></script>
+<script src="/static/view-usage.js"></script>
+<script>
+  RifugioRouter.init();
+</script>
+<script src="/theme.js"></script>
+</body>
+</html>

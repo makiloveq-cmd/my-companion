@@ -619,6 +619,14 @@ def chatroom():
 def index():
     return send_from_directory(".", "index.html")
 
+@app.route("/app_spa")
+def app_spa():
+    return send_from_directory(".", "index_spa.html")
+
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory("static", filename)
+
 # ===== 用量監控 =====
 
 ANTHROPIC_INPUT_PRICE = 3.0 / 1_000_000
