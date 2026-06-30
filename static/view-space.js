@@ -1,11 +1,527 @@
-// ═══ View: 共同空間（過渡版，使用 iframe，待後續完整 SPA 化）═══
+// ═══ View: 共同空間（真正 SPA 化）═══
 (function () {
+  const STYLE_ID = 'view-space-style';
+  const CSS = `
+  .sp-header {
+    padding: 14px 20px; background: var(--surface);
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .sp-header h1 { font-size: 17px; font-weight: 400; flex: 1; }
+  .sp-header-setting { font-size: 20px; cursor: pointer; color: var(--text-3); padding: 4px; }
+
+  .sp-messages {
+    flex: 1; overflow-y: auto;
+    padding: 24px 20px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .sp-entry-user {
+    align-self: flex-end; max-width: 75%;
+    background: var(--bubble-user); color: #fff;
+    padding: 12px 16px;
+    border-radius: 16px 16px 4px 16px;
+    font-size: 15px; line-height: 1.7; white-space: pre-wrap;
+  }
+  .sp-entry-user .sp-entry-time { font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right; }
+
+  .sp-entry-ai {
+    align-self: flex-start; max-width: 88%;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .sp-entry-ai .sp-av {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface3); color: var(--text-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 500; flex-shrink: 0; overflow: hidden;
+  }
+  .sp-entry-ai .sp-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .sp-content-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .sp-speaker-name { font-size: 12px; color: var(--text-3); padding: 0 2px; }
+  .sp-bubble {
+    background: var(--bubble-ai); border: 1px solid var(--border);
+    border-radius: 4px 16px 16px 16px;
+    padding: 14px 16px; font-size: 15px; line-height: 1.9;
+    color: var(--text); white-space: pre-wrap;
+  }
+  .sp-entry-time { font-size: 11px; color: var(--text-3); padding: 0 2px; }
+
+  .sp-entry-background {
+    align-self: flex-start; max-width: 88%;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .sp-entry-background .sp-av {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface2); color: var(--text-3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0; overflow: hidden; opacity: 0.6;
+  }
+  .sp-entry-background .sp-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .sp-entry-background .sp-speaker-name { opacity: 0.7; }
+  .sp-bg-text {
+    font-size: 13px; line-height: 1.7;
+    color: var(--text-3); font-style: italic;
+    padding: 2px 4px; white-space: pre-wrap;
+  }
+  .sp-entry-background .sp-entry-time { opacity: 0.6; }
+
+  .sp-loading-wrap { display: flex; gap: 10px; align-items: flex-start; }
+  .sp-loading-wrap .sp-av {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--text-2); flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sp-loading-dots {
+    background: var(--bubble-ai); border: 1px solid var(--border);
+    border-radius: 4px 16px 16px 16px;
+    padding: 14px 20px; font-size: 20px;
+    color: var(--text-3); letter-spacing: 4px;
+    animation: sp-pulse 1.2s infinite;
+  }
+  @keyframes sp-pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+  .sp-input-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 10px 12px max(14px, env(safe-area-inset-bottom));
+    flex-shrink: 0;
+  }
+  .sp-input-hint { font-size: 12px; color: var(--text-3); margin-bottom: 6px; padding: 0 2px; }
+  .sp-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .sp-input-wrapper { flex: 1; position: relative; }
+  .sp-input-wrapper textarea {
+    width: 100%; padding: 9px 36px 9px 14px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 22px; color: var(--text);
+    font-size: 15px; outline: none; resize: none;
+    font-family: inherit; max-height: 140px; line-height: 1.6; overflow-y: auto;
+  }
+  .sp-newline-btn {
+    position: absolute; right: 8px; bottom: 7px;
+    width: 24px; height: 24px; border: none; background: transparent;
+    color: var(--text-3); border-radius: 6px; font-size: 13px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .sp-send-btn {
+    width: 38px; height: 38px; flex-shrink: 0;
+    background: var(--accent); border: none; border-radius: 50%;
+    color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sp-send-btn:active { opacity: 0.8; }
+  .sp-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .sp-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  .sp-modal-overlay.show { display: flex; }
+  .sp-modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 600px;
+    display: flex; flex-direction: column; gap: 14px;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .sp-modal-title {
+    font-size: 16px; font-weight: 500;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sp-modal-close { font-size: 20px; cursor: pointer; color: var(--text-3); }
+  .sp-modal-section-title {
+    font-size: 11px; color: var(--text-3); text-transform: uppercase;
+    letter-spacing: 0.08em; padding-top: 4px;
+    border-top: 1px solid var(--border); margin-top: 4px;
+  }
+  .sp-modal-field { display: flex; flex-direction: column; gap: 6px; }
+  .sp-modal-label { font-size: 13px; color: var(--text-2); }
+  .sp-modal-field textarea {
+    padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 14px; outline: none;
+    resize: none; font-family: inherit; line-height: 1.5;
+  }
+  .sp-modal-save {
+    padding: 12px; background: var(--accent);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 15px; cursor: pointer; margin-top: 4px;
+  }
+  `;
+
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
   async function mount(el) {
+    ensureStyle();
     el.style.display = 'flex';
     el.style.flexDirection = 'column';
-    el.innerHTML = `<iframe src="/space_page" style="width:100%;height:100%;border:none;display:block;"></iframe>`;
+
+    el.innerHTML = `
+      <div class="sp-header">
+        <h1>✦ 共同空間</h1>
+        <div class="sp-header-setting" id="spSettingBtn" title="空間設定">⚙</div>
+      </div>
+
+      <div class="sp-messages" id="spMessages"></div>
+
+      <div class="sp-input-area">
+        <div class="sp-input-hint">描述你在做什麼，或對晏說話…</div>
+        <div class="sp-input-row">
+          <div class="sp-input-wrapper">
+            <textarea id="spInput" rows="1" placeholder="「我回來了！」推開門，把包包放到玄關…"></textarea>
+            <button class="sp-newline-btn" id="spNewlineBtn">⏎</button>
+          </div>
+          <button class="sp-send-btn" id="spSendBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sp-modal-overlay" id="spSettingModal">
+        <div class="sp-modal">
+          <div class="sp-modal-title">
+            空間設定
+            <span class="sp-modal-close" id="spModalClose">✕</span>
+          </div>
+
+          <div class="sp-modal-section-title">基本氛圍</div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">空間描述</div>
+            <textarea id="sp-s-room_desc" rows="2" placeholder="這是一間什麼樣的空間？整體感受…"></textarea>
+          </div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">氛圍</div>
+            <textarea id="sp-s-atmosphere" rows="2" placeholder="溫暖、安靜、昏黃的燈光、總是放著音樂…"></textarea>
+          </div>
+
+          <div class="sp-modal-section-title">空間細節</div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">房間布局</div>
+            <textarea id="sp-s-layout" rows="2" placeholder="客廳在入口右側、廚房在走廊盡頭…"></textarea>
+          </div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">家具擺設</div>
+            <textarea id="sp-s-furniture" rows="2" placeholder="沙發、書桌、燈、植物…"></textarea>
+          </div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">角落細節</div>
+            <textarea id="sp-s-corner_details" rows="2" placeholder="書架第二層有仙人掌、玄關有舊木椅…"></textarea>
+          </div>
+
+          <div class="sp-modal-section-title">慣常位置（用逗號或頓號分隔多個地點）</div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label" id="spLabelClaudeSpots">晏常待的地方</div>
+            <textarea id="sp-s-claude_spots" rows="2" placeholder="書房、沙發角落、廚房流理台旁…"></textarea>
+          </div>
+
+          <button class="sp-modal-save" id="spSaveSettingsBtn">儲存</button>
+        </div>
+      </div>
+    `;
+
+    let names = { user: '然然', claude: '晏' };
+    let avatars = { user: null, claude: null };
+    let isSending = false;
+
+    function formatTime(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+      const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+      const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear()
+                   && tw.getUTCMonth() === nowTw.getUTCMonth()
+                   && tw.getUTCDate() === nowTw.getUTCDate();
+      const hh = String(tw.getUTCHours()).padStart(2, '0');
+      const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+      if (isToday) return `${hh}:${mm}`;
+      const yesterday = new Date(nowTw);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const isYesterday = tw.getUTCFullYear() === yesterday.getUTCFullYear()
+                       && tw.getUTCMonth() === yesterday.getUTCMonth()
+                       && tw.getUTCDate() === yesterday.getUTCDate();
+      if (isYesterday) return `昨天 ${hh}:${mm}`;
+      return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
+    }
+
+    async function loadPersonas() {
+      try {
+        const res = await fetch('/personas');
+        const data = await res.json();
+        names.user = data.user?.name || names.user;
+        names.claude = data.claude?.name || names.claude;
+        avatars.claude = data.claude?.avatar || null;
+        avatars.user = data.user?.avatar || null;
+        const label = document.getElementById('spLabelClaudeSpots');
+        if (label) label.textContent = `${names.claude}常待的地方`;
+      } catch (e) {}
+    }
+
+    function makeAv(speaker, dim) {
+      const av = document.createElement('div');
+      av.className = 'sp-av';
+      if (dim) av.style.opacity = '0.5';
+      const src = avatars[speaker];
+      if (src && src.startsWith('data:')) {
+        const img = document.createElement('img');
+        img.src = src;
+        av.appendChild(img);
+      } else {
+        av.textContent = (names[speaker] || speaker)[0];
+      }
+      return av;
+    }
+
+    function escHtml(str) {
+      return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function scrollBottom() {
+      const m = document.getElementById('spMessages');
+      if (m) m.scrollTop = m.scrollHeight;
+    }
+
+    function renderUser(content, createdAt) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sp-entry-user';
+      wrap.innerHTML = `<div>${escHtml(content)}</div><div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      document.getElementById('spMessages').appendChild(wrap);
+      scrollBottom();
+    }
+
+    function renderAI(speaker, content, createdAt) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sp-entry-ai';
+      const av = makeAv(speaker);
+      const contentWrap = document.createElement('div');
+      contentWrap.className = 'sp-content-wrap';
+      contentWrap.innerHTML = `
+        <div class="sp-speaker-name">${escHtml(names[speaker] || speaker)}</div>
+        <div class="sp-bubble">${escHtml(content)}</div>
+        <div class="sp-entry-time">${formatTime(createdAt)}</div>
+      `;
+      wrap.appendChild(av);
+      wrap.appendChild(contentWrap);
+      document.getElementById('spMessages').appendChild(wrap);
+      scrollBottom();
+    }
+
+    function renderBackground(speaker, content, createdAt) {
+      const wrap = document.createElement('div');
+      wrap.className = 'sp-entry-background';
+      const av = makeAv(speaker, true);
+      const contentWrap = document.createElement('div');
+      contentWrap.className = 'sp-content-wrap';
+      contentWrap.innerHTML = `
+        <div class="sp-speaker-name">${escHtml(names[speaker] || speaker)}</div>
+        <div class="sp-bg-text">${escHtml(content)}</div>
+        <div class="sp-entry-time">${formatTime(createdAt)}</div>
+      `;
+      wrap.appendChild(av);
+      wrap.appendChild(contentWrap);
+      document.getElementById('spMessages').appendChild(wrap);
+      scrollBottom();
+    }
+
+    function addLoadingRow() {
+      const wrap = document.createElement('div');
+      wrap.className = 'sp-loading-wrap';
+      const av = makeAv('claude');
+      const dots = document.createElement('div');
+      dots.className = 'sp-loading-dots';
+      dots.textContent = '···';
+      wrap.appendChild(av);
+      wrap.appendChild(dots);
+      document.getElementById('spMessages').appendChild(wrap);
+      scrollBottom();
+      return wrap;
+    }
+
+    function renderRetry() {
+      const wrap = document.createElement('div');
+      wrap.className = 'sp-entry-ai';
+      const av = makeAv('claude');
+      const contentWrap = document.createElement('div');
+      contentWrap.className = 'sp-content-wrap';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'sp-speaker-name';
+      nameEl.textContent = names.claude;
+      const errBubble = document.createElement('div');
+      errBubble.className = 'sp-bubble';
+      errBubble.style.cssText = 'color:var(--text-3);font-size:13px;';
+      errBubble.textContent = '連線失敗';
+      const retryBtn = document.createElement('button');
+      retryBtn.textContent = '重試';
+      retryBtn.style.cssText = 'margin-top:6px;padding:5px 14px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:13px;cursor:pointer;';
+      retryBtn.onclick = async () => {
+        wrap.remove();
+        const loading = addLoadingRow();
+        try {
+          const res = await fetch('/space/reply/claude', { method: 'POST' });
+          const data = await res.json();
+          loading.remove();
+          if (data.reply) renderAI('claude', data.reply, new Date().toISOString());
+          else renderRetry();
+        } catch (e) {
+          loading.remove();
+          renderRetry();
+        }
+      };
+      contentWrap.appendChild(nameEl);
+      contentWrap.appendChild(errBubble);
+      contentWrap.appendChild(retryBtn);
+      wrap.appendChild(av);
+      wrap.appendChild(contentWrap);
+      document.getElementById('spMessages').appendChild(wrap);
+      scrollBottom();
+    }
+
+    async function loadMessages() {
+      try {
+        const res = await fetch('/space/messages');
+        const data = await res.json();
+        const messages = document.getElementById('spMessages');
+        if (!messages) return;
+        messages.innerHTML = '';
+        data.messages.forEach(m => {
+          if (m.speaker === 'user') {
+            renderUser(m.content, m.created_at);
+          } else if (m.message_type === 'background') {
+            renderBackground(m.speaker, m.content, m.created_at);
+          } else {
+            renderAI(m.speaker, m.content, m.created_at);
+          }
+        });
+      } catch (e) {}
+    }
+
+    async function trySpaceReply() {
+      try {
+        const res = await fetch('/space/reply/claude', { method: 'POST' });
+        const data = await res.json();
+        if (data.reply) return data.reply;
+        throw new Error('no reply');
+      } catch (e) {
+        try {
+          const res2 = await fetch('/space/reply/claude', { method: 'POST' });
+          const data2 = await res2.json();
+          if (data2.reply) return data2.reply;
+        } catch (e2) {}
+        return null;
+      }
+    }
+
+    async function sendAction() {
+      const input = document.getElementById('spInput');
+      const text = input.value.trim();
+      if (!text || isSending) return;
+
+      isSending = true;
+      document.getElementById('spSendBtn').disabled = true;
+      input.value = '';
+      input.style.height = 'auto';
+
+      const sentAt = new Date().toISOString();
+      renderUser(text, sentAt);
+
+      try {
+        await fetch('/space/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
+      } catch (e) {}
+
+      const loading = addLoadingRow();
+      try {
+        const reply = await trySpaceReply();
+        loading.remove();
+        if (reply) renderAI('claude', reply, new Date().toISOString());
+        else renderRetry();
+      } catch (e) {
+        loading.remove();
+        renderRetry();
+      } finally {
+        isSending = false;
+        document.getElementById('spSendBtn').disabled = false;
+      }
+    }
+
+    function autoGrow(elx) {
+      elx.style.height = 'auto';
+      elx.style.height = elx.scrollHeight + 'px';
+    }
+    function insertNewline() {
+      const elx = document.getElementById('spInput');
+      const s = elx.selectionStart, end = elx.selectionEnd;
+      elx.value = elx.value.slice(0, s) + '\n' + elx.value.slice(end);
+      elx.selectionStart = elx.selectionEnd = s + 1;
+      autoGrow(elx);
+      elx.focus();
+    }
+
+    async function openSettings() {
+      try {
+        const res = await fetch('/space_settings');
+        const data = await res.json();
+        document.getElementById('sp-s-room_desc').value = data.room_desc || '';
+        document.getElementById('sp-s-atmosphere').value = data.atmosphere || '';
+        document.getElementById('sp-s-layout').value = data.layout || '';
+        document.getElementById('sp-s-furniture').value = data.furniture || '';
+        document.getElementById('sp-s-corner_details').value = data.corner_details || '';
+        document.getElementById('sp-s-claude_spots').value = data.claude_spots || '';
+      } catch (e) {}
+      document.getElementById('spSettingModal').classList.add('show');
+    }
+
+    function closeSettings() {
+      document.getElementById('spSettingModal').classList.remove('show');
+    }
+
+    async function saveSettings() {
+      const payload = {
+        room_desc: document.getElementById('sp-s-room_desc').value,
+        atmosphere: document.getElementById('sp-s-atmosphere').value,
+        layout: document.getElementById('sp-s-layout').value,
+        furniture: document.getElementById('sp-s-furniture').value,
+        corner_details: document.getElementById('sp-s-corner_details').value,
+        claude_spots: document.getElementById('sp-s-claude_spots').value,
+      };
+      try {
+        await fetch('/space_settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {}
+      closeSettings();
+    }
+
+    // 綁定事件
+    document.getElementById('spSendBtn').onclick = sendAction;
+    document.getElementById('spNewlineBtn').onclick = insertNewline;
+    document.getElementById('spInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAction(); }
+    });
+    document.getElementById('spInput').addEventListener('input', (e) => autoGrow(e.target));
+    document.getElementById('spSettingBtn').onclick = openSettings;
+    document.getElementById('spModalClose').onclick = closeSettings;
+    document.getElementById('spSaveSettingsBtn').onclick = saveSettings;
+
+    await loadPersonas();
+    await loadMessages();
+
     return function cleanup() {};
   }
+
   window.RifugioViews = window.RifugioViews || {};
   window.RifugioViews.space = { mount };
 })();
