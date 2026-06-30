@@ -256,7 +256,7 @@ def maybe_evolve_rel_bg(bot):
         new_rel_bg = call_claude(
             f"你是一個記錄人物關係演變的旁白者。請根據對話內容，客觀地更新{name}與{you_name}之間的關係背景描述。",
             [{"role": "user", "content": user_prompt}],
-            max_tokens=300
+            max_tokens=800
         )
         new_rel_bg = new_rel_bg.strip()
         supabase.table("personas").update({
