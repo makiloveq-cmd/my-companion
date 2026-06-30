@@ -454,7 +454,13 @@ def build_space_system_prompt():
         lines.append("【共同空間】\n" + "\n".join(space_parts))
 
     you_persona = me.get("persona") or ""
+    you_appearance = me.get("appearance") or ""
+    you_outfit = me.get("outfit") or ""
     lines.append(f"【{you_name}的資訊】個性：{you_persona}" if you_persona else f"對方是{you_name}。")
+    if you_appearance:
+        lines.append(f"【{you_name}的外觀】{you_appearance}")
+    if you_outfit:
+        lines.append(f"【{you_name}的穿搭】{you_outfit}")
 
     claude_summary = get_latest_summary("claude")
     if claude_summary:
