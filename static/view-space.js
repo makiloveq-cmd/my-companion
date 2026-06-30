@@ -4,12 +4,7 @@
     el.style.display = 'flex';
     el.style.flexDirection = 'column';
     el.innerHTML = `<iframe src="/space_page" style="width:100%;height:100%;border:none;display:block;"></iframe>`;
-
-    window.RifugioIframeView.hideTabBar();
-
-    return function cleanup() {
-      window.RifugioIframeView.showTabBar();
-    };
+    return function cleanup() {};
   }
   window.RifugioViews = window.RifugioViews || {};
   window.RifugioViews.space = { mount };
