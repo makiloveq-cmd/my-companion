@@ -183,6 +183,19 @@ def build_system_prompt(bot_key="claude"):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
+    # 注入共同空間最近對話
+    try:
+        space_recent = supabase.table("space_messages").select("speaker, content, message_type").order("id", desc=True).limit(10).execute().data
+        space_recent = [m for m in reversed(space_recent) if m.get("message_type") != "background"]
+        if space_recent:
+            sp_lines = []
+            for m in space_recent:
+                sp_name = you_name if m["speaker"] == "user" else name
+                sp_lines.append(f"{sp_name}：{m['content']}")
+            lines.append("【你們在共同空間最近的互動】\n" + "\n".join(sp_lines))
+    except:
+        pass
+
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。")
 
     return "\n".join([l for l in lines if l])
@@ -463,6 +476,18 @@ def build_space_system_prompt():
     claude_summary = get_latest_summary("claude")
     if claude_summary:
         lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
+
+    # 注入私聊最近對話
+    try:
+        chat_recent = load_memory("claude")[-10:]
+        if chat_recent:
+            ch_lines = []
+            for m in chat_recent:
+                ch_name = you_name if m["role"] == "user" else name
+                ch_lines.append(f"{ch_name}：{m['content']}")
+            lines.append("【你們私下聊天的最近對話】\n" + "\n".join(ch_lines))
+    except:
+        pass
 
     lines.append(
         f"【回覆格式與規則】\n"
