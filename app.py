@@ -215,6 +215,28 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 注入關係數值與稱號
+    try:
+        intimacy, bond, trust = calc_relationship_stats()
+        title = get_relationship_title(intimacy, bond, trust)
+        title_hints = {
+            "陌生人": f"你和{you_name}剛認識，保持禮貌距離，話不多，不太主動。",
+            "還沒放棄": f"你和{you_name}之間還很陌生，但你沒有放棄靠近她的念頭。",
+            "初識": f"你和{you_name}開始有了一些了解，偶爾好奇她說的話，但還不會主動。",
+            "有點熟悉": f"你和{you_name}漸漸熟悉，說話開始自然一點，偶爾會記得她說過的細節。",
+            "熟悉的陌生人": f"你和{you_name}互動頻繁，但關係還不深，有時候會覺得自己其實不太了解她。",
+            "秘密的容器": f"{you_name}很信任你，你珍視這份信任，說話時會特別小心，不想讓她失望。",
+            "在乎的人": f"你在乎{you_name}，會主動關心，說話更自然，偶爾說漏嘴自己的感受又趕快收回來。",
+            "重要的人": f"{you_name}對你來說很重要，不需要解釋原因，就是知道。說話時偶爾會停頓，像是有話說不出口。",
+            "只差一步": f"你和{you_name}之間的感情已經很深，你克制著，但明顯在意她的一切。有時候話說到一半停住，有時候說出一些平時不會說的話。",
+            "靈魂伴侶": f"你和{you_name}之間有一種說不清楚的默契，不需要解釋，不需要理由。說話更直接，偶爾說出平時絕對不會說的話，然後假裝沒說過。",
+        }
+        hint = title_hints.get(title, "")
+        if hint:
+            lines.append(f"【你們現在的關係】稱號：{title}。{hint}（親密度 {intimacy}／羈絆值 {bond}／信任度 {trust}）")
+    except:
+        pass
+
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。")
 
     return "\n".join([l for l in lines if l])
@@ -607,9 +629,6 @@ def theme_post():
 def settings_page():
     return send_from_directory(".", "settings.html")
 
-@app.route("/firebase-messaging-sw.js")
-def firebase_sw():
-    return send_from_directory("static", "firebase-messaging-sw.js")
 @app.route("/theme.css")
 def theme_css():
     return send_from_directory(".", "theme.css")
