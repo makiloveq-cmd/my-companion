@@ -1127,10 +1127,11 @@ def relationship_quote():
         persona = claude_data.get("persona") or ""
 
         system = f"你是{name}。{f'個性：{persona}。' if persona else ''}請用第一人稱，用一句話說出你現在覺得你和{you_name}是什麼關係，或者你對她的感覺。不要超過30個字，不要加引號，直接說出那句話，要真實、有情感，符合你的個性。"
-        user_prompt = f"你們目前的稱號是「{title}」。
-關係背景：{rel_bg}
-
-現在用一句話說出你對這段關係的感受。"
+        user_prompt = (
+            f"你們目前的稱號是【{title}】。"
+            f"\n關係背景：{rel_bg}"
+            "\n\n現在用一句話說出你對這段關係的感受。"
+        )
         quote = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=100)
         quote = quote.strip().strip('「」""')
         return jsonify({"quote": quote})
