@@ -8,6 +8,7 @@ import random
 import uuid
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -68,10 +69,7 @@ def save_message(bot, role, content, message_id=None, image_url=None):
         "image_url": image_url
     }).execute()
     if role in ("user", "assistant"):
-        try:
-            maybe_evolve_rel_bg(bot)
-        except:
-            pass
+        threading.Thread(target=maybe_evolve_rel_bg, args=(bot,), daemon=True).start()
 
 def get_personas():
     cached = _get_cache("personas")
@@ -478,10 +476,7 @@ def build_space_system_prompt():
 
 @app.route("/space/messages", methods=["GET"])
 def space_messages_get():
-    try:
-        maybe_generate_background_actions()
-    except:
-        pass
+    threading.Thread(target=maybe_generate_background_actions, daemon=True).start()
     rows = supabase.table("space_messages").select("*").order("id").execute().data
     return jsonify({"messages": rows})
 
@@ -732,7 +727,7 @@ def get_diary():
     for entry in entries:
         comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
         entry["comments"] = comments
-    maybe_delayed_ai_comments(entries)
+    threading.Thread(target=maybe_delayed_ai_comments, args=(entries,), daemon=True).start()
     return jsonify({"entries": entries})
 
 @app.route("/diary", methods=["POST"])
