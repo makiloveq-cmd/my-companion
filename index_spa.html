@@ -116,7 +116,7 @@ html, body {
 
       // 註冊 Service Worker
       if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.register('/static/firebase-messaging-sw.js');
+        const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         messaging.useServiceWorker && messaging.useServiceWorker(reg);
       }
 

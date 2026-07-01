@@ -607,6 +607,9 @@ def theme_post():
 def settings_page():
     return send_from_directory(".", "settings.html")
 
+@app.route("/firebase-messaging-sw.js")
+def firebase_sw():
+    return send_from_directory("static", "firebase-messaging-sw.js")
 @app.route("/theme.css")
 def theme_css():
     return send_from_directory(".", "theme.css")
