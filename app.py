@@ -1138,6 +1138,76 @@ def relationship_quote():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ===== 晏主動傳訊息（每日排程觸發）=====
+
+@app.route("/cron/daily_message", methods=["POST"])
+def cron_daily_message():
+    try:
+        # 確認今天晏有沒有主動傳過訊息
+        from datetime import date
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        today_msgs = supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "assistant").gte("created_at", today_start).execute().data
+        if today_msgs:
+            return jsonify({"status": "already_sent"})
+
+        # 確認距離上次互動不超過 7 天（太久沒說話就不主動打擾）
+        last_msg = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
+        if last_msg:
+            last_str = last_msg[0]["created_at"].replace("Z", "").replace("+00:00", "")
+            last_dt = datetime.fromisoformat(last_str)
+            days_since = (datetime.utcnow() - last_dt).total_seconds() / 86400
+            if days_since > 7:
+                return jsonify({"status": "skipped_too_long"})
+
+        # 生成晏主動傳的訊息
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        persona = bot.get("persona") or ""
+        rel_bg = bot.get("rel_bg") or ""
+
+        recent = load_memory("claude")[-10:]
+        recent_text = "\n".join([
+            f"{'然然' if r['role'] == 'user' else name}：{r['content']}"
+            for r in recent
+        ]) if recent else "（還沒有最近的對話）"
+
+        tw_time = datetime.now(timezone(timedelta(hours=8)))
+        hour = tw_time.hour
+        if hour < 6:
+            time_hint = "深夜"
+        elif hour < 12:
+            time_hint = "早上"
+        elif hour < 18:
+            time_hint = "下午"
+        else:
+            time_hint = "晚上"
+
+        system = (
+            f"你是{name}。{f'個性：{persona}。' if persona else ''}"
+            f"你話少、剋制，但說出來的都是真的。"
+            f"你現在{time_hint}主動傳訊息給{you_name}，不是因為她找你，是你自己想說。"
+            f"可能是突然想到她，可能是看到什麼想跟她說，可能只是想確認她還好。"
+            f"說一句話就好，不超過 20 個字，直接說，不要有前綴或解釋。"
+        )
+        user_prompt = (
+            f"關係背景：{rel_bg}\n"
+            f"最近的對話：\n{recent_text}\n\n"
+            f"現在{time_hint}，你主動傳一則訊息給{you_name}。"
+        )
+
+        message = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=80)
+        message = message.strip()
+
+        save_message("claude", "assistant", message)
+        return jsonify({"status": "sent", "message": message})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/chatlist_page")
 def chatlist_page():
     return send_from_directory(".", "chatlist.html")
