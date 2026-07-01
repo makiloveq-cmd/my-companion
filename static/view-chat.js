@@ -186,19 +186,19 @@
           bubble.appendChild(cap);
         }
       } else if (role === 'ai') {
-        // 晏的訊息：按換行切成多個泡泡
-        const lines = text.split('\n').filter(l => l.trim() !== '');
-        if (lines.length <= 1) {
+        // 晏的訊息：只在空行（段落）才切成多個泡泡
+        const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
+        if (paragraphs.length <= 1) {
           bubble.className = `ch-bubble ${role}`;
-          bubble.textContent = text;
+          bubble.textContent = text.trim();
           block.appendChild(nameEl);
           block.appendChild(bubble);
         } else {
           block.appendChild(nameEl);
-          lines.forEach((line, idx) => {
+          paragraphs.forEach(para => {
             const b = document.createElement('div');
             b.className = `ch-bubble ${role}`;
-            b.textContent = line;
+            b.textContent = para;
             block.appendChild(b);
           });
         }
@@ -209,7 +209,7 @@
       const timeEl = document.createElement('div');
       timeEl.className = 'ch-time';
       timeEl.textContent = formatTime(createdAt || new Date().toISOString());
-      if (role !== 'ai' || text.split('\n').filter(l => l.trim() !== '').length <= 1) {
+      if (role !== 'ai' || text.split(/\n\s*\n/).filter(p => p.trim() !== '').length <= 1) {
         block.appendChild(bubble);
       }
       block.appendChild(timeEl);
