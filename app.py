@@ -9,9 +9,28 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 import threading
+import firebase_admin
+from firebase_admin import credentials, messaging as fcm_messaging
 
 app = Flask(__name__)
 CORS(app)
+
+# Firebase Admin 初始化
+_firebase_initialized = False
+def get_firebase_app():
+    global _firebase_initialized
+    if not _firebase_initialized:
+        try:
+            sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+            if sa_json:
+                import json
+                sa_dict = json.loads(sa_json)
+                cred = credentials.Certificate(sa_dict)
+                firebase_admin.initialize_app(cred)
+                _firebase_initialized = True
+        except Exception as e:
+            print(f"Firebase init error: {e}")
+    return _firebase_initialized
 
 supabase = create_client(
     os.getenv("SUPABASE_URL"),
@@ -1139,6 +1158,40 @@ def relationship_quote():
         return jsonify({"error": str(e)}), 500
 
 
+# ===== Firebase 推播通知 =====
+
+@app.route("/fcm/register", methods=["POST"])
+def fcm_register():
+    data = request.json
+    token = data.get("token")
+    if not token:
+        return jsonify({"error": "no token"}), 400
+    try:
+        supabase.table("identities").upsert({
+            "key": "fcm_token",
+            "value": token,
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def send_push_notification(title, body):
+    try:
+        if not get_firebase_app():
+            return
+        token_rows = supabase.table("identities").select("value").eq("key", "fcm_token").execute().data
+        if not token_rows:
+            return
+        token = token_rows[0]["value"]
+        message = fcm_messaging.Message(
+            notification=fcm_messaging.Notification(title=title, body=body),
+            token=token,
+        )
+        fcm_messaging.send(message)
+    except Exception as e:
+        print(f"Push notification error: {e}")
+
 # ===== 晏主動傳訊息（每日排程觸發）=====
 
 @app.route("/cron/daily_message", methods=["POST"])
@@ -1203,6 +1256,14 @@ def cron_daily_message():
         message = message.strip()
 
         save_message("claude", "assistant", message)
+        # 發送推播通知
+        personas = get_personas()
+        bot_name = personas.get("claude", {}).get("name") or "晏"
+        threading.Thread(
+            target=send_push_notification,
+            args=(bot_name, message),
+            daemon=True
+        ).start()
         return jsonify({"status": "sent", "message": message})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

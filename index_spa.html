@@ -63,6 +63,8 @@ html, body {
   to { opacity: 1; }
 }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
 </head>
 <body>
 <div id="app">
@@ -97,6 +99,46 @@ html, body {
 <script src="/static/view-usage.js"></script>
 <script>
   RifugioRouter.init();
+
+  // Firebase 推播通知初始化
+  (async function() {
+    try {
+      const firebaseConfig = {
+        apiKey: "AIzaSyBRlnxEIZd8xarQVebBBCf4QewLGaO3vqI",
+        authDomain: "rifugio-23142.firebaseapp.com",
+        projectId: "rifugio-23142",
+        storageBucket: "rifugio-23142.firebasestorage.app",
+        messagingSenderId: "955776778929",
+        appId: "1:955776778929:web:83720e2a7cb58b201bd890"
+      };
+      firebase.initializeApp(firebaseConfig);
+      const messaging = firebase.messaging();
+
+      // 註冊 Service Worker
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.register('/static/firebase-messaging-sw.js');
+        messaging.useServiceWorker && messaging.useServiceWorker(reg);
+      }
+
+      // 請求推播權限
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await messaging.getToken({
+          vapidKey: 'BB9Zdb1pQ038TEjcK27Gka43sHu3e2jfJWnJ1MqUOalYlt6AYPq86VV-_EMPy9ut3USHfvflU0ESl3WKs1hKdYg',
+          serviceWorkerRegistration: await navigator.serviceWorker.ready
+        });
+        if (token) {
+          await fetch('/fcm/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+          });
+        }
+      }
+    } catch(e) {
+      console.log('推播初始化失敗:', e);
+    }
+  })();
 </script>
 <script src="/theme.js"></script>
 </body>
