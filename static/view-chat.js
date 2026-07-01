@@ -186,20 +186,25 @@
           bubble.appendChild(cap);
         }
       } else if (role === 'ai') {
-        // 晏的訊息：只在空行（段落）才切成多個泡泡
-        const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
+        // 晏的訊息：空行切段，最多 3 個泡泡，逐一延遲出現
+        let paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
+        if (paragraphs.length > 3) {
+          paragraphs = [...paragraphs.slice(0, 2), paragraphs.slice(2).join('\n\n')];
+        }
+        block.appendChild(nameEl);
         if (paragraphs.length <= 1) {
           bubble.className = `ch-bubble ${role}`;
           bubble.textContent = text.trim();
-          block.appendChild(nameEl);
           block.appendChild(bubble);
         } else {
-          block.appendChild(nameEl);
-          paragraphs.forEach(para => {
+          paragraphs.forEach((para, idx) => {
             const b = document.createElement('div');
             b.className = `ch-bubble ${role}`;
             b.textContent = para;
+            b.style.opacity = '0';
+            b.style.transition = 'opacity 0.2s ease';
             block.appendChild(b);
+            setTimeout(() => { b.style.opacity = '1'; }, idx * 600);
           });
         }
       } else {
@@ -209,7 +214,7 @@
       const timeEl = document.createElement('div');
       timeEl.className = 'ch-time';
       timeEl.textContent = formatTime(createdAt || new Date().toISOString());
-      if (role !== 'ai' || text.split(/\n\s*\n/).filter(p => p.trim() !== '').length <= 1) {
+      if (role !== 'ai') {
         block.appendChild(bubble);
       }
       block.appendChild(timeEl);
