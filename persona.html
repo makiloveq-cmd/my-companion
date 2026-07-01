@@ -505,8 +505,7 @@
     function formatTime(isoStr) {
       if (!isoStr) return '';
       const d = new Date(isoStr);
-      const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-      return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${String(tw.getUTCHours()).padStart(2,'0')}:${String(tw.getUTCMinutes()).padStart(2,'0')} 更新`;
+      return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} 更新`;
     }
 
     async function loadPerspective() {

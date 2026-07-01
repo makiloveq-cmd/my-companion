@@ -125,13 +125,20 @@
     function formatTime(isoStr) {
       if (!isoStr) return '';
       const d = new Date(isoStr);
-      const tw = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-      const nowTw = new Date(Date.now() + 8 * 60 * 60 * 1000);
-      const isToday = tw.getUTCFullYear() === nowTw.getUTCFullYear() && tw.getUTCMonth() === nowTw.getUTCMonth() && tw.getUTCDate() === nowTw.getUTCDate();
-      const hh = String(tw.getUTCHours()).padStart(2, '0');
-      const mm = String(tw.getUTCMinutes()).padStart(2, '0');
+      const now = new Date();
+      const isToday = d.getFullYear() === now.getFullYear()
+                   && d.getMonth() === now.getMonth()
+                   && d.getDate() === now.getDate();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
       if (isToday) return `${hh}:${mm}`;
-      return `${tw.getUTCMonth()+1}/${tw.getUTCDate()} ${hh}:${mm}`;
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = d.getFullYear() === yesterday.getFullYear()
+                       && d.getMonth() === yesterday.getMonth()
+                       && d.getDate() === yesterday.getDate();
+      if (isYesterday) return `昨天 ${hh}:${mm}`;
+      return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`;
     }
 
     function makeAvatar(role) {
