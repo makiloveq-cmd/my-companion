@@ -114,6 +114,56 @@
     white-space: nowrap; z-index: 999;
   }
   .pn-toast.show { opacity: 1; }
+
+  /* 關係狀態卡片 */
+  .pn-rel-card {
+    background: var(--surface); border-top: .5px solid var(--border);
+    border-bottom: .5px solid var(--border); margin-bottom: 8px;
+    display: flex; flex-direction: column; gap: 0;
+  }
+  .pn-rel-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 6px;
+  }
+  .pn-rel-title-label { font-size: 12px; color: var(--text-3); }
+  .pn-rel-title-val { font-size: 18px; font-weight: 600; color: var(--accent); letter-spacing: .05em; }
+  .pn-rel-quote-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 6px 16px 14px; gap: 12px;
+    border-bottom: .5px solid var(--border);
+  }
+  .pn-rel-quote {
+    font-size: 13px; color: var(--text-2); line-height: 1.6;
+    font-style: italic; flex: 1;
+  }
+  .pn-rel-refresh-btn {
+    font-size: 11px; color: var(--accent); background: none;
+    border: 1px solid var(--accent); border-radius: 10px;
+    padding: 3px 8px; cursor: pointer; flex-shrink: 0; white-space: nowrap;
+  }
+  .pn-rel-refresh-btn:disabled { opacity: 0.4; pointer-events: none; }
+  .pn-rel-stats { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: .5px solid var(--border); }
+  .pn-rel-stat-row { display: flex; align-items: center; gap: 10px; }
+  .pn-rel-stat-label { font-size: 12px; color: var(--text-3); width: 40px; flex-shrink: 0; }
+  .pn-rel-bar-wrap { flex: 1; }
+  .pn-rel-bar { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .pn-rel-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.6s ease; }
+  .pn-rel-stat-val { font-size: 12px; color: var(--text-2); width: 28px; text-align: right; flex-shrink: 0; }
+  .pn-rel-achievements { padding: 0; }
+  .pn-rel-ach-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; cursor: pointer; font-size: 13px; color: var(--text-2);
+  }
+  .pn-rel-ach-header:active { background: var(--surface2); }
+  .pn-rel-ach-arrow { color: var(--text-3); transition: transform .2s; }
+  .pn-rel-ach-arrow.open { transform: rotate(90deg); }
+  .pn-rel-ach-list { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .pn-rel-ach-item { display: flex; align-items: flex-start; gap: 10px; }
+  .pn-rel-ach-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .pn-rel-ach-text { display: flex; flex-direction: column; gap: 2px; }
+  .pn-rel-ach-name { font-size: 13px; color: var(--text); }
+  .pn-rel-ach-name.locked { color: var(--text-3); }
+  .pn-rel-ach-desc { font-size: 11px; color: var(--text-3); }
   `;
 
   const TAGS = ['傲嬌','溫柔','冷靜','話少','活潑','體貼','霸道','純情','成熟','幽默','神秘','認真','撒嬌','腹黑','直率','細膩','溫暖','理性'];
@@ -210,14 +260,53 @@
         </div>
         <!-- Tab 2: 關係設定 -->
         <div class="pn-tab-panel" id="pnTp2">
-          <div class="pn-sec-label">與你的關係</div>
+          <!-- 關係狀態卡片 -->
+          <div class="pn-sec-label">關係狀態</div>
+          <div class="pn-rel-card">
+            <div class="pn-rel-title-row">
+              <div class="pn-rel-title-label">稱號</div>
+              <div class="pn-rel-title-val" id="pnRelTitle">載入中…</div>
+            </div>
+            <div class="pn-rel-quote-row">
+              <div class="pn-rel-quote" id="pnRelQuote">—</div>
+              <button class="pn-rel-refresh-btn" id="pnRelQuoteRefresh">↻ 更新</button>
+            </div>
+            <div class="pn-rel-stats">
+              <div class="pn-rel-stat-row">
+                <div class="pn-rel-stat-label">親密度</div>
+                <div class="pn-rel-bar-wrap">
+                  <div class="pn-rel-bar"><div class="pn-rel-bar-fill" id="pnBarIntimacy" style="width:0%"></div></div>
+                </div>
+                <div class="pn-rel-stat-val" id="pnValIntimacy">—</div>
+              </div>
+              <div class="pn-rel-stat-row">
+                <div class="pn-rel-stat-label">羈絆值</div>
+                <div class="pn-rel-bar-wrap">
+                  <div class="pn-rel-bar"><div class="pn-rel-bar-fill" id="pnBarBond" style="width:0%"></div></div>
+                </div>
+                <div class="pn-rel-stat-val" id="pnValBond">—</div>
+              </div>
+              <div class="pn-rel-stat-row">
+                <div class="pn-rel-stat-label">信任度</div>
+                <div class="pn-rel-bar-wrap">
+                  <div class="pn-rel-bar"><div class="pn-rel-bar-fill" id="pnBarTrust" style="width:0%"></div></div>
+                </div>
+                <div class="pn-rel-stat-val" id="pnValTrust">—</div>
+              </div>
+            </div>
+            <div class="pn-rel-achievements" id="pnAchievements">
+              <div class="pn-rel-ach-header" id="pnAchToggle">
+                <span>成就</span>
+                <span id="pnAchCount">載入中…</span>
+                <span class="pn-rel-ach-arrow">›</span>
+              </div>
+              <div class="pn-rel-ach-list" id="pnAchList" style="display:none"></div>
+            </div>
+          </div>
+          <!-- 關係背景 -->
+          <div class="pn-sec-label">關係背景</div>
           <div class="pn-form-group">
             <div class="pn-form-row">
-              <div class="pn-form-label">關係類型</div>
-              <div class="pn-opt-group" id="pnRelationGroup"></div>
-            </div>
-            <div class="pn-form-row">
-              <div class="pn-form-label">關係背景</div>
               <div id="pnRelBgReadonly" style="display:none">
                 <div class="pn-readonly-text" id="pnRelBgDisplay">（尚未生成，累積對話後會自動更新）</div>
                 <div class="pn-readonly-hint">由系統根據對話自動更新，不可手動編輯</div>
@@ -299,20 +388,70 @@
     }
 
     function buildRelations() {
-      const g = document.getElementById('pnRelationGroup');
-      if (!g) return;
-      g.innerHTML = '';
-      RELATIONS.forEach(o => {
-        const b = document.createElement('div');
-        b.className = 'pn-opt-btn';
-        b.textContent = o.l;
-        b.dataset.val = o.v;
-        b.onclick = () => {
-          g.querySelectorAll('.pn-opt-btn').forEach(x => x.classList.remove('sel'));
-          b.classList.add('sel');
-        };
-        g.appendChild(b);
-      });
+      // 關係類型選項已移除，改用關係狀態卡片
+    }
+
+    async function loadRelationStats() {
+      try {
+        const res = await fetch('/relationship_stats');
+        const data = await res.json();
+        if (data.error) return;
+
+        // 稱號
+        const titleEl = document.getElementById('pnRelTitle');
+        if (titleEl) titleEl.textContent = data.title || '—';
+
+        // 數值與進度條
+        const pairs = [
+          ['Intimacy', data.intimacy],
+          ['Bond', data.bond],
+          ['Trust', data.trust],
+        ];
+        pairs.forEach(([key, val]) => {
+          const barEl = document.getElementById(`pnBar${key}`);
+          const valEl = document.getElementById(`pnVal${key}`);
+          if (barEl) barEl.style.width = Math.min(100, (val / 999) * 100) + '%';
+          if (valEl) valEl.textContent = val;
+        });
+
+        // 成就
+        const achievements = data.achievements || [];
+        const unlocked = achievements.filter(a => a.unlocked).length;
+        const countEl = document.getElementById('pnAchCount');
+        if (countEl) countEl.textContent = `已解鎖 ${unlocked} / ${achievements.length}`;
+
+        const listEl = document.getElementById('pnAchList');
+        if (listEl) {
+          listEl.innerHTML = '';
+          achievements.forEach(a => {
+            const item = document.createElement('div');
+            item.className = 'pn-rel-ach-item';
+            item.innerHTML = `
+              <div class="pn-rel-ach-icon">${a.unlocked ? '🔓' : '🔒'}</div>
+              <div class="pn-rel-ach-text">
+                <div class="pn-rel-ach-name${a.unlocked ? '' : ' locked'}">${a.name}</div>
+                <div class="pn-rel-ach-desc">${a.desc}</div>
+              </div>
+            `;
+            listEl.appendChild(item);
+          });
+        }
+      } catch (e) {}
+    }
+
+    async function refreshRelQuote() {
+      const btn = document.getElementById('pnRelQuoteRefresh');
+      const quoteEl = document.getElementById('pnRelQuote');
+      if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+      if (quoteEl) quoteEl.textContent = '…';
+      try {
+        const res = await fetch('/relationship_quote', { method: 'POST' });
+        const data = await res.json();
+        if (data.quote && quoteEl) quoteEl.textContent = `「${data.quote}」`;
+      } catch (e) {
+        if (quoteEl) quoteEl.textContent = '生成失敗，請稍後再試';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = '↻ 更新'; }
     }
 
     function updateTagCount() {
@@ -352,6 +491,7 @@
       document.querySelectorAll('.pn-tab-panel').forEach((p, i) => p.classList.toggle('active', i === n));
       curTab = n;
       if (n === 4) loadPerspective();
+      if (n === 2) loadRelationStats();
     }
 
     function applyUserMode(isUser) {
@@ -476,6 +616,23 @@
       }
       if (btn) { btn.disabled = false; btn.textContent = '重新分析'; }
     }
+
+    // 成就展開/收起
+    const achToggle = document.getElementById('pnAchToggle');
+    if (achToggle) {
+      achToggle.onclick = () => {
+        const list = document.getElementById('pnAchList');
+        const arrow = achToggle.querySelector('.pn-rel-ach-arrow');
+        if (!list) return;
+        const isOpen = list.style.display !== 'none';
+        list.style.display = isOpen ? 'none' : 'flex';
+        if (arrow) arrow.classList.toggle('open', !isOpen);
+      };
+    }
+
+    // 關係定義更新
+    const relQuoteRefresh = document.getElementById('pnRelQuoteRefresh');
+    if (relQuoteRefresh) relQuoteRefresh.onclick = refreshRelQuote;
 
     // 頭像上傳
     document.getElementById('pnAvCircle').onclick = () => document.getElementById('pnAvInput').click();

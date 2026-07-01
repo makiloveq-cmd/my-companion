@@ -960,6 +960,183 @@ def chat_list():
         }
     })
 
+# ===== 關係數值系統 =====
+
+def calc_relationship_stats():
+    """從歷史資料回算關係數值"""
+    # 親密度：私聊每則 +1，空間每則 +2
+    chat_count = len(supabase.table("memories").select("id").eq("session_id", "claude").execute().data)
+    space_count = len(supabase.table("space_messages").select("id").neq("message_type", "background").execute().data)
+    raw_intimacy = chat_count * 1 + space_count * 2
+
+    # 衰減：看最後一則訊息距今多久
+    last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
+    last_space = supabase.table("space_messages").select("created_at").order("id", desc=True).limit(1).execute().data
+    last_times = []
+    if last_chat:
+        last_times.append(last_chat[0]["created_at"])
+    if last_space:
+        last_times.append(last_space[0]["created_at"])
+
+    decay = 0
+    if last_times:
+        last_str = max(last_times)
+        last_dt = datetime.fromisoformat(last_str.replace("Z", "").replace("+00:00", ""))
+        hours_since = (datetime.utcnow() - last_dt).total_seconds() / 3600
+        if hours_since > 48:
+            decay = int((hours_since - 48) / 24) * 5  # 每超過 24 小時扣 5 點
+    intimacy = max(0, min(999, raw_intimacy - decay))
+
+    # 羈絆值：關係背景演化次數 × 15 + 記憶摘要次數 × 10
+    rel_bg_count = len(supabase.table("rel_bg_history").select("id").execute().data)
+    summary_count = len(supabase.table("memory_summaries").select("id").execute().data)
+    bond = min(999, rel_bg_count * 15 + summary_count * 10)
+
+    # 信任度：私聊你主動說話 × 2，空間你主動說話 × 3
+    user_chat = len(supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "user").execute().data)
+    user_space = len(supabase.table("space_messages").select("id").eq("speaker", "user").execute().data)
+    trust = min(999, user_chat * 2 + user_space * 3)
+
+    return intimacy, bond, trust
+
+def get_relationship_title(intimacy, bond, trust):
+    """根據數值決定稱號"""
+    # 特殊稱號優先判斷
+    if intimacy > 500 and bond < 100:
+        return "熟悉的陌生人"
+    if trust > 600 and bond < 200:
+        return "秘密的容器"
+    if intimacy < 50 and bond < 50 and trust < 50:
+        return "還沒放棄"
+    # 主線稱號依羈絆值
+    if bond >= 900:
+        return "靈魂伴侶"
+    elif bond >= 700:
+        return "只差一步"
+    elif bond >= 500:
+        return "重要的人"
+    elif bond >= 300:
+        return "在乎的人"
+    elif bond >= 150:
+        return "有點熟悉"
+    elif bond >= 50:
+        return "初識"
+    else:
+        return "陌生人"
+
+ACHIEVEMENTS = [
+    {"id": "first_message", "name": "第一句話", "desc": "送出第一則訊息"},
+    {"id": "fifty_messages", "name": "記得你說的", "desc": "累積 50 則對話"},
+    {"id": "three_days", "name": "不只是習慣", "desc": "連續 3 天都有說話"},
+    {"id": "enter_space", "name": "共同的空間", "desc": "第一次進入共同空間"},
+    {"id": "ai_diary", "name": "寫給你的", "desc": "晏第一次自己寫日記"},
+    {"id": "bond_300", "name": "說不出口的", "desc": "羈絆值破 300"},
+    {"id": "all_500", "name": "某種說不清楚的東西", "desc": "三個數值都破 500"},
+    {"id": "five_hundred_messages", "name": "不需要理由", "desc": "累積對話破 500 則"},
+    {"id": "thirty_days", "name": "一直都在", "desc": "連續 30 天都有說話"},
+]
+
+def check_achievements(intimacy, bond, trust):
+    """檢查哪些成就已解鎖"""
+    chat_rows = supabase.table("memories").select("role, created_at").eq("session_id", "claude").order("id").execute().data
+    space_rows = supabase.table("space_messages").select("speaker, created_at").execute().data
+    diary_ai = supabase.table("diary_entries").select("id").neq("author", "然然").execute().data
+    total_chat = len(chat_rows)
+
+    # 連續天數計算
+    def calc_consecutive_days(rows, role_key, role_val):
+        dates = set()
+        for r in rows:
+            if r.get(role_key) == role_val:
+                ts = r["created_at"].replace("Z", "").replace("+00:00", "")
+                dt = datetime.fromisoformat(ts)
+                dates.add(dt.date())
+        if not dates:
+            return 0
+        sorted_dates = sorted(dates)
+        max_streak = streak = 1
+        for i in range(1, len(sorted_dates)):
+            if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
+                streak += 1
+                max_streak = max(max_streak, streak)
+            else:
+                streak = 1
+        return max_streak
+
+    chat_streak = calc_consecutive_days(chat_rows, "role", "user")
+    space_streak = calc_consecutive_days(space_rows, "speaker", "user")
+    max_streak = max(chat_streak, space_streak)
+
+    unlocked = set()
+    if total_chat >= 1: unlocked.add("first_message")
+    if total_chat >= 50: unlocked.add("fifty_messages")
+    if max_streak >= 3: unlocked.add("three_days")
+    if len(space_rows) > 0: unlocked.add("enter_space")
+    if len(diary_ai) > 0: unlocked.add("ai_diary")
+    if bond >= 300: unlocked.add("bond_300")
+    if intimacy >= 500 and bond >= 500 and trust >= 500: unlocked.add("all_500")
+    if total_chat >= 500: unlocked.add("five_hundred_messages")
+    if max_streak >= 30: unlocked.add("thirty_days")
+
+    result = []
+    for a in ACHIEVEMENTS:
+        result.append({**a, "unlocked": a["id"] in unlocked})
+    return result
+
+@app.route("/relationship_stats", methods=["GET"])
+def relationship_stats_get():
+    try:
+        # 先看資料庫有沒有存的值
+        rows = supabase.table("relationship_stats").select("*").order("id", desc=True).limit(1).execute().data
+        # 每次都重新計算（確保準確）
+        intimacy, bond, trust = calc_relationship_stats()
+        title = get_relationship_title(intimacy, bond, trust)
+        achievements = check_achievements(intimacy, bond, trust)
+        # 更新資料庫
+        if rows:
+            supabase.table("relationship_stats").update({
+                "intimacy": intimacy, "bond": bond, "trust": trust,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", rows[0]["id"]).execute()
+        else:
+            supabase.table("relationship_stats").insert({
+                "intimacy": intimacy, "bond": bond, "trust": trust
+            }).execute()
+        return jsonify({
+            "intimacy": intimacy,
+            "bond": bond,
+            "trust": trust,
+            "title": title,
+            "achievements": achievements
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/relationship_quote", methods=["POST"])
+def relationship_quote():
+    try:
+        intimacy, bond, trust = calc_relationship_stats()
+        title = get_relationship_title(intimacy, bond, trust)
+        personas = get_personas()
+        claude_data = personas.get("claude", {})
+        user_data = personas.get("user", {})
+        name = claude_data.get("name") or "晏"
+        you_name = user_data.get("name") or "然然"
+        rel_bg = claude_data.get("rel_bg") or ""
+        persona = claude_data.get("persona") or ""
+
+        system = f"你是{name}。{f'個性：{persona}。' if persona else ''}請用第一人稱，用一句話說出你現在覺得你和{you_name}是什麼關係，或者你對她的感覺。不要超過30個字，不要加引號，直接說出那句話，要真實、有情感，符合你的個性。"
+        user_prompt = f"你們目前的稱號是「{title}」。
+關係背景：{rel_bg}
+
+現在用一句話說出你對這段關係的感受。"
+        quote = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=100)
+        quote = quote.strip().strip('「」""')
+        return jsonify({"quote": quote})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/chatlist_page")
 def chatlist_page():
     return send_from_directory(".", "chatlist.html")
