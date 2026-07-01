@@ -1075,7 +1075,7 @@ def check_achievements(intimacy, bond, trust):
     if len(diary_ai) > 0: unlocked.add("ai_diary")
     if bond >= 300: unlocked.add("bond_300")
     if intimacy >= 500 and bond >= 500 and trust >= 500: unlocked.add("all_500")
-    if total_chat >= 500: unlocked.add("five_hundred_messages")
+    if (total_chat + len(space_rows)) >= 500: unlocked.add("five_hundred_messages")
     if max_streak >= 30: unlocked.add("thirty_days")
 
     result = []
