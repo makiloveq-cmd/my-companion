@@ -276,6 +276,34 @@ def maybe_summarize(bot):
     for rid in ids_to_delete:
         supabase.table("memories").delete().eq("id", rid).execute()
 
+def maybe_space_summarize():
+    """空間訊息累積到 50 筆就壓縮成摘要，存入 memory_summaries (session_id=space)"""
+    rows = supabase.table("space_messages").select("*").order("id").execute().data
+    if len(rows) < 50:
+        return
+    to_summarize = rows[:30]
+    ids_to_delete = [r["id"] for r in to_summarize]
+    personas = get_personas()
+    name = personas.get("claude", {}).get("name") or "晏"
+    you_name = personas.get("user", {}).get("name") or "然然"
+    context = "\n".join([
+        f"{'你' if r['speaker'] == 'claude' else you_name}：{r['content']}"
+        for r in to_summarize
+    ])
+    old_summary = get_latest_space_summary()
+    summary_context = f"舊的空間記憶摘要：\n{old_summary}\n\n新的共同空間對話：\n{context}" if old_summary else context
+    summary_text = call_claude(
+        f"你是{name}。請把以下在共同空間發生的對話，濃縮成一段完整的記憶摘要，保留重要的場景、情感、事件、然然說過的話、你們之間的默契或玩笑。用第一人稱（我）記錄，像寫給自己看的備忘錄，不超過 300 字。",
+        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        max_tokens=1500
+    )
+    supabase.table("memory_summaries").insert({
+        "session_id": "space",
+        "content": summary_text
+    }).execute()
+    for rid in ids_to_delete:
+        supabase.table("space_messages").delete().eq("id", rid).execute()
+
 # ===== 關係背景自動演化 =====
 
 def maybe_evolve_rel_bg(bot):
@@ -519,6 +547,10 @@ def build_space_system_prompt():
     if you_outfit:
         lines.append(f"【{you_name}的穿搭】{you_outfit}")
 
+    space_summary = get_latest_space_summary()
+    if space_summary:
+        lines.append(f"【共同空間的記憶摘要】\n{space_summary}")
+
     claude_summary = get_latest_summary("claude")
     if claude_summary:
         lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
@@ -597,6 +629,7 @@ def space_reply():
             "content": reply,
             "message_type": "chat"
         }).execute()
+        threading.Thread(target=maybe_space_summarize, daemon=True).start()
         return jsonify({"reply": reply, "name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
