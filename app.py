@@ -678,7 +678,7 @@ def chatroom():
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    return send_from_directory(".", "index_spa.html")
 
 @app.route("/app_spa")
 def app_spa():
