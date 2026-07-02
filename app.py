@@ -455,12 +455,17 @@ def generate_background_action():
     except Exception as e:
         return None
 
+def hours_since_utc(iso_str):
+    """計算某個 ISO 時間字串距今幾小時，統一轉成帶時區的 UTC 再相減，避免 naive/aware 混用炸掉"""
+    dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+
 def maybe_generate_background_actions():
     last = supabase.table("space_messages").select("created_at").eq("message_type", "background").order("id", desc=True).limit(1).execute().data
     if last:
-        last_time_str = last[0]["created_at"].replace("Z", "")
-        last_time = datetime.fromisoformat(last_time_str)
-        hours_passed = (datetime.utcnow() - last_time).total_seconds() / 3600
+        hours_passed = hours_since_utc(last[0]["created_at"])
         if hours_passed < 1:
             return
     if random.random() < 0.5:
@@ -543,7 +548,8 @@ def build_space_system_prompt():
 @app.route("/space/messages", methods=["GET"])
 def space_messages_get():
     threading.Thread(target=maybe_generate_background_actions, daemon=True).start()
-    rows = supabase.table("space_messages").select("*").order("id").execute().data
+    rows = supabase.table("space_messages").select("*").order("id", desc=True).limit(100).execute().data
+    rows.reverse()
     return jsonify({"messages": rows})
 
 @app.route("/space/send", methods=["POST"])
@@ -559,8 +565,8 @@ def space_send():
 
 @app.route("/space/reply/claude", methods=["POST"])
 def space_reply():
-    recent = supabase.table("space_messages").select("*").order("id").execute().data
-    recent = recent[-20:]
+    recent = supabase.table("space_messages").select("*").order("id", desc=True).limit(20).execute().data
+    recent.reverse()
 
     personas = get_personas()
     bot = personas.get("claude", {})
@@ -766,9 +772,7 @@ def maybe_delayed_ai_comments(entries):
         already_commented = any(c["author"] == name for c in entry.get("comments", []))
         if already_commented:
             continue
-        created_str = entry["created_at"].replace("Z", "")
-        created_time = datetime.fromisoformat(created_str)
-        hours_passed = (now - created_time).total_seconds() / 3600
+        hours_passed = hours_since_utc(entry["created_at"])
         if hours_passed >= random.uniform(1, 6) and random.random() < 0.4:
             try:
                 persona_line = f"個性：{persona}。" if persona else ""
