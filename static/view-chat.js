@@ -124,7 +124,10 @@
 
     function formatTime(isoStr) {
       if (!isoStr) return '';
-      const d = new Date(isoStr);
+      let s = isoStr;
+      // Supabase 存的是 UTC；若字串沒帶時區資訊，補上 Z 再解析，避免被當成本地時間
+      if (typeof s === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
+      const d = new Date(s);
       const now = new Date();
       const isToday = d.getFullYear() === now.getFullYear()
                    && d.getMonth() === now.getMonth()
