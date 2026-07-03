@@ -164,6 +164,16 @@
   .pn-rel-ach-name { font-size: 13px; color: var(--text); }
   .pn-rel-ach-name.locked { color: var(--text-3); }
   .pn-rel-ach-desc { font-size: 11px; color: var(--text-3); }
+  .pn-rel-log { margin-top: 8px; }
+  .pn-rel-log-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--surface-2); border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-2); }
+  .pn-rel-log-header .pn-rel-ach-arrow { font-size: 16px; transition: transform 0.2s; }
+  .pn-rel-log-header .pn-rel-ach-arrow.open { transform: rotate(90deg); }
+  .pn-rel-log-list { display: none; flex-direction: column; gap: 4px; padding: 8px 4px 0; }
+  .pn-rel-log-item { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; font-size: 12px; }
+  .pn-rel-log-time { color: var(--text-3); grid-column: 1 / -1; font-size: 11px; }
+  .pn-rel-log-delta { color: var(--text-2); }
+  .pn-rel-log-delta.up { color: #6ee7b7; }
+  .pn-rel-log-delta.down { color: #fca5a5; }
   `;
 
   const TAGS = ['傲嬌','溫柔','冷靜','話少','活潑','體貼','霸道','純情','成熟','幽默','神秘','認真','撒嬌','腹黑','直率','細膩','溫暖','理性'];
@@ -302,6 +312,13 @@
               </div>
               <div class="pn-rel-ach-list" id="pnAchList" style="display:none"></div>
             </div>
+            <div class="pn-rel-log" id="pnRelLog">
+              <div class="pn-rel-log-header" id="pnLogToggle">
+                <span>數值變化紀錄</span>
+                <span class="pn-rel-ach-arrow">›</span>
+              </div>
+              <div class="pn-rel-log-list" id="pnLogList"></div>
+            </div>
           </div>
           <!-- 關係背景 -->
           <div class="pn-sec-label">關係背景</div>
@@ -437,6 +454,41 @@
           });
         }
       } catch (e) {}
+      await loadRelLog();
+    }
+
+    async function loadRelLog() {
+      try {
+        const res = await fetch('/rel_log');
+        const data = await res.json();
+        const list = document.getElementById('pnLogList');
+        if (!list || !data.logs) return;
+        list.innerHTML = '';
+        if (data.logs.length === 0) {
+          list.innerHTML = '<div class="pn-rel-log-item" style="grid-template-columns:1fr;color:var(--text-3)">尚無紀錄</div>';
+          return;
+        }
+        data.logs.slice().reverse().forEach(log => {
+          const raw = (log.created_at || '');
+          const s = /(Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : raw + 'Z';
+          const d = new Date(s);
+          const time = d.toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+          const fmt = (v, name) => {
+            const cls = v > 0 ? 'up' : v < 0 ? 'down' : '';
+            const sign = v > 0 ? '+' : '';
+            return '<span class="pn-rel-log-delta ' + cls + '">' + name + ' ' + sign + v + '</span>';
+          };
+          const item = document.createElement('div');
+          item.className = 'pn-rel-log-item';
+          item.innerHTML =
+            '<span class="pn-rel-log-time">' + time + '</span>' +
+            fmt(log.delta_intimacy || 0, '親密') +
+            fmt(log.delta_bond || 0, '羈絆') +
+            fmt(log.delta_trust || 0, '信任') +
+            '<span class="pn-rel-log-delta" style="color:var(--text-3)">→ ' + log.intimacy + ' / ' + log.bond + ' / ' + log.trust + '</span>';
+          list.appendChild(item);
+        });
+      } catch(e) {}
     }
 
     async function refreshRelQuote() {
@@ -623,6 +675,19 @@
       achToggle.onclick = () => {
         const list = document.getElementById('pnAchList');
         const arrow = achToggle.querySelector('.pn-rel-ach-arrow');
+        if (!list) return;
+        const isOpen = list.style.display !== 'none';
+        list.style.display = isOpen ? 'none' : 'flex';
+        if (arrow) arrow.classList.toggle('open', !isOpen);
+      };
+    }
+
+    // 數值紀錄展開/收起
+    const logToggle = document.getElementById('pnLogToggle');
+    if (logToggle) {
+      logToggle.onclick = () => {
+        const list = document.getElementById('pnLogList');
+        const arrow = logToggle.querySelector('.pn-rel-ach-arrow');
         if (!list) return;
         const isOpen = list.style.display !== 'none';
         list.style.display = isOpen ? 'none' : 'flex';

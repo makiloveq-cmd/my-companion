@@ -1047,39 +1047,37 @@ def chat_list():
 # ===== 關係數值系統 =====
 
 def calc_relationship_stats():
-    """從歷史資料回算關係數值"""
-    # 親密度：私聊每則 +1，空間每則 +2
+    """計算關係數值（修正版）"""
+    # ── 親密度：私聊訊息 ×1 + 空間訊息 ×2，加上已壓縮的摘要筆數補回 ──
     chat_count = len(supabase.table("memories").select("id").eq("session_id", "claude").execute().data)
     space_count = len(supabase.table("space_messages").select("id").neq("message_type", "background").execute().data)
-    raw_intimacy = chat_count * 1 + space_count * 2
+    # 摘要每筆代表約 30 則被壓縮的訊息，補回親密度
+    chat_summaries = len(supabase.table("memory_summaries").select("id").eq("session_id", "claude").execute().data)
+    space_summaries = len(supabase.table("memory_summaries").select("id").eq("session_id", "space").execute().data)
+    raw_intimacy = chat_count * 1 + space_count * 2 + chat_summaries * 30 + space_summaries * 60
 
-    # 衰減：看最後一則訊息距今多久
+    # 衰減：超過 48 小時未互動，每 24 小時扣 10 點
     last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
     last_space = supabase.table("space_messages").select("created_at").order("id", desc=True).limit(1).execute().data
     last_times = []
-    if last_chat:
-        last_times.append(last_chat[0]["created_at"])
-    if last_space:
-        last_times.append(last_space[0]["created_at"])
-
+    if last_chat: last_times.append(last_chat[0]["created_at"])
+    if last_space: last_times.append(last_space[0]["created_at"])
     decay = 0
     if last_times:
-        last_str = max(last_times)
-        last_dt = datetime.fromisoformat(last_str.replace("Z", "").replace("+00:00", ""))
-        hours_since = (datetime.utcnow() - last_dt).total_seconds() / 3600
+        hours_since = hours_since_utc(max(last_times))
         if hours_since > 48:
-            decay = int((hours_since - 48) / 24) * 5  # 每超過 24 小時扣 5 點
+            decay = int((hours_since - 48) / 24) * 10
     intimacy = max(0, min(999, raw_intimacy - decay))
 
-    # 羈絆值：關係背景演化次數 × 15 + 記憶摘要次數 × 10
+    # ── 羈絆值：只算關係背景演化次數 × 20（摘要不再參與）──
     rel_bg_count = len(supabase.table("rel_bg_history").select("id").execute().data)
-    summary_count = len(supabase.table("memory_summaries").select("id").execute().data)
-    bond = min(999, rel_bg_count * 15 + summary_count * 10)
+    bond = min(999, rel_bg_count * 20)
 
-    # 信任度：私聊你主動說話 × 2，空間你主動說話 × 3
+    # ── 信任度：私聊你說話 ×3 + 空間你說話 ×2，補回被摘要清掉的部份 ──
     user_chat = len(supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "user").execute().data)
     user_space = len(supabase.table("space_messages").select("id").eq("speaker", "user").execute().data)
-    trust = min(999, user_chat * 2 + user_space * 3)
+    trust_summaries = chat_summaries * 15 + space_summaries * 10  # 補回摘要壓縮掉的信任
+    trust = min(999, user_chat * 3 + user_space * 2 + trust_summaries)
 
     return intimacy, bond, trust
 
@@ -1176,6 +1174,14 @@ def relationship_stats_get():
         intimacy, bond, trust = calc_relationship_stats()
         title = get_relationship_title(intimacy, bond, trust)
         achievements = check_achievements(intimacy, bond, trust)
+        # 計算與前次的差值
+        prev_intimacy = rows[0]["intimacy"] if rows else intimacy
+        prev_bond = rows[0]["bond"] if rows else bond
+        prev_trust = rows[0]["trust"] if rows else trust
+        delta_intimacy = intimacy - prev_intimacy
+        delta_bond = bond - prev_bond
+        delta_trust = trust - prev_trust
+
         # 更新資料庫
         if rows:
             supabase.table("relationship_stats").update({
@@ -1186,6 +1192,19 @@ def relationship_stats_get():
             supabase.table("relationship_stats").insert({
                 "intimacy": intimacy, "bond": bond, "trust": trust
             }).execute()
+
+        # 寫入觀測紀錄（只在有變化時記錄）
+        if delta_intimacy != 0 or delta_bond != 0 or delta_trust != 0 or not rows:
+            try:
+                supabase.table("rel_log").insert({
+                    "intimacy": intimacy, "bond": bond, "trust": trust,
+                    "delta_intimacy": delta_intimacy,
+                    "delta_bond": delta_bond,
+                    "delta_trust": delta_trust,
+                    "created_at": datetime.utcnow().isoformat()
+                }).execute()
+            except:
+                pass
         return jsonify({
             "intimacy": intimacy,
             "bond": bond,
@@ -1196,6 +1215,15 @@ def relationship_stats_get():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/rel_log", methods=["GET"])
+def rel_log_get():
+    try:
+        rows = supabase.table("rel_log").select("*").order("id", desc=True).limit(30).execute().data
+        rows.reverse()
+        return jsonify({"logs": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/relationship_quote", methods=["POST"])
 def relationship_quote():
