@@ -518,6 +518,12 @@ def build_space_system_prompt():
 
     if bot.get("persona"):
         lines.append(f"【你的個性】{bot['persona']}")
+    if bot.get("appearance"):
+        lines.append(f"【你的外觀】{bot['appearance']}")
+    if bot.get("outfit"):
+        lines.append(f"【你的穿搭風格】{bot['outfit']}")
+    if bot.get("extra"):
+        lines.append(f"【補充設定】{bot['extra']}")
 
     space_parts = []
     if space.get("room_desc"):
@@ -623,7 +629,7 @@ def space_reply():
         merged = [{"role": "user", "content": "（進入空間）"}]
 
     try:
-        reply = call_claude(build_space_system_prompt(), merged, max_tokens=400)
+        reply = call_claude(build_space_system_prompt(), merged, max_tokens=800)
         supabase.table("space_messages").insert({
             "speaker": "claude",
             "content": reply,
