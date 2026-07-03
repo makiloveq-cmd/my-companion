@@ -518,8 +518,7 @@
     document.getElementById('spModalClose').onclick = closeSettings;
     document.getElementById('spSaveSettingsBtn').onclick = saveSettings;
 
-    await loadPersonas();
-    await loadMessages();
+    await Promise.all([loadPersonas(), loadMessages()]);
 
     return function cleanup() {};
   }
