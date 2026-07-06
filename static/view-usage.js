@@ -97,6 +97,9 @@
     color: var(--text-2); cursor: pointer;
   }
   .ug-budget-unit-btn.active { background: var(--surface2); color: var(--text); font-weight: 500; }
+  .ug-set-balance-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .ug-set-balance-hint { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+  .ug-set-balance-row { display: flex; gap: 8px; align-items: center; }
   .ug-budget-btn {
     padding: 9px 16px; background: var(--accent);
     border: none; border-radius: 10px;
@@ -204,6 +207,17 @@
                 <button class="ug-budget-btn" id="ugSaveBudgetBtn">新增</button>
               </div>
             </div>
+            <div class="ug-set-balance-section">
+              <div class="ug-set-balance-hint">手動設定目前餘額（直接輸入 Anthropic Console 上顯示的剩餘金額）</div>
+              <div class="ug-set-balance-row">
+                <input class="ug-budget-input" type="number" id="ugSetBalanceInput" placeholder="剩餘金額" step="0.01" min="0">
+                <div class="ug-budget-unit-toggle">
+                  <button class="ug-budget-unit-btn active" id="ugBalUnitUsd">USD</button>
+                  <button class="ug-budget-unit-btn" id="ugBalUnitTwd">TWD</button>
+                </div>
+                <button class="ug-budget-btn" id="ugSetBalanceBtn">設定</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="ug-card ug-links-card">
@@ -286,6 +300,29 @@
       } catch (e) {}
     }
 
+    let balUnit = 'usd';
+
+    async function setBalance() {
+      let val = parseFloat(document.getElementById('ugSetBalanceInput')?.value);
+      if (isNaN(val) || val < 0) { showToast('請輸入正確金額'); return; }
+      if (balUnit === 'twd') val = val / getRate();
+      try {
+        const res = await fetch('/usage/set_balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remaining: val })
+        });
+        const data = await res.json();
+        if (data.error) { showToast('設定失敗'); return; }
+        showToast('餘額已更新');
+        const input = document.getElementById('ugSetBalanceInput');
+        if (input) input.value = '';
+        await loadUsage();
+      } catch (e) {
+        showToast('設定失敗');
+      }
+    }
+
     async function saveBudget() {
       let val = parseFloat(document.getElementById('ugBudgetInput')?.value);
       if (isNaN(val) || val <= 0) { showToast('請輸入正確金額'); return; }
@@ -306,6 +343,19 @@
     }
 
     // 綁定事件
+    // 手動設定餘額的幣別切換
+    document.getElementById('ugBalUnitUsd').onclick = () => {
+      balUnit = 'usd';
+      document.getElementById('ugBalUnitUsd').classList.add('active');
+      document.getElementById('ugBalUnitTwd').classList.remove('active');
+    };
+    document.getElementById('ugBalUnitTwd').onclick = () => {
+      balUnit = 'twd';
+      document.getElementById('ugBalUnitTwd').classList.add('active');
+      document.getElementById('ugBalUnitUsd').classList.remove('active');
+    };
+    document.getElementById('ugSetBalanceBtn').onclick = setBalance;
+
     document.getElementById('ugBtnUsd').onclick = () => {
       currency = 'usd';
       document.getElementById('ugBtnUsd').classList.add('active');

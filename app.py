@@ -777,6 +777,28 @@ def usage_budget_post():
         }).execute()
     return jsonify({"status": "ok"})
 
+@app.route("/usage/set_balance", methods=["POST"])
+def usage_set_balance():
+    """直接設定目前餘額（不是累加，而是直接寫入正確的剩餘金額）"""
+    data = request.json
+    remaining = data.get("remaining")
+    if remaining is None:
+        return jsonify({"error": "missing remaining"}), 400
+    try:
+        # 先取目前花費
+        usage_rows = supabase.table("api_usage").select("cost_usd").eq("provider", "anthropic").execute().data
+        cost = sum(float(r.get("cost_usd") or 0) for r in usage_rows)
+        # 新的 budget = 已花費 + 想要剩下的金額
+        new_budget = cost + float(remaining)
+        supabase.table("api_budget").upsert({
+            "key": "anthropic_budget",
+            "value": new_budget,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+        return jsonify({"status": "ok", "new_budget": new_budget})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/usage_page")
 def usage_page():
     return send_from_directory(".", "usage.html")
@@ -1052,16 +1074,31 @@ def chat_list():
 # ===== 關係數值系統 =====
 
 def calc_relationship_stats():
-    """計算關係數值（修正版）"""
-    # ── 親密度：私聊訊息 ×1 + 空間訊息 ×2，加上已壓縮的摘要筆數補回 ──
-    chat_count = len(supabase.table("memories").select("id").eq("session_id", "claude").execute().data)
-    space_count = len(supabase.table("space_messages").select("id").neq("message_type", "background").execute().data)
-    # 摘要每筆代表約 30 則被壓縮的訊息，補回親密度
-    chat_summaries = len(supabase.table("memory_summaries").select("id").eq("session_id", "claude").execute().data)
-    space_summaries = len(supabase.table("memory_summaries").select("id").eq("session_id", "space").execute().data)
-    raw_intimacy = chat_count * 1 + space_count * 2 + chat_summaries * 30 + space_summaries * 60
+    """累計制：讀 _base 欄位加上最近新增的增量"""
+    rows = supabase.table("relationship_stats").select("*").order("id", desc=True).limit(1).execute().data
+    if rows:
+        base_intimacy = rows[0].get("intimacy_base") or 0
+        base_bond = rows[0].get("bond_base") or 0
+        base_trust = rows[0].get("trust_base") or 0
+    else:
+        base_intimacy = base_bond = base_trust = 0
 
-    # 衰減：超過 48 小時未互動，每 24 小時扣 10 點
+    # ── 最近新增的增量（只算上次更新之後的）──
+    last_updated = rows[0]["updated_at"] if rows else "2020-01-01T00:00:00"
+
+    new_chat = len(supabase.table("memories").select("id")
+        .eq("session_id", "claude").gt("created_at", last_updated).execute().data)
+    new_space = len(supabase.table("space_messages").select("id")
+        .neq("message_type", "background").gt("created_at", last_updated).execute().data)
+    new_bg = len(supabase.table("rel_bg_history").select("id")
+        .gt("created_at", last_updated).execute().data)
+    new_user_chat = len(supabase.table("memories").select("id")
+        .eq("session_id", "claude").eq("role", "user").gt("created_at", last_updated).execute().data)
+    new_user_space = len(supabase.table("space_messages").select("id")
+        .eq("speaker", "user").gt("created_at", last_updated).execute().data)
+
+    # ── 親密度：私聊 +1、空間 +2，超過 48 小時未互動每天 -10 ──
+    delta_intimacy = new_chat * 1 + new_space * 2
     last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
     last_space = supabase.table("space_messages").select("created_at").order("id", desc=True).limit(1).execute().data
     last_times = []
@@ -1072,26 +1109,43 @@ def calc_relationship_stats():
         hours_since = hours_since_utc(max(last_times))
         if hours_since > 48:
             decay = int((hours_since - 48) / 24) * 10
-    intimacy = max(0, min(999, raw_intimacy - decay))
+    intimacy = max(0, min(999, base_intimacy + delta_intimacy - decay))
 
-    # ── 羈絆值：只算關係背景演化次數 × 20（摘要不再參與）──
-    rel_bg_count = len(supabase.table("rel_bg_history").select("id").execute().data)
-    bond = min(999, rel_bg_count * 20)
+    # ── 羈絆值：關係背景演化 +20，成就解鎖由外部觸發 ──
+    bond = min(999, base_bond + new_bg * 20)
 
-    # ── 信任度：私聊你說話 ×3 + 空間你說話 ×2，補回被摘要清掉的部份 ──
-    user_chat = len(supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "user").execute().data)
-    user_space = len(supabase.table("space_messages").select("id").eq("speaker", "user").execute().data)
-    trust_summaries = chat_summaries * 15 + space_summaries * 10  # 補回摘要壓縮掉的信任
-    trust = min(999, user_chat * 3 + user_space * 2 + trust_summaries)
+    # ── 信任度：空間說話 +2、私聊說話 +1 ──
+    trust = min(999, base_trust + new_user_space * 2 + new_user_chat * 1)
 
     return intimacy, bond, trust
+
+def update_relationship_base(intimacy, bond, trust):
+    """把當前數值存回 _base，作為下次計算的基礎"""
+    rows = supabase.table("relationship_stats").select("id").order("id", desc=True).limit(1).execute().data
+    now = datetime.now(timezone.utc).isoformat()
+    if rows:
+        supabase.table("relationship_stats").update({
+            "intimacy_base": intimacy,
+            "bond_base": bond,
+            "trust_base": trust,
+            "updated_at": now
+        }).eq("id", rows[0]["id"]).execute()
+    else:
+        supabase.table("relationship_stats").insert({
+            "intimacy_base": intimacy,
+            "bond_base": bond,
+            "trust_base": trust,
+            "intimacy": intimacy,
+            "bond": bond,
+            "trust": trust
+        }).execute()
 
 # 七階層定義：每個階段需要三個數值都超過對應門檻
 RELATIONSHIP_STAGES = [
     {"name": "靈魂伴侶", "min": 800, "desc": "不需要確認，就是知道對方在"},
     {"name": "家人之上", "min": 650, "desc": "比家人更近，說不出準確的名字"},
-    {"name": "新婚蜜月", "min": 500, "desc": "磨合之後更穩的甜"},
-    {"name": "磨合",     "min": 350, "desc": "開始真正碰撞，因為在乎"},
+    {"name": "新婚蜜月", "min": 500, "desc": "熱度沉澱，變成更穩的甜"},
+    {"name": "磨合",     "min": 350, "desc": "熱度退一點，開始真正碰撞"},
     {"name": "熱戀",     "min": 200, "desc": "確認彼此，情感密度最高"},
     {"name": "曖昧",     "min": 80,  "desc": "說不清楚，但說清楚又捨不得"},
     {"name": "初識",     "min": 0,   "desc": "還不確定對方是誰，但開始留意"},
@@ -1225,24 +1279,22 @@ def relationship_stats_get():
         intimacy, bond, trust = calc_relationship_stats()
         title = get_relationship_title(intimacy, bond, trust)
         achievements = check_achievements(intimacy, bond, trust)
-        # 計算與前次的差值
-        prev_intimacy = rows[0]["intimacy"] if rows else intimacy
-        prev_bond = rows[0]["bond"] if rows else bond
-        prev_trust = rows[0]["trust"] if rows else trust
+        # 計算與前次的差值（用於觀測紀錄）
+        prev_intimacy = rows[0]["intimacy"] if rows else 0
+        prev_bond = rows[0]["bond"] if rows else 0
+        prev_trust = rows[0]["trust"] if rows else 0
         delta_intimacy = intimacy - prev_intimacy
         delta_bond = bond - prev_bond
         delta_trust = trust - prev_trust
 
-        # 更新資料庫
+        # 更新 base（累計制核心）
+        update_relationship_base(intimacy, bond, trust)
+
+        # 同步更新顯示用欄位
         if rows:
             supabase.table("relationship_stats").update({
                 "intimacy": intimacy, "bond": bond, "trust": trust,
-                "updated_at": datetime.utcnow().isoformat()
             }).eq("id", rows[0]["id"]).execute()
-        else:
-            supabase.table("relationship_stats").insert({
-                "intimacy": intimacy, "bond": bond, "trust": trust
-            }).execute()
 
         # 寫入觀測紀錄（只在有變化時記錄）
         if delta_intimacy != 0 or delta_bond != 0 or delta_trust != 0 or not rows:
@@ -1252,7 +1304,7 @@ def relationship_stats_get():
                     "delta_intimacy": delta_intimacy,
                     "delta_bond": delta_bond,
                     "delta_trust": delta_trust,
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }).execute()
             except:
                 pass
