@@ -1311,6 +1311,8 @@ def relationship_stats_get():
         prev_intimacy = rows[0]["intimacy"] if rows else 0
         prev_bond = rows[0]["bond"] if rows else 0
         prev_trust = rows[0]["trust"] if rows else 0
+        # 前一次的階層（用於前端偵測升階）
+        prev_stage = get_relationship_title(prev_intimacy, prev_bond, prev_trust) if rows else None
         delta_intimacy = intimacy - prev_intimacy
         delta_bond = bond - prev_bond
         delta_trust = trust - prev_trust
@@ -1346,7 +1348,8 @@ def relationship_stats_get():
             "stage_desc": stage_info["stage_desc"],
             "next_stage": stage_info.get("next_stage"),
             "next_min": stage_info.get("next_min"),
-            "achievements": achievements
+            "achievements": achievements,
+            "prev_stage": prev_stage
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

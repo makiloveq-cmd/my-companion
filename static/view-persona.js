@@ -426,9 +426,20 @@
         const data = await res.json();
         if (data.error) return;
 
-        // 稱號
+        // 稱號 + 補看按鈕
         const titleEl = document.getElementById('pnRelTitle');
-        if (titleEl) titleEl.textContent = data.title || '—';
+        if (titleEl) {
+          titleEl.textContent = data.title || '—';
+          // 如果有對應台詞，加補看按鈕
+          if (window.StageUnlock && window.StageUnlock.STAGE_LETTERS[data.stage]) {
+            const existing = titleEl.parentElement.querySelector('.su-replay-btn');
+            if (!existing) {
+              const btn = window.StageUnlock.replayBtn(data.stage);
+              btn.style.marginLeft = '10px';
+              titleEl.parentElement.appendChild(btn);
+            }
+          }
+        }
 
         // 階段顯示
         const stageEl = document.getElementById('pnRelStage');

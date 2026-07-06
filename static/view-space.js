@@ -552,6 +552,14 @@
         loading.remove();
         if (reply) renderAI('claude', reply, new Date().toISOString());
         else renderRetry();
+        // 升階偵測
+        try {
+          const relRes = await fetch('/relationship_stats');
+          const relData = await relRes.json();
+          if (window.StageUnlock) {
+            window.StageUnlock.checkAndShow(relData.stage, relData.prev_stage);
+          }
+        } catch (e) {}
       } catch (e) {
         loading.remove();
         renderRetry();

@@ -273,6 +273,14 @@
         if (data.error) throw new Error(data.error);
         row.remove();
         addMessage(data.reply, 'ai', null, new Date().toISOString());
+        // 升階偵測
+        try {
+          const relRes = await fetch('/relationship_stats');
+          const relData = await relRes.json();
+          if (window.StageUnlock) {
+            window.StageUnlock.checkAndShow(relData.stage, relData.prev_stage);
+          }
+        } catch (e) {}
       } catch (e) {
         row.remove();
         if (!isRetry) {
