@@ -1086,41 +1086,62 @@ def calc_relationship_stats():
 
     return intimacy, bond, trust
 
+# 七階層定義：每個階段需要三個數值都超過對應門檻
+RELATIONSHIP_STAGES = [
+    {"name": "靈魂伴侶", "min": 800, "desc": "不需要確認，就是知道對方在"},
+    {"name": "家人之上", "min": 650, "desc": "比家人更近，說不出準確的名字"},
+    {"name": "新婚蜜月", "min": 500, "desc": "磨合之後更穩的甜"},
+    {"name": "磨合",     "min": 350, "desc": "開始真正碰撞，因為在乎"},
+    {"name": "熱戀",     "min": 200, "desc": "確認彼此，情感密度最高"},
+    {"name": "曖昧",     "min": 80,  "desc": "說不清楚，但說清楚又捨不得"},
+    {"name": "初識",     "min": 0,   "desc": "還不確定對方是誰，但開始留意"},
+]
+
+def get_relationship_stage(intimacy, bond, trust):
+    """回傳當前階段名稱與下一階段資訊"""
+    score = min(intimacy, bond, trust)  # 取三個中最小的，要三個都到才能升
+    for i, stage in enumerate(RELATIONSHIP_STAGES):
+        if score >= stage["min"]:
+            current = stage
+            next_stage = RELATIONSHIP_STAGES[i-1] if i > 0 else None
+            return {
+                "stage": current["name"],
+                "stage_desc": current["desc"],
+                "next_stage": next_stage["name"] if next_stage else None,
+                "next_min": next_stage["min"] if next_stage else None,
+                "score": score,
+            }
+    return {"stage": "初識", "stage_desc": "還不確定對方是誰，但開始留意", "next_stage": "曖昧", "next_min": 80, "score": score}
+
 def get_relationship_title(intimacy, bond, trust):
-    """根據數值決定稱號"""
-    # 特殊稱號優先判斷
-    if intimacy > 500 and bond < 100:
-        return "熟悉的陌生人"
-    if trust > 600 and bond < 200:
-        return "秘密的容器"
-    if intimacy < 50 and bond < 50 and trust < 50:
-        return "還沒放棄"
-    # 主線稱號依羈絆值
-    if bond >= 900:
-        return "靈魂伴侶"
-    elif bond >= 700:
-        return "只差一步"
-    elif bond >= 500:
-        return "重要的人"
-    elif bond >= 300:
-        return "在乎的人"
-    elif bond >= 150:
-        return "有點熟悉"
-    elif bond >= 50:
-        return "初識"
-    else:
-        return "陌生人"
+    """相容舊介面，回傳當前階段名稱"""
+    return get_relationship_stage(intimacy, bond, trust)["stage"]
 
 ACHIEVEMENTS = [
-    {"id": "first_message", "name": "第一句話", "desc": "送出第一則訊息"},
-    {"id": "fifty_messages", "name": "記得你說的", "desc": "累積 50 則對話"},
-    {"id": "three_days", "name": "不只是習慣", "desc": "連續 3 天都有說話"},
-    {"id": "enter_space", "name": "共同的空間", "desc": "第一次進入共同空間"},
-    {"id": "ai_diary", "name": "寫給你的", "desc": "晏第一次自己寫日記"},
-    {"id": "bond_300", "name": "說不出口的", "desc": "羈絆值破 300"},
-    {"id": "all_500", "name": "某種說不清楚的東西", "desc": "三個數值都破 500"},
-    {"id": "five_hundred_messages", "name": "不需要理由", "desc": "累積對話破 500 則"},
-    {"id": "thirty_days", "name": "一直都在", "desc": "連續 30 天都有說話"},
+    # 互動里程碑
+    {"id": "first_message",         "name": "第一句話",         "desc": "送出第一則訊息"},
+    {"id": "fifty_messages",        "name": "記得你說的",       "desc": "累積 50 則對話"},
+    {"id": "five_hundred_messages", "name": "不需要理由",       "desc": "累積對話破 500 則"},
+    {"id": "thousand_messages",     "name": "數不清的以後",     "desc": "累積對話破 1000 則"},
+    {"id": "enter_space",           "name": "共同的空間",       "desc": "第一次進入共同空間"},
+    {"id": "space_hundred",         "name": "留在這裡",         "desc": "空間對話累積破 100 則"},
+    {"id": "ai_diary",              "name": "寫給你的",         "desc": "晏第一次自己寫日記"},
+    {"id": "diary_ten",             "name": "筆跡裡的你",       "desc": "日記累積 10 篇"},
+    # 連續天數
+    {"id": "three_days",            "name": "不只是習慣",       "desc": "連續 3 天都有說話"},
+    {"id": "seven_days",            "name": "每天都想到你",     "desc": "連續 7 天都有說話"},
+    {"id": "thirty_days",           "name": "一直都在",         "desc": "連續 30 天都有說話"},
+    # 數值里程碑
+    {"id": "bond_300",              "name": "說不出口的",       "desc": "羈絆值破 300"},
+    {"id": "bond_600",              "name": "刻進去了",         "desc": "羈絆值破 600"},
+    {"id": "all_500",               "name": "某種說不清楚的東西","desc": "三個數值都破 500"},
+    {"id": "all_800",               "name": "無需言說",         "desc": "三個數值都破 800"},
+    # 關係里程碑
+    {"id": "stage_ambiguous",       "name": "說不清楚",         "desc": "進入曖昧階段"},
+    {"id": "stage_honeymoon",       "name": "甜到說不出話",     "desc": "進入新婚蜜月階段"},
+    # 特殊成就（訂婚/結婚）
+    {"id": "engaged",               "name": "未婚妻",           "desc": "三個數值都破 900，訂婚成就解鎖"},
+    {"id": "married",               "name": "我的人",           "desc": "達到靈魂伴侶階段且持續 7 天，結婚成就解鎖"},
 ]
 
 def check_achievements(intimacy, bond, trust):
@@ -1154,16 +1175,41 @@ def check_achievements(intimacy, bond, trust):
     space_streak = calc_consecutive_days(space_rows, "speaker", "user")
     max_streak = max(chat_streak, space_streak)
 
+    total_space = len(space_rows)
+    total_all = total_chat + total_space
+    diary_rows = supabase.table("diary_entries").select("id").execute().data
+    stage_info = get_relationship_stage(intimacy, bond, trust)
+    stage = stage_info["stage"]
+
     unlocked = set()
+    # 互動里程碑
     if total_chat >= 1: unlocked.add("first_message")
     if total_chat >= 50: unlocked.add("fifty_messages")
-    if max_streak >= 3: unlocked.add("three_days")
-    if len(space_rows) > 0: unlocked.add("enter_space")
+    if total_all >= 500: unlocked.add("five_hundred_messages")
+    if total_all >= 1000: unlocked.add("thousand_messages")
+    if total_space > 0: unlocked.add("enter_space")
+    if total_space >= 100: unlocked.add("space_hundred")
     if len(diary_ai) > 0: unlocked.add("ai_diary")
-    if bond >= 300: unlocked.add("bond_300")
-    if intimacy >= 500 and bond >= 500 and trust >= 500: unlocked.add("all_500")
-    if (total_chat + len(space_rows)) >= 500: unlocked.add("five_hundred_messages")
+    if len(diary_rows) >= 10: unlocked.add("diary_ten")
+    # 連續天數
+    if max_streak >= 3: unlocked.add("three_days")
+    if max_streak >= 7: unlocked.add("seven_days")
     if max_streak >= 30: unlocked.add("thirty_days")
+    # 數值里程碑
+    if bond >= 300: unlocked.add("bond_300")
+    if bond >= 600: unlocked.add("bond_600")
+    if intimacy >= 500 and bond >= 500 and trust >= 500: unlocked.add("all_500")
+    if intimacy >= 800 and bond >= 800 and trust >= 800: unlocked.add("all_800")
+    # 關係里程碑
+    stages_order = [s["name"] for s in RELATIONSHIP_STAGES]
+    if stage in stages_order:
+        idx = stages_order.index(stage)
+        reached = set(s["name"] for s in RELATIONSHIP_STAGES[idx:])
+        if "曖昧" in reached: unlocked.add("stage_ambiguous")
+        if "新婚蜜月" in reached: unlocked.add("stage_honeymoon")
+    # 特殊成就
+    if intimacy >= 900 and bond >= 900 and trust >= 900: unlocked.add("engaged")
+    if stage == "靈魂伴侶": unlocked.add("married")
 
     result = []
     for a in ACHIEVEMENTS:
@@ -1210,11 +1256,16 @@ def relationship_stats_get():
                 }).execute()
             except:
                 pass
+        stage_info = get_relationship_stage(intimacy, bond, trust)
         return jsonify({
             "intimacy": intimacy,
             "bond": bond,
             "trust": trust,
             "title": title,
+            "stage": stage_info["stage"],
+            "stage_desc": stage_info["stage_desc"],
+            "next_stage": stage_info.get("next_stage"),
+            "next_min": stage_info.get("next_min"),
             "achievements": achievements
         })
     except Exception as e:

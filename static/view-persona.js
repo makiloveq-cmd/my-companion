@@ -174,6 +174,11 @@
   .pn-rel-log-delta { color: var(--text-2); }
   .pn-rel-log-delta.up { color: #6ee7b7; }
   .pn-rel-log-delta.down { color: #fca5a5; }
+  .pn-rel-stage-name { font-size: 15px; font-weight: 600; color: var(--text); padding: 4px 0 2px; }
+  .pn-rel-stage-desc { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
+  .pn-rel-next-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); padding: 4px 0 8px; }
+  .pn-rel-next-bar { flex: 1; height: 3px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
+  .pn-rel-next-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.6s; }
   `;
 
   const TAGS = ['傲嬌','溫柔','冷靜','話少','活潑','體貼','霸道','純情','成熟','幽默','神秘','認真','撒嬌','腹黑','直率','細膩','溫暖','理性'];
@@ -273,6 +278,13 @@
           <!-- 關係狀態卡片 -->
           <div class="pn-sec-label">關係狀態</div>
           <div class="pn-rel-card">
+            <div class="pn-rel-stage-name" id="pnRelStage">載入中…</div>
+            <div class="pn-rel-stage-desc" id="pnRelStageDesc"></div>
+            <div class="pn-rel-next-row" id="pnNextRow" style="display:none">
+              <span id="pnNextLabel"></span>
+              <div class="pn-rel-next-bar"><div class="pn-rel-next-fill" id="pnNextFill" style="width:0%"></div></div>
+              <span id="pnNextPct"></span>
+            </div>
             <div class="pn-rel-title-row">
               <div class="pn-rel-title-label">稱號</div>
               <div class="pn-rel-title-val" id="pnRelTitle">載入中…</div>
@@ -417,6 +429,30 @@
         // 稱號
         const titleEl = document.getElementById('pnRelTitle');
         if (titleEl) titleEl.textContent = data.title || '—';
+
+        // 階段顯示
+        const stageEl = document.getElementById('pnRelStage');
+        const stageDescEl = document.getElementById('pnRelStageDesc');
+        if (stageEl) stageEl.textContent = data.stage || data.title || '—';
+        if (stageDescEl) stageDescEl.textContent = data.stage_desc || '';
+
+        // 下一階段進度條
+        const nextRow = document.getElementById('pnNextRow');
+        if (data.next_stage && data.next_min && nextRow) {
+          nextRow.style.display = 'flex';
+          const score = Math.min(data.intimacy, data.bond, data.trust);
+          const stageList = [0, 80, 200, 350, 500, 650, 800];
+          const prevMin = stageList.find(v => v < data.next_min && v <= score) || 0;
+          const pct = Math.min(100, Math.round(((score - prevMin) / (data.next_min - prevMin)) * 100));
+          const nextLabel = document.getElementById('pnNextLabel');
+          const nextFill = document.getElementById('pnNextFill');
+          const nextPct = document.getElementById('pnNextPct');
+          if (nextLabel) nextLabel.textContent = '\u2192 ' + data.next_stage;
+          if (nextFill) nextFill.style.width = pct + '%';
+          if (nextPct) nextPct.textContent = pct + '%';
+        } else if (nextRow) {
+          nextRow.style.display = 'none';
+        }
 
         // 數值與進度條
         const pairs = [
