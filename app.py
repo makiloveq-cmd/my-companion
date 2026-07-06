@@ -491,10 +491,15 @@ def hours_since_utc(iso_str):
     return (datetime.now(timezone.utc) - dt).total_seconds() / 3600
 
 def maybe_generate_background_actions():
-    last = supabase.table("space_messages").select("created_at").eq("message_type", "background").order("id", desc=True).limit(1).execute().data
-    if last:
-        hours_passed = hours_since_utc(last[0]["created_at"])
-        if hours_passed < 1:
+    # 如果最近一小時內有正常對話（非待機），代表然然在場，不觸發待機
+    last_active = supabase.table("space_messages").select("created_at").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+    if last_active:
+        if hours_since_utc(last_active[0]["created_at"]) < 1:
+            return
+    # 距離上一則待機不到一小時，也不重複觸發
+    last_bg = supabase.table("space_messages").select("created_at").eq("message_type", "background").order("id", desc=True).limit(1).execute().data
+    if last_bg:
+        if hours_since_utc(last_bg[0]["created_at"]) < 1:
             return
     if random.random() < 0.5:
         generate_background_action()
