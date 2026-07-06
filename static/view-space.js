@@ -113,6 +113,42 @@
   .sp-send-btn:active { opacity: 0.8; }
   .sp-send-btn:disabled { opacity: 0.4; cursor: default; }
 
+  .sp-preview-bar {
+    display: none; padding: 6px 12px 0;
+    background: var(--surface);
+  }
+  .sp-preview-bar.show { display: block; }
+  .sp-preview-thumb {
+    position: relative; display: inline-block;
+  }
+  .sp-preview-thumb img {
+    height: 60px; width: 60px; object-fit: cover;
+    border-radius: 8px; border: 1px solid var(--border);
+  }
+  .sp-remove-img-btn {
+    position: absolute; top: -6px; right: -6px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--text-3); color: #fff;
+    border: none; font-size: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sp-img-in-bubble {
+    max-width: 220px; max-height: 220px;
+    border-radius: 10px; margin-bottom: 6px;
+    display: block; cursor: pointer;
+    object-fit: cover;
+  }
+  .sp-lightbox {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .sp-lightbox.show { display: flex; }
+  .sp-lightbox img {
+    max-width: 92vw; max-height: 88vh;
+    border-radius: 10px; object-fit: contain;
+  }
+
   .sp-modal-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.6); z-index: 100;
@@ -190,8 +226,20 @@
       <div class="sp-messages" id="spMessages"></div>
 
       <div class="sp-input-area">
+        <div class="sp-preview-bar" id="spPreviewBar">
+          <div class="sp-preview-thumb">
+            <img id="spPreviewThumb" src="" alt="">
+            <button class="sp-remove-img-btn" id="spRemoveImg">✕</button>
+          </div>
+        </div>
         <div class="sp-input-hint">描述你在做什麼，或對晏說話…</div>
         <div class="sp-input-row">
+          <button class="sp-send-btn" style="background:transparent;color:var(--text-3);" id="spImgBtn">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </button>
+          <input type="file" id="spImageInput" accept="image/*" style="display:none">
           <div class="sp-input-wrapper">
             <textarea id="spInput" rows="1" placeholder="「我回來了！」推開門，把包包放到玄關…"></textarea>
             <button class="sp-newline-btn" id="spNewlineBtn">⏎</button>
@@ -203,6 +251,8 @@
           </button>
         </div>
       </div>
+
+      <div class="sp-lightbox" id="spLightbox"><img id="spLightboxImg" src="" alt=""></div>
 
       <div class="sp-modal-overlay" id="spSettingModal">
         <div class="sp-modal">
@@ -257,6 +307,25 @@
     let names = { user: '然然', claude: '晏' };
     let avatars = { user: null, claude: null };
     let isSending = false;
+    let pendingImageUrl = null;
+
+    function removeSpaceImage() {
+      pendingImageUrl = null;
+      document.getElementById('spPreviewBar').classList.remove('show');
+      document.getElementById('spPreviewThumb').src = '';
+    }
+
+    function openSpaceLightbox(src) {
+      document.getElementById('spLightboxImg').src = src;
+      document.getElementById('spLightbox').classList.add('show');
+    }
+
+    document.addEventListener('click', (e) => {
+      const lb = document.getElementById('spLightbox');
+      if (lb && lb.classList.contains('show') && e.target === lb) {
+        lb.classList.remove('show');
+      }
+    });
 
     function formatTime(isoStr) {
       if (!isoStr) return '';
@@ -317,10 +386,17 @@
       if (m) m.scrollTop = m.scrollHeight;
     }
 
-    function renderUser(content, createdAt) {
+    function renderUser(content, createdAt, imageUrl) {
       const wrap = document.createElement('div');
       wrap.className = 'sp-entry-user';
-      wrap.innerHTML = `<div>${escHtml(content)}</div><div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      let inner = '';
+      if (imageUrl) inner += `<img class="sp-img-in-bubble" src="${imageUrl}" alt="">`;
+      if (content) inner += `<div>${escHtml(content)}</div>`;
+      inner += `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      wrap.innerHTML = inner;
+      if (imageUrl) {
+        wrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
+      }
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
     }
@@ -421,7 +497,7 @@
         messages.innerHTML = '';
         data.messages.forEach(m => {
           if (m.speaker === 'user') {
-            renderUser(m.content, m.created_at);
+            renderUser(m.content, m.created_at, m.image_url);
           } else if (m.message_type === 'background') {
             renderBackground(m.speaker, m.content, m.created_at);
           } else {
@@ -450,7 +526,7 @@
     async function sendAction() {
       const input = document.getElementById('spInput');
       const text = input.value.trim();
-      if (!text || isSending) return;
+      if ((!text && !pendingImageUrl) || isSending) return;
 
       isSending = true;
       document.getElementById('spSendBtn').disabled = true;
@@ -458,13 +534,15 @@
       input.style.height = 'auto';
 
       const sentAt = new Date().toISOString();
-      renderUser(text, sentAt);
+      const imageUrl = pendingImageUrl;
+      removeSpaceImage();
+      renderUser(text, sentAt, imageUrl);
 
       try {
         await fetch('/space/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text })
+          body: JSON.stringify({ content: text, image_url: imageUrl || null })
         });
       } catch (e) {}
 
@@ -579,6 +657,24 @@
     document.getElementById('spSettingBtn').onclick = openSettings;
     document.getElementById('spModalClose').onclick = closeSettings;
     document.getElementById('spSaveSettingsBtn').onclick = saveSettings;
+    document.getElementById('spRemoveImg').onclick = removeSpaceImage;
+    document.getElementById('spImgBtn').onclick = () => document.getElementById('spImageInput').click();
+    document.getElementById('spImageInput').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      document.getElementById('spPreviewThumb').src = URL.createObjectURL(file);
+      document.getElementById('spPreviewBar').classList.add('show');
+      pendingImageUrl = null;
+      const formData = new FormData();
+      formData.append('image', file);
+      try {
+        const res = await fetch('/upload_space_image', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.url) { pendingImageUrl = data.url; }
+        else { alert('圖片上傳失敗'); removeSpaceImage(); }
+      } catch (err) { alert('圖片上傳失敗'); removeSpaceImage(); }
+      e.target.value = '';
+    };
 
     // 場景按鈕綁定
     document.querySelectorAll('.sp-scene-btn').forEach(btn => {
