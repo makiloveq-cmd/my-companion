@@ -1258,7 +1258,7 @@ def check_achievements(intimacy, bond, trust):
     stages_order = [s["name"] for s in RELATIONSHIP_STAGES]
     if stage in stages_order:
         idx = stages_order.index(stage)
-        reached = set(s["name"] for s in RELATIONSHIP_STAGES[idx:])
+        reached = set(s["name"] for s in RELATIONSHIP_STAGES[:idx+1])
         if "曖昧" in reached: unlocked.add("stage_ambiguous")
         if "新婚蜜月" in reached: unlocked.add("stage_honeymoon")
     # 特殊成就
