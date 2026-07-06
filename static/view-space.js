@@ -148,6 +148,24 @@
     border: none; border-radius: 12px;
     color: #fff; font-size: 15px; cursor: pointer; margin-top: 4px;
   }
+  .sp-scene-row {
+    display: flex; gap: 8px; margin-bottom: 2px;
+  }
+  .sp-scene-btn {
+    flex: 1; padding: 10px 6px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 12px; color: var(--text-2);
+    font-size: 14px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sp-scene-btn.active {
+    background: var(--accent); color: #fff;
+    border-color: var(--accent);
+  }
+  .sp-scene-hint {
+    font-size: 12px; color: var(--text-3);
+    min-height: 16px; padding: 0 2px;
+  }
   `;
 
   function ensureStyle() {
@@ -192,6 +210,14 @@
             空間設定
             <span class="sp-modal-close" id="spModalClose">✕</span>
           </div>
+
+          <div class="sp-modal-section-title">場景</div>
+          <div class="sp-scene-row" id="spSceneRow">
+            <button class="sp-scene-btn" data-scene="home" id="sceneHome">🏠 家</button>
+            <button class="sp-scene-btn" data-scene="cinema" id="sceneCinema">🎬 放映廳</button>
+            <button class="sp-scene-btn" data-scene="outing" id="sceneOuting">✦ 外出</button>
+          </div>
+          <div class="sp-scene-hint" id="spSceneHint"></div>
 
           <div class="sp-modal-section-title">基本氛圍</div>
           <div class="sp-modal-field">
@@ -470,6 +496,40 @@
       elx.focus();
     }
 
+    const SCENE_HINTS = {
+      home: '整個家都在這裡，廚房、浴室、臥室隨意走動。',
+      cinema: '家裡的放映廳，投影和劇院音響，想看什麼都行。',
+      outing: '出門了，去哪裡由然然決定，切換時會自動記下出門前的狀態。'
+    };
+    let currentScene = 'home';
+
+    function updateSceneUI(scene) {
+      currentScene = scene;
+      document.querySelectorAll('.sp-scene-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.scene === scene);
+      });
+      const hint = document.getElementById('spSceneHint');
+      if (hint) hint.textContent = SCENE_HINTS[scene] || '';
+    }
+
+    async function switchScene(scene) {
+      if (scene === currentScene) return;
+      updateSceneUI(scene);
+      try {
+        await fetch('/space/scene', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scene })
+        });
+        // 更新header顯示
+        const h1 = document.querySelector('.sp-header h1');
+        if (h1) {
+          const labels = { home: '✦ 共同空間', cinema: '✦ 放映廳', outing: '✦ 外出' };
+          h1.textContent = labels[scene] || '✦ 共同空間';
+        }
+      } catch (e) {}
+    }
+
     async function openSettings() {
       try {
         const res = await fetch('/space_settings');
@@ -480,6 +540,8 @@
         document.getElementById('sp-s-furniture').value = data.furniture || '';
         document.getElementById('sp-s-corner_details').value = data.corner_details || '';
         document.getElementById('sp-s-claude_spots').value = data.claude_spots || '';
+        // 讀取當前場景
+        updateSceneUI(data.scene || 'home');
       } catch (e) {}
       document.getElementById('spSettingModal').classList.add('show');
     }
@@ -517,6 +579,24 @@
     document.getElementById('spSettingBtn').onclick = openSettings;
     document.getElementById('spModalClose').onclick = closeSettings;
     document.getElementById('spSaveSettingsBtn').onclick = saveSettings;
+
+    // 場景按鈕綁定
+    document.querySelectorAll('.sp-scene-btn').forEach(btn => {
+      btn.onclick = () => switchScene(btn.dataset.scene);
+    });
+
+    // 初始化場景狀態（讀取後端當前場景）
+    try {
+      const sceneRes = await fetch('/space/scene');
+      const sceneData = await sceneRes.json();
+      const initScene = sceneData.scene || 'home';
+      updateSceneUI(initScene);
+      const h1 = document.querySelector('.sp-header h1');
+      if (h1) {
+        const labels = { home: '✦ 共同空間', cinema: '✦ 放映廳', outing: '✦ 外出' };
+        h1.textContent = labels[initScene] || '✦ 共同空間';
+      }
+    } catch (e) {}
 
     await Promise.all([loadPersonas(), loadMessages()]);
 

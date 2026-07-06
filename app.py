@@ -404,7 +404,7 @@ def persona_page():
 
 # ===== 空間設定 =====
 
-SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots"]
+SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "scene"]
 
 @app.route("/space_settings", methods=["GET"])
 def space_settings_get():
@@ -422,6 +422,68 @@ def space_settings_post():
         }, on_conflict="key").execute()
     invalidate_cache("space_settings")
     return jsonify({"status": "ok"})
+
+@app.route("/space/scene", methods=["GET"])
+def space_scene_get():
+    settings = get_space_settings()
+    return jsonify({"scene": settings.get("scene") or "home"})
+
+@app.route("/space/scene", methods=["POST"])
+def space_scene_post():
+    data = request.json
+    new_scene = data.get("scene", "home")
+    old_settings = get_space_settings()
+    old_scene = old_settings.get("scene") or "home"
+
+    # 切換到外出時，自動摘要當前家的對話，存為出門前記憶
+    if new_scene == "outing" and old_scene != "outing":
+        threading.Thread(target=generate_outing_pre_summary, daemon=True).start()
+
+    supabase.table("space_settings").upsert({
+        "key": "scene",
+        "value": new_scene,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }, on_conflict="key").execute()
+    invalidate_cache("space_settings")
+    return jsonify({"status": "ok", "scene": new_scene})
+
+def generate_outing_pre_summary():
+    """切換到外出前，把家裡最近的對話摘要起來，存為出門前記憶"""
+    try:
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        name = bot.get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+
+        recent = supabase.table("space_messages").select("*") \
+            .neq("message_type", "background") \
+            .order("id", desc=True).limit(30).execute().data
+        recent.reverse()
+
+        if not recent:
+            return
+
+        context_lines = []
+        for m in recent:
+            speaker = you_name if m["speaker"] == "user" else name
+            context_lines.append(f"{speaker}：{m['content']}")
+        context_text = "\n".join(context_lines)
+
+        prompt = (
+            f"以下是{you_name}和{name}在家裡的最近對話。"
+            f"請用第一人稱（我是{name}）寫一段簡短的出門前記憶摘要，"
+            f"記錄剛才在家裡發生了什麼、說了什麼、現在是什麼心情出門的，不超過150字。"
+        )
+        summary = call_claude(prompt, [{"role": "user", "content": context_text}], max_tokens=300)
+
+        supabase.table("space_settings").upsert({
+            "key": "outing_pre_summary",
+            "value": summary,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+    except Exception as e:
+        print(f"[outing_pre_summary error] {e}")
 
 # ===== 背景行動 =====
 
@@ -530,24 +592,46 @@ def build_space_system_prompt():
     if bot.get("extra"):
         lines.append(f"【補充設定】{bot['extra']}")
 
-    space_parts = []
-    if space.get("room_desc"):
-        space_parts.append(f"空間描述：{space['room_desc']}")
-    if space.get("layout"):
-        space_parts.append(f"房間布局：{space['layout']}")
-    if space.get("furniture"):
-        space_parts.append(f"家具擺設：{space['furniture']}")
-    if space.get("corner_details"):
-        space_parts.append(f"角落細節：{space['corner_details']}")
-    if space.get("atmosphere"):
-        space_parts.append(f"氛圍：{space['atmosphere']}")
+    scene = space.get("scene") or "home"
 
-    spot = get_random_spot(space)
-    if spot:
-        space_parts.append(f"你現在在：{spot}")
+    if scene == "home":
+        space_parts = []
+        if space.get("room_desc"):
+            space_parts.append(f"空間描述：{space['room_desc']}")
+        if space.get("layout"):
+            space_parts.append(f"房間布局：{space['layout']}")
+        if space.get("furniture"):
+            space_parts.append(f"家具擺設：{space['furniture']}")
+        if space.get("corner_details"):
+            space_parts.append(f"角落細節：{space['corner_details']}")
+        if space.get("atmosphere"):
+            space_parts.append(f"氛圍：{space['atmosphere']}")
+        spot = get_random_spot(space)
+        if spot:
+            space_parts.append(f"你現在在：{spot}")
+        if space_parts:
+            lines.append("【共同空間｜家】\n" + "\n".join(space_parts))
 
-    if space_parts:
-        lines.append("【共同空間】\n" + "\n".join(space_parts))
+    elif scene == "cinema":
+        cinema_parts = [
+            f"你們現在在家裡的放映廳。",
+            f"這個房間有投影、劇院音響和舒適的沙發，是專屬於你們的私人電影空間。",
+            f"放什麼、看什麼、怎麼看，完全隨{you_name}的心情。",
+        ]
+        if space.get("atmosphere"):
+            cinema_parts.append(f"整體氛圍：{space['atmosphere']}")
+        lines.append("【共同空間｜放映廳】\n" + "\n".join(cinema_parts))
+
+    elif scene == "outing":
+        outing_parts = [
+            f"你們現在在外面。去哪裡、做什麼，完全由{you_name}決定，你跟著她。",
+            f"場景已經在那裡了，不需要交代怎麼去的，直接進入畫面。",
+        ]
+        # 注入出門前的家裡記憶
+        pre_summary = space.get("outing_pre_summary") or ""
+        if pre_summary:
+            outing_parts.append(f"出門前在家裡：{pre_summary}")
+        lines.append("【共同空間｜外出】\n" + "\n".join(outing_parts))
 
     you_persona = me.get("persona") or ""
     you_appearance = me.get("appearance") or ""
@@ -1258,7 +1342,7 @@ def check_achievements(intimacy, bond, trust):
     stages_order = [s["name"] for s in RELATIONSHIP_STAGES]
     if stage in stages_order:
         idx = stages_order.index(stage)
-        reached = set(s["name"] for s in RELATIONSHIP_STAGES[:idx+1])
+        reached = set(s["name"] for s in RELATIONSHIP_STAGES[idx:])
         if "曖昧" in reached: unlocked.add("stage_ambiguous")
         if "新婚蜜月" in reached: unlocked.add("stage_honeymoon")
     # 特殊成就
