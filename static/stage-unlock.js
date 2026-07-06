@@ -35,7 +35,7 @@
     const s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap');
 
       .su-overlay {
         display: none;
@@ -66,13 +66,13 @@
       .su-stage-label {
         font-size: 11px; letter-spacing: 0.12em;
         color: #a09070; text-transform: uppercase;
-        font-family: 'Noto Serif TC', serif;
+        font-family: 'Ma Shan Zheng', cursive;
       }
 
       .su-stage-name {
         font-size: 26px; font-weight: 500;
         color: #3a2e20;
-        font-family: 'Noto Serif TC', serif;
+        font-family: 'Ma Shan Zheng', cursive;
         letter-spacing: 0.08em;
         line-height: 1.3;
       }
@@ -85,14 +85,14 @@
       .su-body {
         font-size: 15px; line-height: 1.95;
         color: #4a3e2e;
-        font-family: 'Noto Serif TC', serif;
+        font-family: 'Ma Shan Zheng', cursive;
         white-space: pre-wrap;
         letter-spacing: 0.03em;
       }
 
       .su-sign {
         font-size: 13px; color: #a09070;
-        font-family: 'Noto Serif TC', serif;
+        font-family: 'Ma Shan Zheng', cursive;
         text-align: right; margin-top: 4px;
         letter-spacing: 0.1em;
       }
@@ -100,7 +100,7 @@
       .su-close-hint {
         font-size: 11px; color: #b0a090;
         text-align: center; margin-top: 8px;
-        font-family: 'Noto Serif TC', serif;
+        font-family: 'Ma Shan Zheng', cursive;
         letter-spacing: 0.06em;
       }
 

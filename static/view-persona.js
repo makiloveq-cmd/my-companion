@@ -122,7 +122,7 @@
     display: flex; flex-direction: column; gap: 0;
   }
   .pn-rel-title-row {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; flex-direction: column; gap: 4px;
     padding: 14px 16px 6px;
   }
   .pn-rel-title-label { font-size: 12px; color: var(--text-3); }
@@ -164,6 +164,23 @@
   .pn-rel-ach-name { font-size: 13px; color: var(--text); }
   .pn-rel-ach-name.locked { color: var(--text-3); }
   .pn-rel-ach-desc { font-size: 11px; color: var(--text-3); }
+  .pn-rel-letters { border-top: .5px solid var(--border); }
+  .pn-rel-letters-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; cursor: pointer; font-size: 13px; color: var(--text-2);
+  }
+  .pn-rel-letters-header:active { background: var(--surface2); }
+  .pn-rel-letters-list { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .pn-rel-letter-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    cursor: pointer;
+  }
+  .pn-rel-letter-item:active { opacity: 0.7; }
+  .pn-rel-letter-name { font-size: 13px; color: var(--text); }
+  .pn-rel-letter-icon { font-size: 14px; color: var(--text-3); }
+
   .pn-rel-log { margin-top: 8px; }
   .pn-rel-log-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--surface-2); border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-2); }
   .pn-rel-log-header .pn-rel-ach-arrow { font-size: 16px; transition: transform 0.2s; }
@@ -324,6 +341,13 @@
               </div>
               <div class="pn-rel-ach-list" id="pnAchList" style="display:none"></div>
             </div>
+            <div class="pn-rel-letters" id="pnLetters" style="display:none">
+              <div class="pn-rel-letters-header" id="pnLettersToggle">
+                <span>過去的信</span>
+                <span class="pn-rel-ach-arrow" id="pnLettersArrow">›</span>
+              </div>
+              <div class="pn-rel-letters-list" id="pnLettersList" style="display:none"></div>
+            </div>
             <div class="pn-rel-log" id="pnRelLog">
               <div class="pn-rel-log-header" id="pnLogToggle">
                 <span>數值變化紀錄</span>
@@ -426,20 +450,9 @@
         const data = await res.json();
         if (data.error) return;
 
-        // 稱號 + 補看按鈕
+        // 稱號
         const titleEl = document.getElementById('pnRelTitle');
-        if (titleEl) {
-          titleEl.textContent = data.title || '—';
-          // 如果有對應台詞，加補看按鈕
-          if (window.StageUnlock && window.StageUnlock.STAGE_LETTERS[data.stage]) {
-            const existing = titleEl.parentElement.querySelector('.su-replay-btn');
-            if (!existing) {
-              const btn = window.StageUnlock.replayBtn(data.stage);
-              btn.style.marginLeft = '10px';
-              titleEl.parentElement.appendChild(btn);
-            }
-          }
-        }
+        if (titleEl) titleEl.textContent = data.title || '—';
 
         // 階段顯示
         const stageEl = document.getElementById('pnRelStage');
@@ -500,6 +513,34 @@
             listEl.appendChild(item);
           });
         }
+
+        // 信件區塊（過去的信）
+        if (window.StageUnlock) {
+          const STAGE_ORDER = ['曖昧', '熱戀', '磨合', '新婚蜜月', '家人之上', '靈魂伴侶'];
+          const currentStage = data.stage || '';
+          const currentIdx = STAGE_ORDER.indexOf(currentStage);
+          const unlockedStages = currentIdx >= 0 ? STAGE_ORDER.slice(0, currentIdx + 1) : [];
+          const lettersSection = document.getElementById('pnLetters');
+          const lettersList = document.getElementById('pnLettersList');
+          if (lettersSection && lettersList && unlockedStages.length > 0) {
+            lettersSection.style.display = '';
+            lettersList.innerHTML = '';
+            unlockedStages.forEach(stageName => {
+              const item = document.createElement('div');
+              item.className = 'pn-rel-letter-item';
+              const isCurrent = stageName === currentStage;
+              item.innerHTML = `
+                <span class="pn-rel-letter-name">${stageName}${isCurrent ? ' <span style="font-size:10px;color:var(--accent);margin-left:4px">現在</span>' : ''}</span>
+                <span class="pn-rel-letter-icon">✉</span>
+              `;
+              item.onclick = () => window.StageUnlock.show(stageName);
+              lettersList.appendChild(item);
+            });
+          } else if (lettersSection) {
+            lettersSection.style.display = 'none';
+          }
+        }
+
       } catch (e) {}
       await loadRelLog();
     }
@@ -722,6 +763,19 @@
       achToggle.onclick = () => {
         const list = document.getElementById('pnAchList');
         const arrow = achToggle.querySelector('.pn-rel-ach-arrow');
+        if (!list) return;
+        const isOpen = list.style.display !== 'none';
+        list.style.display = isOpen ? 'none' : 'flex';
+        if (arrow) arrow.classList.toggle('open', !isOpen);
+      };
+    }
+
+    // 信件展開/收起
+    const lettersToggle = document.getElementById('pnLettersToggle');
+    if (lettersToggle) {
+      lettersToggle.onclick = () => {
+        const list = document.getElementById('pnLettersList');
+        const arrow = document.getElementById('pnLettersArrow');
         if (!list) return;
         const isOpen = list.style.display !== 'none';
         list.style.display = isOpen ? 'none' : 'flex';
