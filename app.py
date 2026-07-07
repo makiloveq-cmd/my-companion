@@ -913,8 +913,8 @@ def usage_budget_post():
         supabase.table("api_budget").upsert({
             "key": "anthropic_budget",
             "value": current + float(val),
-            "updated_at": datetime.utcnow().isoformat()
-        }).execute()
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }, on_conflict="key").execute()
     return jsonify({"status": "ok"})
 
 @app.route("/usage/set_balance", methods=["POST"])
@@ -934,7 +934,7 @@ def usage_set_balance():
             "key": "anthropic_budget",
             "value": new_budget,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }).execute()
+        }, on_conflict="key").execute()
         return jsonify({"status": "ok", "new_budget": new_budget})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
