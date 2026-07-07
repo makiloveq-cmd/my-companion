@@ -684,6 +684,118 @@ def space_background():
 def space_page():
     return send_from_directory(".", "space.html")
 
+# ===== 遊戲廳 =====
+
+def build_game_system_prompt(setting):
+    personas = get_personas()
+    me = personas.get("user", {})
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
+    you_name = me.get("name") or "然然"
+
+    lines = [
+        f"現在台灣時間：{get_tw_time_str()}。",
+        f"你是「{name}」，正在與{you_name}進行角色扮演。",
+        "【劇本設定】\n" + setting,
+        f"【角色規則】",
+        f"1. 永遠是你（{name}）與{you_name}，只是時代背景和身份不同。",
+        f"2. 完全投入設定的時代和身份，語氣、用詞、舉止都符合那個時代。",
+        f"3. 用第三人稱敘述動作與狀態，搭配對話，像寫小說一樣身臨其境。",
+        f"4. 回覆要有動作、場景、對話、感官細節，刻劃內心狀態，文字細膩生動，段落之間換行。",
+        f"5. 不要打破第四面牆，不要說「這是角色扮演」。",
+        f"6. 語氣完全符合{name}的個性：話少、剋制、說出來的都是真的。",
+        f"7. 用繁體中文回覆。",
+    ]
+    if bot.get("persona"):
+        lines.insert(2, f"【{name}的個性】{bot['persona']}")
+    if bot.get("appearance"):
+        lines.insert(3, f"【{name}的外觀（現代基礎，依設定調整）】{bot['appearance']}")
+    return "\n".join(lines)
+
+@app.route("/game/start", methods=["POST"])
+def game_start():
+    data = request.json
+    setting = data.get("setting", "")
+    personas = get_personas()
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
+    try:
+        system = build_game_system_prompt(setting)
+        messages = [{"role": "user", "content": f"（開幕）{setting}"}]
+        reply = call_claude(system, messages, max_tokens=800)
+        return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/reply", methods=["POST"])
+def game_reply():
+    data = request.json
+    setting = data.get("setting", "")
+    messages = data.get("messages", [])
+    personas = get_personas()
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
+    try:
+        system = build_game_system_prompt(setting)
+        # 合併相同 role 的連續訊息
+        merged = []
+        for m in messages:
+            if merged and merged[-1]["role"] == m["role"]:
+                merged[-1]["content"] += "\n\n" + m["content"]
+            else:
+                merged.append(dict(m))
+        while merged and merged[0]["role"] == "assistant":
+            merged.pop(0)
+        if not merged:
+            merged = [{"role": "user", "content": "（繼續）"}]
+        reply = call_claude(system, merged, max_tokens=800)
+        return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/end", methods=["POST"])
+def game_end():
+    data = request.json
+    setting = data.get("setting", "")
+    messages = data.get("messages", [])
+    title = data.get("title", "無題")
+    personas = get_personas()
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
+    you_name = personas.get("user", {}).get("name") or "然然"
+    try:
+        # 整理對話內容
+        context_lines = []
+        for m in messages:
+            speaker = you_name if m["role"] == "user" else name
+            context_lines.append(f"{speaker}：{m['content']}")
+        context_text = "\n".join(context_lines[-40:])  # 最多取後40則
+
+        summary_prompt = (
+            f"以下是一段角色扮演劇本的對話記錄，背景設定是：{setting}\n\n"
+            f"請用第三人稱寫一段完整的劇本摘要，保留重要的場景、情感轉折、對話亮點，"
+            f"文字細膩有文學性，不超過400字。"
+        )
+        summary = call_claude(summary_prompt, [{"role": "user", "content": context_text}], max_tokens=600)
+
+        supabase.table("game_sessions").insert({
+            "setting": setting,
+            "title": title,
+            "summary": summary,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/sessions", methods=["GET"])
+def game_sessions_get():
+    try:
+        rows = supabase.table("game_sessions").select("*").order("id", desc=True).execute().data
+        return jsonify({"sessions": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 主題設定 =====
 
 @app.route("/theme", methods=["GET"])
@@ -1311,8 +1423,6 @@ def relationship_stats_get():
         prev_intimacy = rows[0]["intimacy"] if rows else 0
         prev_bond = rows[0]["bond"] if rows else 0
         prev_trust = rows[0]["trust"] if rows else 0
-        # 前一次的階層（用於前端偵測升階）
-        prev_stage = get_relationship_title(prev_intimacy, prev_bond, prev_trust) if rows else None
         delta_intimacy = intimacy - prev_intimacy
         delta_bond = bond - prev_bond
         delta_trust = trust - prev_trust
@@ -1348,8 +1458,7 @@ def relationship_stats_get():
             "stage_desc": stage_info["stage_desc"],
             "next_stage": stage_info.get("next_stage"),
             "next_min": stage_info.get("next_min"),
-            "achievements": achievements,
-            "prev_stage": prev_stage
+            "achievements": achievements
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

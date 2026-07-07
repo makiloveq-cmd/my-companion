@@ -4,7 +4,7 @@
 window.RifugioRouter = (function () {
   const TAB_FOR_ROUTE = {
     home: 'home', chatlist: 'chatlist', chat: 'chatlist', space: 'chatlist',
-    diary: 'diary', persona: 'persona', usage: 'chatlist', settings: 'home',
+    diary: 'diary', persona: 'persona', usage: 'chatlist', settings: 'home', game: 'game',
   };
 
   let currentCleanup = null;
@@ -18,7 +18,7 @@ window.RifugioRouter = (function () {
   }
 
   async function render(route, params = {}) {
-    if (route === 'moments') return; // 朋友圈尚未開放
+    if (route === 'moments') return;
 
     const view = window.RifugioViews && window.RifugioViews[route];
     if (!view) {
