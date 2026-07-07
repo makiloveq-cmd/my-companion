@@ -913,8 +913,8 @@ def usage_budget_post():
         supabase.table("api_budget").upsert({
             "key": "anthropic_budget",
             "value": current + float(val),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }, on_conflict="key").execute()
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/usage/set_balance", methods=["POST"])
@@ -925,16 +925,20 @@ def usage_set_balance():
     if remaining is None:
         return jsonify({"error": "missing remaining"}), 400
     try:
-        # 先取目前花費
-        usage_rows = supabase.table("api_usage").select("cost_usd").eq("provider", "anthropic").execute().data
-        cost = sum(float(r.get("cost_usd") or 0) for r in usage_rows)
+        # 先取目前花費（用 token 數計算）
+        usage_rows = supabase.table("api_usage").select("input_tokens,output_tokens").eq("api", "anthropic").execute().data
+        cost = sum(
+            (float(r.get("input_tokens") or 0) * ANTHROPIC_INPUT_PRICE +
+             float(r.get("output_tokens") or 0) * ANTHROPIC_OUTPUT_PRICE)
+            for r in usage_rows
+        )
         # 新的 budget = 已花費 + 想要剩下的金額
         new_budget = cost + float(remaining)
         supabase.table("api_budget").upsert({
             "key": "anthropic_budget",
             "value": new_budget,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }, on_conflict="key").execute()
+        }).execute()
         return jsonify({"status": "ok", "new_budget": new_budget})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
