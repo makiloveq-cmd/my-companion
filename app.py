@@ -845,6 +845,47 @@ def upload_image():
 
 # ===== 聊天 =====
 
+def assess_conversation_depth(user_message, reply):
+    """背景評估這則對話的深度，回傳 normal / deep / vulnerable"""
+    try:
+        prompt = (
+            "請判斷以下對話的深度類型，只回傳一個詞：\n"
+            "- vulnerable：用戶說了心事、脆弱、難過、煩惱、害怕、秘密、傷心等情緒\n"
+            "- deep：用戶在聊深度話題，如人生、感情、價值觀、夢想、過去、重要的事\n"
+            "- normal：普通日常對話、閒聊、問答\n\n"
+            f"用戶說：{user_message}\n\n"
+            "只回傳一個詞（vulnerable / deep / normal），不要其他文字。"
+        )
+        result = call_claude(prompt, [{"role": "user", "content": user_message}], max_tokens=10)
+        result = result.strip().lower()
+        if "vulnerable" in result:
+            return "vulnerable"
+        elif "deep" in result:
+            return "deep"
+        else:
+            return "normal"
+    except:
+        return "normal"
+
+def apply_trust_bonus(depth):
+    """根據對話深度加信任度"""
+    bonus = {"vulnerable": 5, "deep": 3, "normal": 1}.get(depth, 1)
+    if bonus <= 1:
+        return  # normal 已由 calc_relationship_stats 的 +1 處理
+    try:
+        rows = supabase.table("relationship_stats").select("*").order("id", desc=True).limit(1).execute().data
+        if not rows:
+            return
+        current_trust_base = rows[0].get("trust_base") or 0
+        new_trust_base = min(999, current_trust_base + bonus)
+        supabase.table("relationship_stats").update({
+            "trust_base": new_trust_base,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", rows[0]["id"]).execute()
+        invalidate_cache("relationship_stats")
+    except Exception as e:
+        print(f"[trust_bonus error] {e}")
+
 @app.route("/chat/claude", methods=["POST"])
 def chat_claude():
     data = request.json
@@ -858,6 +899,12 @@ def chat_claude():
     try:
         reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
         save_message("claude", "assistant", reply)
+        # 背景評估對話深度並加信任度
+        def bg_trust():
+            depth = assess_conversation_depth(user_message, reply)
+            if depth in ("deep", "vulnerable"):
+                apply_trust_bonus(depth)
+        threading.Thread(target=bg_trust, daemon=True).start()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
