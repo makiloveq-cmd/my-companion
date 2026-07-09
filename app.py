@@ -365,17 +365,6 @@ def maybe_summarize(bot):
     for rid in ids_to_delete:
         supabase.table("memories").delete().eq("id", rid).execute()
 
-def get_latest_space_summary_combined():
-    """取得空間的核心＋近期記憶合併版"""
-    core = get_summary_by_type("space", "core")
-    recent = get_summary_by_type("space", "recent")
-    parts = []
-    if core:
-        parts.append(f"【核心記憶】\n{core}")
-    if recent:
-        parts.append(f"【近期記憶】\n{recent}")
-    return "\n\n".join(parts) if parts else None
-
 def maybe_space_summarize():
     """空間訊息累積到 50 筆就壓縮成摘要，存入 memory_summaries (session_id=space)"""
     rows = supabase.table("space_messages").select("*").order("id").execute().data
