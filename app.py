@@ -268,6 +268,38 @@ def get_latest_summary(bot):
         return result.data[0]["content"]
     return None
 
+def get_combined_summary(bot):
+    """取得核心＋近期記憶合併版"""
+    core = get_summary_by_type(bot, "core")
+    recent = get_summary_by_type(bot, "recent")
+    if not core and not recent:
+        result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
+        if result.data:
+            return result.data[0]["content"]
+        return None
+    parts = []
+    if core:
+        parts.append(f"【核心記憶】\n{core}")
+    if recent:
+        parts.append(f"【近期記憶】\n{recent}")
+    return "\n\n".join(parts)
+
+def get_latest_space_summary_combined():
+    """取得空間核心＋近期記憶合併版"""
+    core = get_summary_by_type("space", "core")
+    recent = get_summary_by_type("space", "recent")
+    if not core and not recent:
+        result = supabase.table("memory_summaries").select("content").eq("session_id", "space").order("id", desc=True).limit(1).execute()
+        if result.data:
+            return result.data[0]["content"]
+        return None
+    parts = []
+    if core:
+        parts.append(f"【核心記憶】\n{core}")
+    if recent:
+        parts.append(f"【近期記憶】\n{recent}")
+    return "\n\n".join(parts)
+
 def maybe_summarize(bot):
     rows = load_memory(bot)
     if len(rows) < 50:
