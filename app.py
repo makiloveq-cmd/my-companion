@@ -856,8 +856,16 @@ def assess_conversation_depth(user_message, reply):
             f"用戶說：{user_message}\n\n"
             "只回傳一個詞（vulnerable / deep / normal），不要其他文字。"
         )
-        result = call_claude(prompt, [{"role": "user", "content": user_message}], max_tokens=10)
-        result = result.strip().lower()
+        # 使用獨立的 client，設定較短的 timeout，不影響主流程
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=10,
+            system="你是對話深度判斷工具，只回傳一個詞。",
+            messages=[{"role": "user", "content": prompt}],
+            timeout=15
+        )
+        result = response.content[0].text.strip().lower()
         if "vulnerable" in result:
             return "vulnerable"
         elif "deep" in result:
