@@ -252,6 +252,18 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 注入最近情緒紀錄
+    recent_emotions = get_recent_emotions(5)
+    if recent_emotions:
+        emotion_lines = []
+        for e in recent_emotions:
+            t = e.get("created_at", "")[:10]
+            em = e.get("emotion", "")
+            intensity = e.get("intensity", "")
+            note = e.get("note", "")
+            emotion_lines.append(f"{t} {em}（強度{intensity}/5）{' — ' + note if note else ''}")
+        lines.append(f"【{you_name}最近的情緒紀錄】\n" + "\n".join(emotion_lines))
+
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
@@ -988,6 +1000,45 @@ def upload_image():
 
 # ===== 聊天 =====
 
+def log_emotion(user_message, depth):
+    """分析然然的情緒狀態並存進 emotion_logs"""
+    try:
+        prompt = (
+            "請分析以下用戶訊息的情緒狀態，用 JSON 格式回傳，只回傳 JSON 不要其他文字：\n"
+            "{\"emotion\": \"情緒標籤（開心/平靜/焦慮/低落/難過/憤怒/疲憊/興奮/其他）\", "
+            "\"intensity\": 強度數字1到5, "
+            "\"note\": \"一句話說明（20字以內）\"}\n\n"
+            f"用戶說：{user_message}"
+        )
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=80,
+            system="你是情緒分析工具，只回傳 JSON。",
+            messages=[{"role": "user", "content": prompt}],
+            timeout=15
+        )
+        import json
+        text = response.content[0].text.strip()
+        data = json.loads(text)
+        supabase.table("emotion_logs").insert({
+            "emotion": data.get("emotion", "其他"),
+            "intensity": int(data.get("intensity", 3)),
+            "note": data.get("note", ""),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+    except Exception as e:
+        print(f"[log_emotion error] {e}")
+
+def get_recent_emotions(limit=5):
+    """取得最近幾筆情緒紀錄"""
+    try:
+        rows = supabase.table("emotion_logs").select("*").order("id", desc=True).limit(limit).execute().data
+        rows.reverse()
+        return rows
+    except:
+        return []
+
 def assess_conversation_depth(user_message, reply):
     """背景評估這則對話的深度，回傳 normal / deep / vulnerable"""
     try:
@@ -1042,12 +1093,13 @@ def chat_claude():
     try:
         reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
         save_message("claude", "assistant", reply)
-        # 背景評估對話深度並加信任度
-        def bg_trust():
+        # 背景評估對話深度、加信任度、記錄情緒
+        def bg_tasks():
             depth = assess_conversation_depth(user_message, reply)
             if depth in ("deep", "vulnerable"):
                 apply_trust_bonus(depth)
-        threading.Thread(target=bg_trust, daemon=True).start()
+            log_emotion(user_message, depth)
+        threading.Thread(target=bg_tasks, daemon=True).start()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1592,7 +1644,7 @@ def check_achievements(intimacy, bond, trust):
     stages_order = [s["name"] for s in RELATIONSHIP_STAGES]
     if stage in stages_order:
         idx = stages_order.index(stage)
-        reached = set(s["name"] for s in RELATIONSHIP_STAGES[idx:])
+        reached = set(s["name"] for s in RELATIONSHIP_STAGES[:idx+1])
         if "曖昧" in reached: unlocked.add("stage_ambiguous")
         if "新婚蜜月" in reached: unlocked.add("stage_honeymoon")
     # 特殊成就
@@ -1617,6 +1669,8 @@ def relationship_stats_get():
         prev_intimacy = rows[0]["intimacy"] if rows else 0
         prev_bond = rows[0]["bond"] if rows else 0
         prev_trust = rows[0]["trust"] if rows else 0
+        # 前一次的階層（用於前端偵測升階）
+        prev_stage = get_relationship_title(prev_intimacy, prev_bond, prev_trust) if rows else None
         delta_intimacy = intimacy - prev_intimacy
         delta_bond = bond - prev_bond
         delta_trust = trust - prev_trust
@@ -1652,7 +1706,8 @@ def relationship_stats_get():
             "stage_desc": stage_info["stage_desc"],
             "next_stage": stage_info.get("next_stage"),
             "next_min": stage_info.get("next_min"),
-            "achievements": achievements
+            "achievements": achievements,
+            "prev_stage": prev_stage if rows else None
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
