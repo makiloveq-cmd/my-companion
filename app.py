@@ -612,6 +612,19 @@ def build_space_system_prompt():
     except:
         pass
 
+    # 注入 last_ended 提示
+    last_ended = space.get("last_ended")
+    if last_ended:
+        try:
+            ended_dt = datetime.fromisoformat(last_ended.replace("Z", "+00:00"))
+            now_tw = datetime.now(timezone(timedelta(hours=8)))
+            ended_tw = ended_dt.astimezone(timezone(timedelta(hours=8)))
+            hours_diff = (now_tw - ended_tw).total_seconds() / 3600
+            if hours_diff >= 4:
+                lines.append(f"{you_name}上次說晚安是在 {ended_tw.strftime('%m/%d %H:%M')}，現在她回來了，你知道她去忙了一陣子。")
+        except:
+            pass
+
     # ── 修改處：精簡後的寫作規則 ──
     lines.append(
         f"【寫作方式】\n"
@@ -713,6 +726,21 @@ def space_background():
     if action:
         return jsonify({"action": action})
     return jsonify({"error": "failed"}), 500
+
+@app.route("/space/end_day", methods=["POST"])
+def space_end_day():
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        supabase.table("space_settings").upsert({
+            "key": "last_ended",
+            "value": now,
+            "updated_at": now
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+        threading.Thread(target=write_ai_diary_entry, daemon=True).start()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/space_page")
 def space_page():

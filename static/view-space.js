@@ -88,6 +88,23 @@
     padding: 10px 12px max(14px, env(safe-area-inset-bottom));
     flex-shrink: 0;
   }
+  .sp-end-day-row {
+    display: flex; justify-content: flex-end;
+    margin-bottom: 6px;
+  }
+  .sp-end-day-btn {
+    padding: 5px 14px;
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-3);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    font-family: inherit;
+  }
+  .sp-end-day-btn:active { opacity: 0.6; }
+  .sp-end-day-btn:disabled { opacity: 0.4; cursor: default; }
   .sp-input-hint { font-size: 12px; color: var(--text-3); margin-bottom: 6px; padding: 0 2px; }
   .sp-input-row { display: flex; gap: 8px; align-items: flex-end; }
   .sp-input-wrapper { flex: 1; position: relative; }
@@ -232,6 +249,14 @@
             <button class="sp-remove-img-btn" id="spRemoveImg">✕</button>
           </div>
         </div>
+        <div class="sp-end-day-row">
+          <button class="sp-end-day-btn" id="spEndDayBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            結束今天
+          </button>
+        </div>
         <div class="sp-input-hint">描述你在做什麼，或對晏說話…</div>
         <div class="sp-input-row">
           <button class="sp-send-btn" style="background:transparent;color:var(--text-3);" id="spImgBtn">
@@ -330,7 +355,6 @@
     function formatTime(isoStr) {
       if (!isoStr) return '';
       let s = isoStr;
-      // Supabase 存的是 UTC；若字串沒帶時區資訊，補上 Z 再解析，避免被當成本地時間
       if (typeof s === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
       const d = new Date(s);
       const now = new Date();
@@ -359,6 +383,8 @@
         avatars.user = data.user?.avatar || null;
         const label = document.getElementById('spLabelClaudeSpots');
         if (label) label.textContent = `${names.claude}常待的地方`;
+        const hint = document.getElementById('spInputHint');
+        if (hint) hint.textContent = `描述你在做什麼，或對${names.claude}說話…`;
       } catch (e) {}
     }
 
@@ -552,7 +578,6 @@
         loading.remove();
         if (reply) renderAI('claude', reply, new Date().toISOString());
         else renderRetry();
-        // 升階偵測
         try {
           const relRes = await fetch('/relationship_stats');
           const relData = await relRes.json();
@@ -607,7 +632,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ scene })
         });
-        // 更新header顯示
         const h1 = document.querySelector('.sp-header h1');
         if (h1) {
           const labels = { home: '✦ 共同空間', cinema: '✦ 放映廳', outing: '✦ 外出' };
@@ -626,7 +650,6 @@
         document.getElementById('sp-s-furniture').value = data.furniture || '';
         document.getElementById('sp-s-corner_details').value = data.corner_details || '';
         document.getElementById('sp-s-claude_spots').value = data.claude_spots || '';
-        // 讀取當前場景
         updateSceneUI(data.scene || 'home');
       } catch (e) {}
       document.getElementById('spSettingModal').classList.add('show');
@@ -684,12 +707,24 @@
       e.target.value = '';
     };
 
+    // 結束今天按鈕
+    document.getElementById('spEndDayBtn').onclick = async () => {
+      const btn = document.getElementById('spEndDayBtn');
+      btn.disabled = true;
+      try {
+        await fetch('/space/end_day', { method: 'POST' });
+        btn.innerHTML = '✦ 晚安';
+      } catch (e) {
+        btn.disabled = false;
+      }
+    };
+
     // 場景按鈕綁定
     document.querySelectorAll('.sp-scene-btn').forEach(btn => {
       btn.onclick = () => switchScene(btn.dataset.scene);
     });
 
-    // 初始化場景狀態（讀取後端當前場景）
+    // 初始化場景狀態
     try {
       const sceneRes = await fetch('/space/scene');
       const sceneData = await sceneRes.json();
