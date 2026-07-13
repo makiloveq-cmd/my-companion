@@ -96,9 +96,48 @@ html, body {
 <script src="/static/view-persona.js"></script>
 <script src="/static/view-game.js"></script>
 <script src="/static/view-usage.js"></script>
+<script src="/static/stage-unlock.js"></script>
 <script>
   RifugioRouter.init();
 </script>
 <script src="/theme.js"></script>
+
+<script>
+async function initWebPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.register('/static/firebase-messaging-sw.js');
+    await navigator.serviceWorker.ready;
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+
+    const keyRes = await fetch('/vapid_public_key');
+    const { public_key } = await keyRes.json();
+
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(public_key)
+    });
+
+    await fetch('/webpush/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription })
+    });
+  } catch (e) {
+    console.error('Web Push init error:', e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+window.addEventListener('load', initWebPush);
+</script>
 </body>
 </html>

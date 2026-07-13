@@ -9,28 +9,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 import threading
-import firebase_admin
-from firebase_admin import credentials, messaging as fcm_messaging
+from pywebpush import webpush, WebPushException
 
 app = Flask(__name__)
 CORS(app)
 
-# Firebase Admin 初始化
-_firebase_initialized = False
-def get_firebase_app():
-    global _firebase_initialized
-    if not _firebase_initialized:
-        try:
-            sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
-            if sa_json:
-                import json
-                sa_dict = json.loads(sa_json)
-                cred = credentials.Certificate(sa_dict)
-                firebase_admin.initialize_app(cred)
-                _firebase_initialized = True
-        except Exception as e:
-            print(f"Firebase init error: {e}")
-    return _firebase_initialized
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIMS = {"sub": os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@rifugio.app")}
+
 
 supabase = create_client(
     os.getenv("SUPABASE_URL"),
@@ -1628,18 +1615,23 @@ def relationship_quote():
         return jsonify({"error": str(e)}), 500
 
 
-# ===== Firebase 推播通知 =====
+# ===== Web Push 推播通知 =====
 
-@app.route("/fcm/register", methods=["POST"])
-def fcm_register():
+@app.route("/vapid_public_key", methods=["GET"])
+def vapid_public_key_get():
+    return jsonify({"public_key": VAPID_PUBLIC_KEY})
+
+@app.route("/webpush/register", methods=["POST"])
+def webpush_register():
+    import json
     data = request.json
-    token = data.get("token")
-    if not token:
-        return jsonify({"error": "no token"}), 400
+    subscription = data.get("subscription")
+    if not subscription:
+        return jsonify({"error": "no subscription"}), 400
     try:
         supabase.table("identities").upsert({
-            "key": "fcm_token",
-            "value": token,
+            "key": "webpush_subscription",
+            "value": json.dumps(subscription),
             "updated_at": datetime.utcnow().isoformat()
         }).execute()
         return jsonify({"status": "ok"})
@@ -1647,18 +1639,20 @@ def fcm_register():
         return jsonify({"error": str(e)}), 500
 
 def send_push_notification(title, body):
+    import json
     try:
-        if not get_firebase_app():
+        rows = supabase.table("identities").select("value").eq("key", "webpush_subscription").execute().data
+        if not rows:
             return
-        token_rows = supabase.table("identities").select("value").eq("key", "fcm_token").execute().data
-        if not token_rows:
-            return
-        token = token_rows[0]["value"]
-        message = fcm_messaging.Message(
-            notification=fcm_messaging.Notification(title=title, body=body),
-            token=token,
+        subscription = json.loads(rows[0]["value"])
+        webpush(
+            subscription_info=subscription,
+            data=json.dumps({"title": title, "body": body}),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
         )
-        fcm_messaging.send(message)
+    except WebPushException as e:
+        print(f"WebPush error: {e}")
     except Exception as e:
         print(f"Push notification error: {e}")
 
