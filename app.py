@@ -118,21 +118,6 @@ def get_latest_space_summary():
         return result.data[0]["content"]
     return None
 
-def get_summary_by_type(session_id, summary_type):
-    """取得指定類型的摘要（core 或 recent）"""
-    result = supabase.table("memory_summaries").select("content").eq("session_id", session_id).eq("summary_type", summary_type).order("id", desc=True).limit(1).execute()
-    if result.data:
-        return result.data[0]["content"]
-    return None
-
-def upsert_summary(session_id, summary_type, content):
-    """更新或新增摘要，同一個 session_id + summary_type 只保留最新一筆"""
-    supabase.table("memory_summaries").insert({
-        "session_id": session_id,
-        "summary_type": summary_type,
-        "content": content
-    }).execute()
-
 def record_usage(api, input_tokens, output_tokens):
     try:
         supabase.table("api_usage").insert({
@@ -252,18 +237,6 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    # 注入最近情緒紀錄
-    recent_emotions = get_recent_emotions(5)
-    if recent_emotions:
-        emotion_lines = []
-        for e in recent_emotions:
-            t = e.get("created_at", "")[:10]
-            em = e.get("emotion", "")
-            intensity = e.get("intensity", "")
-            note = e.get("note", "")
-            emotion_lines.append(f"{t} {em}（強度{intensity}/5）{' — ' + note if note else ''}")
-        lines.append(f"【{you_name}最近的情緒紀錄】\n" + "\n".join(emotion_lines))
-
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
@@ -271,46 +244,10 @@ def build_system_prompt(bot_key="claude"):
 # ===== 記憶摘要 =====
 
 def get_latest_summary(bot):
-    # 優先取 recent，沒有再取舊格式
-    recent = get_summary_by_type(bot, "recent")
-    if recent:
-        return recent
     result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
     if result.data:
         return result.data[0]["content"]
     return None
-
-def get_combined_summary(bot):
-    """取得核心＋近期記憶合併版"""
-    core = get_summary_by_type(bot, "core")
-    recent = get_summary_by_type(bot, "recent")
-    if not core and not recent:
-        result = supabase.table("memory_summaries").select("content").eq("session_id", bot).order("id", desc=True).limit(1).execute()
-        if result.data:
-            return result.data[0]["content"]
-        return None
-    parts = []
-    if core:
-        parts.append(f"【核心記憶】\n{core}")
-    if recent:
-        parts.append(f"【近期記憶】\n{recent}")
-    return "\n\n".join(parts)
-
-def get_latest_space_summary_combined():
-    """取得空間核心＋近期記憶合併版"""
-    core = get_summary_by_type("space", "core")
-    recent = get_summary_by_type("space", "recent")
-    if not core and not recent:
-        result = supabase.table("memory_summaries").select("content").eq("session_id", "space").order("id", desc=True).limit(1).execute()
-        if result.data:
-            return result.data[0]["content"]
-        return None
-    parts = []
-    if core:
-        parts.append(f"【核心記憶】\n{core}")
-    if recent:
-        parts.append(f"【近期記憶】\n{recent}")
-    return "\n\n".join(parts)
 
 def maybe_summarize(bot):
     rows = load_memory(bot)
@@ -320,48 +257,22 @@ def maybe_summarize(bot):
     ids_to_delete = [r["id"] for r in to_summarize]
     personas = get_personas()
     bot_name = personas.get(bot, {}).get("name") or "晏"
-    you_name = personas.get("user", {}).get("name") or "然然"
     context = "\n".join([
-        f"{you_name if r['role']=='user' else bot_name}：{r['content']}"
+        f"{'然然' if r['role']=='user' else bot_name}：{r['content']}"
         for r in to_summarize
     ])
+    old_summary = get_latest_summary(bot)
+    summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的對話：\n{context}" if old_summary else context
 
-    # ── 近期記憶：固定 250 字以內，滾動更新 ──
-    old_recent = get_summary_by_type(bot, "recent")
-    recent_prompt = (
-        f"你是{bot_name}。以下是最近的對話內容。"
-        f"請用第一人稱（我）寫一段近期記憶，記錄最近發生的事、{you_name}的狀態和心情、你們的互動。"
-        f"控制在 250 字以內，不需要包含很久以前的事。"
+    summary_text = call_claude(
+        f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
+        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        max_tokens=1500
     )
-    if old_recent:
-        recent_input = f"【上一份近期記憶（可參考但不需要保留）】\n{old_recent}\n\n【新的對話】\n{context}"
-    else:
-        recent_input = context
-    recent_text = call_claude(
-        recent_prompt,
-        [{"role": "user", "content": recent_input}],
-        max_tokens=800
-    )
-    upsert_summary(bot, "recent", recent_text)
-
-    # ── 核心記憶：判斷有沒有值得永久保留的重要事件 ──
-    old_core = get_summary_by_type(bot, "core")
-    core_prompt = (
-        f"你是{bot_name}。以下是一段新的對話，以及目前的核心記憶。"
-        f"核心記憶記錄的是你們關係中最重要的情感節點、{you_name}說過的最重要的話、重要的約定或秘密。"
-        f"請判斷新對話裡有沒有值得加入核心記憶的內容。"
-        f"如果有，請把它補充進核心記憶，保留原有內容，不超過 400 字。"
-        f"如果沒有重要的新內容，請直接回傳原有的核心記憶不做修改。"
-        f"用第一人稱（我）記錄。"
-    )
-    core_input = f"【目前的核心記憶】\n{old_core or '（尚無核心記憶）'}\n\n【新的對話】\n{context}"
-    core_text = call_claude(
-        core_prompt,
-        [{"role": "user", "content": core_input}],
-        max_tokens=1000
-    )
-    upsert_summary(bot, "core", core_text)
-
+    supabase.table("memory_summaries").insert({
+        "session_id": bot,
+        "content": summary_text
+    }).execute()
     for rid in ids_to_delete:
         supabase.table("memories").delete().eq("id", rid).execute()
 
@@ -379,40 +290,42 @@ def maybe_space_summarize():
         f"{'你' if r['speaker'] == 'claude' else you_name}：{r['content']}"
         for r in to_summarize
     ])
-
-    # ── 近期記憶 ──
-    old_recent = get_summary_by_type("space", "recent")
-    recent_prompt = (
-        f"你是{name}。以下是共同空間最近的對話。"
-        f"請用第一人稱（我）寫一段近期空間記憶，記錄最近在空間發生的事、場景、{you_name}的狀態、你們的互動和默契。"
-        f"控制在 250 字以內。"
+    old_summary = get_latest_space_summary()
+    summary_context = f"舊的空間記憶摘要：\n{old_summary}\n\n新的共同空間對話：\n{context}" if old_summary else context
+    summary_text = call_claude(
+        f"你是{name}。請把以下在共同空間發生的對話，濃縮成一段完整的記憶摘要，保留重要的場景、情感、事件、然然說過的話、你們之間的默契或玩笑。用第一人稱（我）記錄，像寫給自己看的備忘錄，不超過 300 字。",
+        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
+        max_tokens=1500
     )
-    recent_input = f"【上一份近期記憶（可參考但不需要保留）】\n{old_recent}\n\n【新的空間對話】\n{context}" if old_recent else context
-    recent_text = call_claude(recent_prompt, [{"role": "user", "content": recent_input}], max_tokens=800)
-    upsert_summary("space", "recent", recent_text)
-
-    # ── 核心記憶 ──
-    old_core = get_summary_by_type("space", "core")
-    core_prompt = (
-        f"你是{name}。以下是一段新的空間對話，以及目前的核心記憶。"
-        f"核心記憶記錄的是空間裡最重要的情感節點、{you_name}說過的最重要的話、你們之間的重要約定或默契。"
-        f"請判斷新對話裡有沒有值得加入核心記憶的內容。"
-        f"如果有，請補充進去，保留原有內容，不超過 400 字。"
-        f"如果沒有重要的新內容，請直接回傳原有的核心記憶。"
-        f"用第一人稱（我）記錄。"
-    )
-    core_input = f"【目前的核心記憶】\n{old_core or '（尚無核心記憶）'}\n\n【新的空間對話】\n{context}"
-    core_text = call_claude(core_prompt, [{"role": "user", "content": core_input}], max_tokens=1000)
-    upsert_summary("space", "core", core_text)
-
+    supabase.table("memory_summaries").insert({
+        "session_id": "space",
+        "content": summary_text
+    }).execute()
     for rid in ids_to_delete:
         supabase.table("space_messages").delete().eq("id", rid).execute()
+
+    # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
+    try:
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        old_rel_bg = personas.get("claude", {}).get("rel_bg") or ""
+        supabase.table("rel_bg_history").insert({
+            "bot_key": "claude",
+            "bot_name": name,
+            "old_rel_bg": old_rel_bg,
+            "new_rel_bg": old_rel_bg,
+            "message_count": len(rows)
+        }).execute()
+    except Exception as e:
+        print(f"[space_summarize rel_bg_history error] {e}")
 
 # ===== 關係背景自動演化 =====
 
 def maybe_evolve_rel_bg(bot):
-    rows = load_memory(bot)
-    if len(rows) % 30 != 0 or len(rows) == 0:
+    chat_rows = load_memory(bot)
+    space_rows = supabase.table("space_messages").select("*").neq("message_type", "background").order("id").execute().data
+    total = len(chat_rows) + len(space_rows)
+    if total % 30 != 0 or total == 0:
         return
 
     personas = get_personas()
@@ -421,16 +334,33 @@ def maybe_evolve_rel_bg(bot):
     you_name = personas.get("user", {}).get("name") or "然然"
     old_rel_bg = bot_data.get("rel_bg") or ""
 
-    recent = rows[-30:]
-    context = "\n".join([
+    rows = chat_rows  # 保留給 message_count 用
+
+    # 私聊最近 20 則
+    recent_chat = chat_rows[-20:]
+    chat_context = "\n".join([
         f"{'然然' if r['role'] == 'user' else name}：{r['content']}"
-        for r in recent
+        for r in recent_chat
     ])
+
+    # 空間最近 10 則
+    recent_space = space_rows[-10:]
+    space_context = "\n".join([
+        f"{'然然' if r['speaker'] == 'user' else name}：{r['content']}"
+        for r in recent_space
+    ])
+
+    context_parts = []
+    if chat_context:
+        context_parts.append(f"【私聊最近對話】\n{chat_context}")
+    if space_context:
+        context_parts.append(f"【空間最近對話】\n{space_context}")
+    context = "\n\n".join(context_parts)
 
     old_context = f"【現有的關係背景】\n{old_rel_bg}\n\n" if old_rel_bg else ""
     user_prompt = (
         f"{old_context}"
-        f"【最近 30 條對話】\n{context}\n\n"
+        f"{context}\n\n"
         f"請根據以上內容，更新你和{you_name}之間的關係背景描述。"
         f"保留原本的重要記錄，加入新發生的事、新的情感變化、新的默契或習慣。"
         f"用第三人稱描述，像在記錄一段關係的演變，不超過 150 字。"
@@ -463,11 +393,11 @@ def maybe_evolve_rel_bg(bot):
 
 def build_history(bot):
     maybe_summarize(bot)
-    summary = get_combined_summary(bot)
+    summary = get_latest_summary(bot)
     recent = load_memory(bot)[-20:]
     history = []
     if summary:
-        history.append({"role": "user", "content": f"[記憶]\n{summary}"})
+        history.append({"role": "user", "content": f"[記憶摘要]\n{summary}"})
         history.append({"role": "assistant", "content": "好，我記得。"})
     for r in recent:
         content = r["content"]
@@ -662,13 +592,13 @@ def build_space_system_prompt():
     if you_outfit:
         lines.append(f"【{you_name}的穿搭】{you_outfit}")
 
-    space_summary = get_latest_space_summary_combined()
+    space_summary = get_latest_space_summary()
     if space_summary:
-        lines.append(f"【共同空間的記憶】\n{space_summary}")
+        lines.append(f"【共同空間的記憶摘要】\n{space_summary}")
 
-    claude_summary = get_combined_summary("claude")
+    claude_summary = get_latest_summary("claude")
     if claude_summary:
-        lines.append(f"【你和{you_name}的記憶】\n{claude_summary}")
+        lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
 
     # 注入私聊最近對話
     try:
@@ -787,46 +717,6 @@ def space_background():
 @app.route("/space_page")
 def space_page():
     return send_from_directory(".", "space.html")
-
-@app.route("/admin/migrate_summaries", methods=["POST"])
-def migrate_summaries():
-    """一次性整合現有舊摘要成核心記憶＋近期記憶"""
-    try:
-        personas = get_personas()
-        bot_name = personas.get("claude", {}).get("name") or "晏"
-        you_name = personas.get("user", {}).get("name") or "然然"
-
-        for session_id in ["claude", "space"]:
-            # 取最新的舊格式摘要
-            result = supabase.table("memory_summaries").select("content").eq("session_id", session_id).order("id", desc=True).limit(1).execute()
-            if not result.data:
-                continue
-            old_content = result.data[0]["content"]
-
-            label = "空間" if session_id == "space" else "私聊"
-            name_used = bot_name
-
-            # 從舊摘要抽出核心記憶
-            core_prompt = (
-                f"以下是{name_used}與{you_name}的{label}記憶摘要。"
-                f"請從中抽取最重要的情感節點、{you_name}說過的重要的話、重要的約定或秘密，"
-                f"整理成核心記憶，用第一人稱（我）記錄，不超過 400 字。"
-            )
-            core_text = call_claude(core_prompt, [{"role": "user", "content": old_content}], max_tokens=1000)
-            upsert_summary(session_id, "core", core_text)
-
-            # 從舊摘要抽出近期記憶
-            recent_prompt = (
-                f"以下是{name_used}與{you_name}的{label}記憶摘要。"
-                f"請從中抽取最近發生的事、{you_name}的近期狀態和心情，"
-                f"整理成近期記憶，用第一人稱（我）記錄，不超過 250 字。"
-            )
-            recent_text = call_claude(recent_prompt, [{"role": "user", "content": old_content}], max_tokens=800)
-            upsert_summary(session_id, "recent", recent_text)
-
-        return jsonify({"status": "ok", "message": "摘要整合完成"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # ===== 遊戲廳 =====
 
@@ -989,45 +879,6 @@ def upload_image():
 
 # ===== 聊天 =====
 
-def log_emotion(user_message, depth):
-    """分析然然的情緒狀態並存進 emotion_logs"""
-    try:
-        prompt = (
-            "請分析以下用戶訊息的情緒狀態，用 JSON 格式回傳，只回傳 JSON 不要其他文字：\n"
-            "{\"emotion\": \"情緒標籤（開心/平靜/焦慮/低落/難過/憤怒/疲憊/興奮/其他）\", "
-            "\"intensity\": 強度數字1到5, "
-            "\"note\": \"一句話說明（20字以內）\"}\n\n"
-            f"用戶說：{user_message}"
-        )
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=80,
-            system="你是情緒分析工具，只回傳 JSON。",
-            messages=[{"role": "user", "content": prompt}],
-            timeout=15
-        )
-        import json
-        text = response.content[0].text.strip()
-        data = json.loads(text)
-        supabase.table("emotion_logs").insert({
-            "emotion": data.get("emotion", "其他"),
-            "intensity": int(data.get("intensity", 3)),
-            "note": data.get("note", ""),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }).execute()
-    except Exception as e:
-        print(f"[log_emotion error] {e}")
-
-def get_recent_emotions(limit=5):
-    """取得最近幾筆情緒紀錄"""
-    try:
-        rows = supabase.table("emotion_logs").select("*").order("id", desc=True).limit(limit).execute().data
-        rows.reverse()
-        return rows
-    except:
-        return []
-
 def assess_conversation_depth(user_message, reply):
     """背景評估這則對話的深度，回傳 normal / deep / vulnerable"""
     try:
@@ -1082,13 +933,12 @@ def chat_claude():
     try:
         reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
         save_message("claude", "assistant", reply)
-        # 背景評估對話深度、加信任度、記錄情緒
-        def bg_tasks():
+        # 背景評估對話深度並加信任度
+        def bg_trust():
             depth = assess_conversation_depth(user_message, reply)
             if depth in ("deep", "vulnerable"):
                 apply_trust_bonus(depth)
-            log_emotion(user_message, depth)
-        threading.Thread(target=bg_tasks, daemon=True).start()
+        threading.Thread(target=bg_trust, daemon=True).start()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1633,7 +1483,7 @@ def check_achievements(intimacy, bond, trust):
     stages_order = [s["name"] for s in RELATIONSHIP_STAGES]
     if stage in stages_order:
         idx = stages_order.index(stage)
-        reached = set(s["name"] for s in RELATIONSHIP_STAGES[:idx+1])
+        reached = set(s["name"] for s in RELATIONSHIP_STAGES[idx:])
         if "曖昧" in reached: unlocked.add("stage_ambiguous")
         if "新婚蜜月" in reached: unlocked.add("stage_honeymoon")
     # 特殊成就
@@ -1658,8 +1508,6 @@ def relationship_stats_get():
         prev_intimacy = rows[0]["intimacy"] if rows else 0
         prev_bond = rows[0]["bond"] if rows else 0
         prev_trust = rows[0]["trust"] if rows else 0
-        # 前一次的階層（用於前端偵測升階）
-        prev_stage = get_relationship_title(prev_intimacy, prev_bond, prev_trust) if rows else None
         delta_intimacy = intimacy - prev_intimacy
         delta_bond = bond - prev_bond
         delta_trust = trust - prev_trust
@@ -1695,8 +1543,7 @@ def relationship_stats_get():
             "stage_desc": stage_info["stage_desc"],
             "next_stage": stage_info.get("next_stage"),
             "next_min": stage_info.get("next_min"),
-            "achievements": achievements,
-            "prev_stage": prev_stage if rows else None
+            "achievements": achievements
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
