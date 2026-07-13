@@ -1037,16 +1037,36 @@ def get_bot_persona():
 def write_ai_diary_entry():
     name = get_bot_name()
     persona = get_bot_persona()
-    recent = load_memory("claude")[-30:]
-    context_text = "\n".join([
+    personas = get_personas()
+    you_name = personas.get("user", {}).get("name") or "然然"
+
+    recent_chat = load_memory("claude")[-30:]
+    chat_text = "\n".join([
         f"{'然然' if m['role'] == 'user' else name}：{m['content']}"
-        for m in recent
-    ]) if recent else "（還沒有對話記錄）"
+        for m in recent_chat
+    ]) if recent_chat else ""
+
+    try:
+        recent_space = supabase.table("space_messages").select("speaker, content").neq("message_type", "background").order("id", desc=True).limit(20).execute().data
+        recent_space = list(reversed(recent_space))
+        space_text = "\n".join([
+            f"{'然然' if m['speaker'] == 'user' else name}：{m['content']}"
+            for m in recent_space
+        ]) if recent_space else ""
+    except:
+        space_text = ""
+
+    parts = []
+    if chat_text:
+        parts.append(f"【私聊】\n{chat_text}")
+    if space_text:
+        parts.append(f"【共同空間】\n{space_text}")
+    context_text = "\n\n".join(parts) if parts else "（還沒有對話記錄）"
 
     persona_line = f"個性：{persona}。" if persona else ""
     system_prompt = (
-        f"你是{name}，一個陪伴然然的存在。{persona_line}"
-        f"下面是你和然然最近的對話，請根據這些內容寫一篇簡短的日記，記錄你的想法或對然然的感受，第一人稱，不用加標題。"
+        f"你是{name}，一個陪伴{you_name}的存在。{persona_line}"
+        f"下面是你和{you_name}最近的對話（包含私聊與共同空間），請根據這些內容寫一篇簡短的日記，記錄你的想法或對{you_name}的感受，第一人稱，不用加標題。"
     )
     content = call_claude(system_prompt, [{"role": "user", "content": f"最近的對話：\n{context_text}\n\n請寫一篇今天的日記。"}], max_tokens=1024)
     supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
