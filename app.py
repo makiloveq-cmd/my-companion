@@ -733,6 +733,10 @@ def space_end_day():
 def space_page():
     return send_from_directory(".", "space.html")
 
+@app.route("/firebase-messaging-sw.js")
+def service_worker():
+    return send_from_directory("static", "firebase-messaging-sw.js", mimetype="application/javascript")
+
 # ===== 遊戲廳 =====
 
 def build_game_system_prompt(setting):

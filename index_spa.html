@@ -106,7 +106,7 @@ html, body {
 async function initWebPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   try {
-    const reg = await navigator.serviceWorker.register('/static/firebase-messaging-sw.js');
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     await navigator.serviceWorker.ready;
 
     const permission = await Notification.requestPermission();
