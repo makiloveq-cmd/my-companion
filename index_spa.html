@@ -100,6 +100,20 @@ html, body {
 <script>
   RifugioRouter.init();
 </script>
+
+<script>
+// 全域 fetch 攔截器，自動帶入 APP_SECRET
+const APP_SECRET = '__APP_SECRET_PLACEHOLDER__';
+const _origFetch = window.fetch.bind(window);
+window.fetch = async function(input, init = {}) {
+  const url = typeof input === 'string' ? input : input.url;
+  // 只攔截自己的 API，不影響外部請求
+  if (url.startsWith('/') && !url.startsWith('/static/') && !url.startsWith('/firebase-messaging-sw.js')) {
+    init.headers = { ...(init.headers || {}), 'X-App-Secret': APP_SECRET };
+  }
+  return _origFetch(input, init);
+};
+</script>
 <script src="/theme.js"></script>
 
 <script>
