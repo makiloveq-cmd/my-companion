@@ -189,21 +189,37 @@
           bubble.appendChild(cap);
         }
       } else if (role === 'ai') {
-        // 晏的訊息：空行切段，「……」單獨一段合併進下一段，最多 3 個泡泡
-        let rawParagraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
-        let paragraphs = [];
-        for (let i = 0; i < rawParagraphs.length; i++) {
-          const isEllipsisOnly = /^[\u2026\.]{2,}$/.test(rawParagraphs[i]);
-          if (isEllipsisOnly && i + 1 < rawParagraphs.length) {
-            paragraphs.push(rawParagraphs[i] + rawParagraphs[i + 1]);
+        // 晏的訊息：按換行切，「……」單獨一行合併進下一段，每個氣泡最多 3 行，最多 3 個氣泡
+        let lines = text.split('\n').map(l => l.trim());
+        // 合併孤立的 ……
+        let mergedLines = [];
+        for (let i = 0; i < lines.length; i++) {
+          const isEllipsisOnly = /^[\u2026\.]{2,}$/.test(lines[i]);
+          if (isEllipsisOnly && i + 1 < lines.length) {
+            mergedLines.push(lines[i] + lines[i + 1]);
             i++;
-          } else {
-            paragraphs.push(rawParagraphs[i]);
+          } else if (lines[i] !== '') {
+            mergedLines.push(lines[i]);
           }
         }
-        if (paragraphs.length > 3) {
-          paragraphs = [...paragraphs.slice(0, 2), paragraphs.slice(2).join('\n\n')];
+        // 每個氣泡最多 3 行，最多 3 個氣泡
+        let paragraphs = [];
+        let current = [];
+        for (let i = 0; i < mergedLines.length; i++) {
+          current.push(mergedLines[i]);
+          if (current.length === 3 && paragraphs.length < 2) {
+            paragraphs.push(current.join('\n'));
+            current = [];
+          }
         }
+        if (current.length > 0) {
+          if (paragraphs.length < 2) {
+            paragraphs.push(current.join('\n'));
+          } else {
+            paragraphs[2] = (paragraphs[2] ? paragraphs[2] + '\n' : '') + current.join('\n');
+          }
+        }
+        if (paragraphs.length === 0) paragraphs = [text.trim()];
         block.appendChild(nameEl);
         if (paragraphs.length <= 1) {
           bubble.className = `ch-bubble ${role}`;
