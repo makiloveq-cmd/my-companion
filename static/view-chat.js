@@ -189,8 +189,18 @@
           bubble.appendChild(cap);
         }
       } else if (role === 'ai') {
-        // 晏的訊息：空行切段，最多 3 個泡泡，逐一延遲出現
-        let paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
+        // 晏的訊息：空行切段，「……」單獨一段合併進下一段，最多 3 個泡泡
+        let rawParagraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '');
+        let paragraphs = [];
+        for (let i = 0; i < rawParagraphs.length; i++) {
+          const isEllipsisOnly = /^[\u2026\.]{2,}$/.test(rawParagraphs[i]);
+          if (isEllipsisOnly && i + 1 < rawParagraphs.length) {
+            paragraphs.push(rawParagraphs[i] + rawParagraphs[i + 1]);
+            i++;
+          } else {
+            paragraphs.push(rawParagraphs[i]);
+          }
+        }
         if (paragraphs.length > 3) {
           paragraphs = [...paragraphs.slice(0, 2), paragraphs.slice(2).join('\n\n')];
         }
