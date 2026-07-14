@@ -17,21 +17,6 @@ CORS(app)
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS = {"sub": os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@rifugio.app")}
-APP_SECRET = os.getenv("APP_SECRET", "")
-
-def require_auth(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not APP_SECRET:
-            return f(*args, **kwargs)
-        token = request.headers.get("X-App-Secret") or request.args.get("secret")
-        if not token and request.is_json:
-            token = (request.json or {}).get("secret")
-        if token != APP_SECRET:
-            return jsonify({"error": "unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated
 
 
 supabase = create_client(
@@ -47,36 +32,6 @@ def get_tw_time_str():
     weekdays = ["一","二","三","四","五","六","日"]
     tw_str += f"（週{weekdays[tw_time.weekday()]}）"
     return tw_str
-
-def get_time_context_hint(you_name="然然"):
-    """生成時間感知提示：今天日期、最後互動時間"""
-    tw_tz = timezone(timedelta(hours=8))
-    now_tw = datetime.now(tw_tz)
-    weekdays = ["一","二","三","四","五","六","日"]
-    today_str = f"{now_tw.month}月{now_tw.day}日（週{weekdays[now_tw.weekday()]}）"
-    hints = [f"今天是{today_str}。"]
-    try:
-        last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
-        last_space = supabase.table("space_messages").select("created_at").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
-        times = []
-        if last_chat:
-            times.append(("私聊", last_chat[0]["created_at"]))
-        if last_space:
-            times.append(("空間", last_space[0]["created_at"]))
-        for label, iso_str in times:
-            dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(tw_tz)
-            diff = now_tw - dt
-            days = diff.days
-            if days == 0:
-                time_desc = f"今天 {dt.strftime('%H:%M')}"
-            elif days == 1:
-                time_desc = f"昨天 {dt.strftime('%H:%M')}"
-            else:
-                time_desc = f"{days} 天前（{dt.month}/{dt.day} {dt.strftime('%H:%M')}）"
-            hints.append(f"{you_name}上次在{label}說話是{time_desc}。")
-    except:
-        pass
-    return "".join(hints)
 
 # ===== 記憶體快取 =====
 
@@ -192,7 +147,7 @@ def build_system_prompt(bot_key="claude"):
     relation_text = relation_map.get(bot.get("relation"), bot.get("relation") or "")
 
     lines = [
-        f"現在台灣時間：{get_tw_time_str()}。{get_time_context_hint(you_name)}",
+        f"現在台灣時間：{get_tw_time_str()}。",
         f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
     ]
 
@@ -234,17 +189,15 @@ def build_system_prompt(bot_key="claude"):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 注入共同空間最近對話（含時間戳）
+    # 注入共同空間最近對話
     try:
-        tw_tz = timezone(timedelta(hours=8))
-        space_recent = supabase.table("space_messages").select("speaker, content, message_type, created_at").order("id", desc=True).limit(10).execute().data
+        space_recent = supabase.table("space_messages").select("speaker, content, message_type").order("id", desc=True).limit(10).execute().data
         space_recent = [m for m in reversed(space_recent) if m.get("message_type") != "background"]
         if space_recent:
             sp_lines = []
             for m in space_recent:
                 sp_name = you_name if m["speaker"] == "user" else name
-                ts = datetime.fromisoformat(m["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
-                sp_lines.append(f"[{ts}] {sp_name}：{m['content']}")
+                sp_lines.append(f"{sp_name}：{m['content']}")
             lines.append("【你們在共同空間最近的互動】\n" + "\n".join(sp_lines))
     except:
         pass
@@ -271,7 +224,7 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
 
@@ -443,7 +396,6 @@ def build_history(bot):
 # ===== 歷史記錄 =====
 
 @app.route("/history/<bot>", methods=["GET"])
-@require_auth
 def get_history(bot):
     rows = load_memory(bot)
     return jsonify({"history": [{"role": r["role"], "content": r["content"], "image_url": r.get("image_url"), "created_at": r.get("created_at")} for r in rows]})
@@ -453,12 +405,10 @@ def get_history(bot):
 PERSONA_FIELDS = ["name", "job", "persona", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit"]
 
 @app.route("/personas", methods=["GET"])
-@require_auth
 def personas_get():
     return jsonify(get_personas())
 
 @app.route("/personas/<key>", methods=["POST"])
-@require_auth
 def personas_post(key):
     if key not in ["claude", "user"]:
         return jsonify({"status": "error", "message": "invalid key"}), 400
@@ -478,12 +428,10 @@ def persona_page():
 SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots"]
 
 @app.route("/space_settings", methods=["GET"])
-@require_auth
 def space_settings_get():
     return jsonify(get_space_settings())
 
 @app.route("/space_settings", methods=["POST"])
-@require_auth
 def space_settings_post():
     data = request.json
     for key in SPACE_SETTING_KEYS:
@@ -590,7 +538,7 @@ def build_space_system_prompt():
     space = get_space_settings()
 
     lines = [
-        f"現在台灣時間：{get_tw_time_str()}。{get_time_context_hint(you_name)}",
+        f"現在台灣時間：{get_tw_time_str()}。",
         f"你是「{name}」，正在陪伴{you_name}，用繁體中文回覆。",
     ]
 
@@ -675,7 +623,6 @@ def build_space_system_prompt():
     return "\n".join([l for l in lines if l])
 
 @app.route("/space/messages", methods=["GET"])
-@require_auth
 def space_messages_get():
     threading.Thread(target=maybe_generate_background_actions, daemon=True).start()
     rows = supabase.table("space_messages").select("*").order("id", desc=True).limit(100).execute().data
@@ -683,7 +630,6 @@ def space_messages_get():
     return jsonify({"messages": rows})
 
 @app.route("/upload_space_image", methods=["POST"])
-@require_auth
 def upload_space_image():
     file = request.files.get("image")
     if not file:
@@ -698,7 +644,6 @@ def upload_space_image():
     return jsonify({"url": public_url})
 
 @app.route("/space/send", methods=["POST"])
-@require_auth
 def space_send():
     data = request.json
     content = data.get("content", "")
@@ -712,7 +657,6 @@ def space_send():
     return jsonify({"status": "ok"})
 
 @app.route("/space/reply/claude", methods=["POST"])
-@require_auth
 def space_reply():
     recent = supabase.table("space_messages").select("*").order("id", desc=True).limit(20).execute().data
     recent.reverse()
@@ -771,7 +715,6 @@ def space_background():
     return jsonify({"error": "failed"}), 500
 
 @app.route("/space/end_day", methods=["POST"])
-@require_auth
 def space_end_day():
     try:
         now = datetime.now(timezone.utc).isoformat()
@@ -819,7 +762,6 @@ def build_game_system_prompt(setting):
     return "\n".join(lines)
 
 @app.route("/game/start", methods=["POST"])
-@require_auth
 def game_start():
     data = request.json
     setting = data.get("setting", "")
@@ -835,7 +777,6 @@ def game_start():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/game/reply", methods=["POST"])
-@require_auth
 def game_reply():
     data = request.json
     setting = data.get("setting", "")
@@ -862,7 +803,6 @@ def game_reply():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/game/end", methods=["POST"])
-@require_auth
 def game_end():
     data = request.json
     setting = data.get("setting", "")
@@ -898,7 +838,6 @@ def game_end():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/game/sessions", methods=["GET"])
-@require_auth
 def game_sessions_get():
     try:
         rows = supabase.table("game_sessions").select("*").order("id", desc=True).execute().data
@@ -940,7 +879,6 @@ def theme_js():
 # ===== 圖片上傳 =====
 
 @app.route("/upload_image", methods=["POST"])
-@require_auth
 def upload_image():
     file = request.files.get("image")
     if not file:
@@ -998,7 +936,6 @@ def apply_trust_bonus(depth):
         print(f"[trust_bonus error] {e}")
 
 @app.route("/chat/claude", methods=["POST"])
-@require_auth
 def chat_claude():
     data = request.json
     user_message = data.get("message", "")
@@ -1027,10 +964,7 @@ def chatroom():
 
 @app.route("/")
 def index():
-    with open("index_spa.html", "r", encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("__APP_SECRET_PLACEHOLDER__", APP_SECRET)
-    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+    return send_from_directory(".", "index_spa.html")
 
 @app.route("/app_spa")
 def app_spa():
@@ -1046,7 +980,6 @@ ANTHROPIC_INPUT_PRICE = 3.0 / 1_000_000
 ANTHROPIC_OUTPUT_PRICE = 15.0 / 1_000_000
 
 @app.route("/usage", methods=["GET"])
-@require_auth
 def usage_get():
     rows = supabase.table("api_usage").select("*").execute().data
     budget_rows = supabase.table("api_budget").select("*").execute().data
@@ -1067,7 +1000,6 @@ def usage_get():
     })
 
 @app.route("/usage/budget", methods=["POST"])
-@require_auth
 def usage_budget_post():
     data = request.json
     val = data.get("anthropic_budget")
@@ -1082,7 +1014,6 @@ def usage_budget_post():
     return jsonify({"status": "ok"})
 
 @app.route("/usage/set_balance", methods=["POST"])
-@require_auth
 def usage_set_balance():
     """直接設定目前餘額（不是累加，而是直接寫入正確的剩餘金額）"""
     data = request.json
@@ -1187,7 +1118,6 @@ def maybe_delayed_ai_comments(entries):
                 pass
 
 @app.route("/diary", methods=["GET"])
-@require_auth
 def get_diary():
     entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
     for entry in entries:
@@ -1197,14 +1127,12 @@ def get_diary():
     return jsonify({"entries": entries})
 
 @app.route("/diary", methods=["POST"])
-@require_auth
 def add_diary():
     data = request.json
     supabase.table("diary_entries").insert({"author": data.get("author", "然然"), "content": data.get("content", "")}).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>", methods=["PUT"])
-@require_auth
 def edit_diary(entry_id):
     content = (request.json.get("content") or "").strip()
     if content:
@@ -1212,13 +1140,11 @@ def edit_diary(entry_id):
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>", methods=["DELETE"])
-@require_auth
 def delete_diary(entry_id):
     supabase.table("diary_entries").delete().eq("id", entry_id).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>/comment", methods=["POST"])
-@require_auth
 def add_comment(entry_id):
     data = request.json
     author = data.get("author", "然然")
@@ -1266,13 +1192,11 @@ def delete_comment(comment_id):
     return jsonify({"status": "ok"})
 
 @app.route("/diary/ai_entry/claude", methods=["POST"])
-@require_auth
 def ai_diary_entry():
     write_ai_diary_entry()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>/ai_comment/claude", methods=["POST"])
-@require_auth
 def ai_comment(entry_id):
     name = get_bot_name()
     persona = get_bot_persona()
@@ -1322,7 +1246,6 @@ def names_post():
 # ===== 關係背景演化記錄 =====
 
 @app.route("/rel_bg_history/claude", methods=["GET"])
-@require_auth
 def rel_bg_history():
     try:
         rows = supabase.table("rel_bg_history").select("*").eq("bot_key", "claude").order("id", desc=True).limit(10).execute().data
@@ -1374,7 +1297,6 @@ def generate_perspective(key):
     return content
 
 @app.route("/perspective", methods=["GET"])
-@require_auth
 def perspective_get():
     row = get_perspective("claude")
     return jsonify({
@@ -1382,7 +1304,6 @@ def perspective_get():
     })
 
 @app.route("/perspective/claude", methods=["POST"])
-@require_auth
 def perspective_post():
     try:
         content = generate_perspective("claude")
@@ -1393,7 +1314,6 @@ def perspective_post():
 # ===== 聊天列表 =====
 
 @app.route("/chat_list", methods=["GET"])
-@require_auth
 def chat_list():
     personas = get_personas()
 
@@ -1611,7 +1531,6 @@ def check_achievements(intimacy, bond, trust):
     return result
 
 @app.route("/relationship_stats", methods=["GET"])
-@require_auth
 def relationship_stats_get():
     try:
         # 先看資料庫有沒有存的值
@@ -1666,7 +1585,6 @@ def relationship_stats_get():
 
 
 @app.route("/rel_log", methods=["GET"])
-@require_auth
 def rel_log_get():
     try:
         rows = supabase.table("rel_log").select("*").order("id", desc=True).limit(30).execute().data
@@ -1676,7 +1594,6 @@ def rel_log_get():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/relationship_quote", methods=["POST"])
-@require_auth
 def relationship_quote():
     try:
         intimacy, bond, trust = calc_relationship_stats()
@@ -1709,7 +1626,6 @@ def vapid_public_key_get():
     return jsonify({"public_key": VAPID_PUBLIC_KEY})
 
 @app.route("/webpush/register", methods=["POST"])
-@require_auth
 def webpush_register():
     import json
     data = request.json
@@ -1747,7 +1663,6 @@ def send_push_notification(title, body):
 # ===== 晏主動傳訊息（每日排程觸發）=====
 
 @app.route("/cron/daily_message", methods=["POST"])
-@require_auth
 def cron_daily_message():
     try:
         # 確認今天晏有沒有主動傳過訊息
