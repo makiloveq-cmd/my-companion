@@ -207,7 +207,7 @@
         let current = [];
         for (let i = 0; i < mergedLines.length; i++) {
           current.push(mergedLines[i]);
-          if (current.length === 3 && paragraphs.length < 2) {
+          if (current.length === 5 && paragraphs.length < 2) {
             paragraphs.push(current.join('\n'));
             current = [];
           }

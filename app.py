@@ -189,15 +189,17 @@ def build_system_prompt(bot_key="claude"):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 注入共同空間最近對話
+    # 注入共同空間最近對話（含時間戳）
     try:
-        space_recent = supabase.table("space_messages").select("speaker, content, message_type").order("id", desc=True).limit(10).execute().data
+        tw_tz = timezone(timedelta(hours=8))
+        space_recent = supabase.table("space_messages").select("speaker, content, message_type, created_at").order("id", desc=True).limit(10).execute().data
         space_recent = [m for m in reversed(space_recent) if m.get("message_type") != "background"]
         if space_recent:
             sp_lines = []
             for m in space_recent:
                 sp_name = you_name if m["speaker"] == "user" else name
-                sp_lines.append(f"{sp_name}：{m['content']}")
+                ts = datetime.fromisoformat(m["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
+                sp_lines.append(f"[{ts}] {sp_name}：{m['content']}")
             lines.append("【你們在共同空間最近的互動】\n" + "\n".join(sp_lines))
     except:
         pass
@@ -224,7 +226,7 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
 
@@ -713,6 +715,26 @@ def space_background():
     if action:
         return jsonify({"action": action})
     return jsonify({"error": "failed"}), 500
+
+
+@app.route("/space/scene", methods=["GET"])
+@require_auth
+def space_scene_get():
+    scene = get_space_settings().get("scene", "home")
+    return jsonify({"scene": scene})
+
+@app.route("/space/scene", methods=["POST"])
+@require_auth
+def space_scene_post():
+    data = request.json
+    scene = data.get("scene", "home")
+    supabase.table("space_settings").upsert({
+        "key": "scene",
+        "value": scene,
+        "updated_at": datetime.utcnow().isoformat()
+    }, on_conflict="key").execute()
+    invalidate_cache("space_settings")
+    return jsonify({"status": "ok"})
 
 @app.route("/space/end_day", methods=["POST"])
 def space_end_day():
