@@ -379,7 +379,7 @@ def maybe_evolve_rel_bg(bot):
         pass
 
 def build_history(bot):
-    maybe_summarize(bot)
+    threading.Thread(target=maybe_summarize, args=(bot,), daemon=True).start()
     summary = get_latest_summary(bot)
     recent = load_memory(bot)[-20:]
     history = []
