@@ -33,6 +33,36 @@ def get_tw_time_str():
     tw_str += f"（週{weekdays[tw_time.weekday()]}）"
     return tw_str
 
+def get_time_context_hint(you_name="然然"):
+    """生成時間感知提示：今天日期、最後互動時間"""
+    tw_tz = timezone(timedelta(hours=8))
+    now_tw = datetime.now(tw_tz)
+    weekdays = ["一","二","三","四","五","六","日"]
+    today_str = f"{now_tw.month}月{now_tw.day}日（週{weekdays[now_tw.weekday()]}）"
+    hints = [f"今天是{today_str}。"]
+    try:
+        last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
+        last_space = supabase.table("space_messages").select("created_at").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+        times = []
+        if last_chat:
+            times.append(("私聊", last_chat[0]["created_at"]))
+        if last_space:
+            times.append(("空間", last_space[0]["created_at"]))
+        for label, iso_str in times:
+            dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(tw_tz)
+            diff = now_tw - dt
+            days = diff.days
+            if days == 0:
+                time_desc = f"今天 {dt.strftime('%H:%M')}"
+            elif days == 1:
+                time_desc = f"昨天 {dt.strftime('%H:%M')}"
+            else:
+                time_desc = f"{days} 天前（{dt.month}/{dt.day} {dt.strftime('%H:%M')}）"
+            hints.append(f"{you_name}上次在{label}說話是{time_desc}。")
+    except:
+        pass
+    return "".join(hints)
+
 # ===== 記憶體快取 =====
 
 _cache = {}
@@ -147,7 +177,7 @@ def build_system_prompt(bot_key="claude"):
     relation_text = relation_map.get(bot.get("relation"), bot.get("relation") or "")
 
     lines = [
-        f"現在台灣時間：{get_tw_time_str()}。",
+        f"現在台灣時間：{get_tw_time_str()}。{get_time_context_hint(you_name)}",
         f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
     ]
 
@@ -189,15 +219,17 @@ def build_system_prompt(bot_key="claude"):
     if bot.get("extra"):
         lines.append(f"【補充指令】{bot['extra']}")
 
-    # 注入共同空間最近對話
+    # 注入共同空間最近對話（含時間戳）
     try:
-        space_recent = supabase.table("space_messages").select("speaker, content, message_type").order("id", desc=True).limit(10).execute().data
+        tw_tz = timezone(timedelta(hours=8))
+        space_recent = supabase.table("space_messages").select("speaker, content, message_type, created_at").order("id", desc=True).limit(10).execute().data
         space_recent = [m for m in reversed(space_recent) if m.get("message_type") != "background"]
         if space_recent:
             sp_lines = []
             for m in space_recent:
                 sp_name = you_name if m["speaker"] == "user" else name
-                sp_lines.append(f"{sp_name}：{m['content']}")
+                ts = datetime.fromisoformat(m["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
+                sp_lines.append(f"[{ts}] {sp_name}：{m['content']}")
             lines.append("【你們在共同空間最近的互動】\n" + "\n".join(sp_lines))
     except:
         pass
@@ -538,7 +570,7 @@ def build_space_system_prompt():
     space = get_space_settings()
 
     lines = [
-        f"現在台灣時間：{get_tw_time_str()}。",
+        f"現在台灣時間：{get_tw_time_str()}。{get_time_context_hint(you_name)}",
         f"你是「{name}」，正在陪伴{you_name}，用繁體中文回覆。",
     ]
 
