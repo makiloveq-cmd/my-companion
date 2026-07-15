@@ -59,7 +59,83 @@
   .ch-modal-btns button { padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; }
   .ch-btn-cancel { background: var(--surface2); color: var(--text-2); }
   .ch-btn-confirm { background: var(--accent); color: #fff; }
+
+  .ch-discuss-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  .ch-discuss-overlay.show { display: flex; }
+  .ch-discuss-modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 600px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .ch-discuss-title { font-size: 15px; font-weight: 500; color: var(--text); }
+  .ch-discuss-input {
+    padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 15px; outline: none;
+    font-family: inherit; width: 100%;
+  }
+  .ch-discuss-btns { display: flex; gap: 10px; }
+  .ch-discuss-cancel {
+    padding: 11px 20px; background: var(--surface2);
+    border: none; border-radius: 12px;
+    color: var(--text-2); font-size: 14px; cursor: pointer;
+  }
+  .ch-discuss-confirm {
+    flex: 1; padding: 11px; background: var(--accent);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+
+  .ch-seal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 150;
+    align-items: flex-end; justify-content: center;
+  }
+  .ch-seal-overlay.show { display: flex; }
+  .ch-seal-modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 600px;
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .ch-seal-title { font-size: 15px; font-weight: 500; color: var(--accent); }
+  .ch-seal-field { display: flex; flex-direction: column; gap: 4px; }
+  .ch-seal-label { font-size: 12px; color: var(--text-3); }
+  .ch-seal-textarea {
+    padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 14px; outline: none;
+    resize: none; font-family: inherit; line-height: 1.6;
+  }
+  .ch-seal-btns { display: flex; gap: 10px; margin-top: 4px; }
+  .ch-seal-discard {
+    padding: 11px 18px; background: var(--surface2);
+    border: none; border-radius: 12px;
+    color: var(--text-2); font-size: 14px; cursor: pointer;
+  }
+  .ch-seal-confirm {
+    flex: 1; padding: 11px; background: var(--accent);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+  .ch-mode-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 16px; display: none; align-items: center;
+    justify-content: space-between; flex-shrink: 0;
+  }
+  .ch-mode-bar.show { display: flex; }
+  .ch-mode-label { font-size: 13px; color: var(--accent); }
+  .ch-mode-seal {
+    padding: 5px 14px; background: var(--accent);
+    border: none; border-radius: 20px;
+    color: #fff; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
   `;
+
 
   function ensureStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -81,6 +157,10 @@
         <button class="ch-header-name" id="chHeaderName">晏</button>
       </div>
       <div class="ch-messages" id="chMessages"></div>
+      <div class="ch-mode-bar" id="chModeBar">
+        <span class="ch-mode-label" id="chModeLabel"></span>
+        <button class="ch-mode-seal" id="chModeSeal">封存</button>
+      </div>
       <div class="ch-input-area">
         <div class="ch-preview-bar" id="chPreviewBar">
           <div class="ch-preview-thumb">
@@ -94,6 +174,8 @@
               <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
             </svg>
           </button>
+          <button class="ch-toolbar-icon" id="chBookBtn" title="討論書" style="font-size:18px;">🖋</button>
+          <button class="ch-toolbar-icon" id="chMovieBtn" title="討論電影" style="font-size:18px;">📽</button>
           <input type="file" id="chImageInput" accept="image/*" style="display:none">
           <div class="ch-input-wrapper">
             <textarea id="chInput" placeholder="說點什麼…" rows="1"></textarea>
@@ -112,6 +194,39 @@
           <div class="ch-modal-btns">
             <button class="ch-btn-cancel" id="chModalCancel">取消</button>
             <button class="ch-btn-confirm" id="chModalConfirm">確認</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ch-discuss-overlay" id="chDiscussOverlay">
+        <div class="ch-discuss-modal">
+          <div class="ch-discuss-title" id="chDiscussTitle">討論哪本書？</div>
+          <input type="text" class="ch-discuss-input" id="chDiscussInput" placeholder="輸入書名或片名">
+          <div class="ch-discuss-btns">
+            <button class="ch-discuss-cancel" id="chDiscussCancel">取消</button>
+            <button class="ch-discuss-confirm" id="chDiscussConfirm">開始討論</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ch-seal-overlay" id="chSealOverlay">
+        <div class="ch-seal-modal">
+          <div class="ch-seal-title" id="chSealTitle">✦ 封存討論</div>
+          <div class="ch-seal-field">
+            <div class="ch-seal-label">然然說</div>
+            <textarea class="ch-seal-textarea" id="chSealYour" rows="3"></textarea>
+          </div>
+          <div class="ch-seal-field">
+            <div class="ch-seal-label" id="chSealHisLabel">晏說</div>
+            <textarea class="ch-seal-textarea" id="chSealHis" rows="3"></textarea>
+          </div>
+          <div class="ch-seal-field">
+            <div class="ch-seal-label">共同結論</div>
+            <textarea class="ch-seal-textarea" id="chSealConc" rows="2"></textarea>
+          </div>
+          <div class="ch-seal-btns">
+            <button class="ch-seal-discard" id="chSealDiscard">不存了</button>
+            <button class="ch-seal-confirm" id="chSealConfirm">✦ 存進收藏庫</button>
           </div>
         </div>
       </div>
@@ -460,6 +575,111 @@
       if (e.key === 'Enter') confirmName();
       if (e.key === 'Escape') closeModal();
     });
+
+    // ── 討論模式 ──
+    let discussMode = null; // null | 'book' | 'movie'
+    let discussTitle = '';
+
+    function enterDiscussMode(type, title) {
+      discussMode = type;
+      discussTitle = title;
+      const label = type === 'book' ? `🖋 ${title}` : `📽 ${title}`;
+      document.getElementById('chModeLabel').textContent = label;
+      document.getElementById('chModeBar').classList.add('show');
+    }
+
+    function exitDiscussMode() {
+      discussMode = null;
+      discussTitle = '';
+      document.getElementById('chModeBar').classList.remove('show');
+    }
+
+    // 開始討論視窗
+    function openDiscuss(type) {
+      document.getElementById('chDiscussTitle').textContent = type === 'book' ? '討論哪本書？' : '討論哪部電影？';
+      document.getElementById('chDiscussInput').value = '';
+      document.getElementById('chDiscussOverlay').classList.add('show');
+      setTimeout(() => document.getElementById('chDiscussInput').focus(), 100);
+      document.getElementById('chDiscussInput')._type = type;
+    }
+
+    document.getElementById('chBookBtn').onclick = () => openDiscuss('book');
+    document.getElementById('chMovieBtn').onclick = () => openDiscuss('movie');
+    document.getElementById('chDiscussCancel').onclick = () => document.getElementById('chDiscussOverlay').classList.remove('show');
+    document.getElementById('chDiscussInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('chDiscussConfirm').click(); });
+
+    document.getElementById('chDiscussConfirm').onclick = async () => {
+      const input = document.getElementById('chDiscussInput');
+      const title = input.value.trim();
+      const type = input._type;
+      if (!title) return;
+      document.getElementById('chDiscussOverlay').classList.remove('show');
+      enterDiscussMode(type, title);
+
+      // 讓晏先說他對這本書/片的看法
+      const typeLabel = type === 'book' ? '書' : '電影';
+      const pending = addPendingRow();
+      try {
+        const res = await fetch('/chat/discuss/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, type })
+        });
+        const data = await res.json();
+        pending.remove();
+        if (data.reply) addMessage(data.reply, 'ai', null, new Date().toISOString());
+      } catch (e) {
+        pending.remove();
+      }
+    };
+
+    // 封存討論
+    document.getElementById('chModeSeal').onclick = async () => {
+      const btn = document.getElementById('chModeSeal');
+      btn.textContent = '整理中…';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/chat/discuss/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: discussTitle, type: discussMode })
+        });
+        const data = await res.json();
+        if (data.summary) {
+          document.getElementById('chSealTitle').textContent = `✦ 封存「${discussTitle}」`;
+          document.getElementById('chSealYour').value = data.summary.your_view || '';
+          document.getElementById('chSealHis').value = data.summary.his_view || '';
+          document.getElementById('chSealConc').value = data.summary.conclusion || '';
+          document.getElementById('chSealHisLabel').textContent = (names.claude || '晏') + '說';
+          document.getElementById('chSealOverlay').classList.add('show');
+        }
+      } catch (e) {}
+      btn.textContent = '封存';
+      btn.disabled = false;
+    };
+
+    document.getElementById('chSealDiscard').onclick = () => {
+      document.getElementById('chSealOverlay').classList.remove('show');
+      exitDiscussMode();
+    };
+
+    document.getElementById('chSealConfirm').onclick = async () => {
+      const endpoint = discussMode === 'book' ? '/collection/books' : '/collection/movies';
+      try {
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: discussTitle,
+            your_view: document.getElementById('chSealYour').value,
+            his_view: document.getElementById('chSealHis').value,
+            conclusion: document.getElementById('chSealConc').value,
+          })
+        });
+      } catch (e) {}
+      document.getElementById('chSealOverlay').classList.remove('show');
+      exitDiscussMode();
+    };
 
     await loadAvatars();
     await loadNames();

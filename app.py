@@ -1935,6 +1935,69 @@ def intimate_memory_delete(memory_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ===== 書影討論 =====
+
+@app.route("/chat/discuss/start", methods=["POST"])
+def discuss_start():
+    """進入討論模式，晏先說他對這本書/片的看法"""
+    try:
+        data = request.json
+        title = data.get("title", "")
+        dtype = data.get("type", "book")
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        persona = bot.get("persona") or ""
+        type_label = "書" if dtype == "book" else "電影"
+
+        system = (
+            f"你是{name}。{f'個性：{persona}。' if persona else ''}"
+            f"你和{you_name}現在要一起討論「{title}」這部{type_label}。"
+            f"先說出你對這部{type_label}的第一印象或最深刻的感受，引導{you_name}開始討論。"
+            f"語氣符合你的個性：話少、剋制、說出來的都是真的。不超過80字。用繁體中文。"
+        )
+        reply = call_claude(system, [{"role": "user", "content": f"我們來聊聊「{title}」。"}], max_tokens=150)
+        save_message("claude", "assistant", reply)
+        return jsonify({"reply": reply.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/chat/discuss/summarize", methods=["POST"])
+def discuss_summarize():
+    """讀取最近的私聊對話，整理成討論摘要"""
+    try:
+        data = request.json
+        title = data.get("title", "")
+        dtype = data.get("type", "book")
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        type_label = "書" if dtype == "book" else "電影"
+
+        recent = load_memory("claude")[-30:]
+        context = "\n".join([
+            f"{'然然' if r['role'] == 'user' else name}：{r['content']}"
+            for r in recent
+        ])
+
+        system = (
+            f"以下是{name}和{you_name}討論「{title}」的對話。"
+            f"請整理成三個部分，只回傳 JSON，格式如下："
+            f'{{"your_view": "{you_name}的觀點（一到兩句）", "his_view": "{name}的觀點（一到兩句）", "conclusion": "共同結論或印象（一句）"}}'
+            f"不要加任何其他文字，只輸出 JSON。"
+        )
+        raw = call_claude(system, [{"role": "user", "content": context}], max_tokens=300)
+        raw = raw.strip().replace("```json", "").replace("```", "").strip()
+        import json
+        summary = json.loads(raw)
+        return jsonify({"summary": summary})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 收藏庫 =====
 
 @app.route("/collection/books", methods=["GET"])
