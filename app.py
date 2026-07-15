@@ -250,7 +250,7 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。嚴格禁止複述或重複然然剛說過的話，直接回應就好。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
 
@@ -274,11 +274,10 @@ def maybe_summarize(bot):
         f"{'然然' if r['role']=='user' else bot_name}：{r['content']}"
         for r in to_summarize
     ])
-    old_summary = get_latest_summary(bot)
-    summary_context = f"舊的記憶摘要：\n{old_summary}\n\n新的對話：\n{context}" if old_summary else context
+    summary_context = context
 
     summary_text = call_claude(
-        f"你是{bot_name}，請把以下對話內容濃縮成一段完整的記憶摘要，保留重要的情感、事件、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
+        f"你是{bot_name}，請把以下對話內容整理成記憶摘要。只記錄這段對話裡新發生的事、情感變化、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
         [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
         max_tokens=1500
     )
@@ -303,10 +302,9 @@ def maybe_space_summarize():
         f"{'你' if r['speaker'] == 'claude' else you_name}：{r['content']}"
         for r in to_summarize
     ])
-    old_summary = get_latest_space_summary()
-    summary_context = f"舊的空間記憶摘要：\n{old_summary}\n\n新的共同空間對話：\n{context}" if old_summary else context
+    summary_context = context
     summary_text = call_claude(
-        f"你是{name}。請把以下在共同空間發生的對話，濃縮成一段完整的記憶摘要，保留重要的場景、情感、事件、然然說過的話、你們之間的默契或玩笑。用第一人稱（我）記錄，像寫給自己看的備忘錄，不超過 300 字。",
+        f"你是{name}。請把以下在共同空間發生的對話，整理成記憶摘要。只記錄這段對話裡新發生的事、場景變化、情感、然然說過的話、你們之間的默契或玩笑。用第一人稱（我）記錄，像寫給自己看的備忘錄，不超過 300 字。",
         [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
         max_tokens=1500
     )
