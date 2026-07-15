@@ -645,6 +645,11 @@ def build_space_system_prompt():
     except:
         pass
 
+    # 注入外出狀態
+    outing = space.get("outing", "false")
+    if outing == "true":
+        lines.append(f"你和{you_name}現在在外面——可能是一起出去，可能是她自己出門而你在想她。場景跟著對話走，你不在家。說話帶一點距離感或外出的氛圍。")
+
     # 注入 last_ended 提示（只在超過 4 小時且今天還沒有新的空間對話才顯示）
     last_ended = space.get("last_ended")
     if last_ended:
