@@ -4,7 +4,8 @@
 window.RifugioRouter = (function () {
   const TAB_FOR_ROUTE = {
     home: 'home', chatlist: 'chatlist', chat: 'chatlist', space: 'chatlist',
-    diary: 'diary', persona: 'persona', usage: 'chatlist', settings: 'home', game: 'game',
+    diary: 'diary', persona: 'persona', usage: 'home', settings: 'home', game: 'home',
+    theme: 'theme', collection: 'home',
   };
 
   let currentCleanup = null;

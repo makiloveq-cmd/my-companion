@@ -51,20 +51,20 @@
           <div class="hm-quote-author">— Rifugio</div>
         </div>
         <div class="hm-cards-grid">
-          <button class="hm-card" data-route="persona">
-            <div class="hm-card-icon">◎</div>
-            <div class="hm-card-title">人物書</div>
-            <div class="hm-card-sub">你我的設定</div>
-          </button>
-          <button class="hm-card" data-route="diary">
-            <div class="hm-card-icon">✐</div>
-            <div class="hm-card-title">Diary</div>
-            <div class="hm-card-sub">交換日記</div>
-          </button>
           <button class="hm-card" data-route="space">
             <div class="hm-card-icon">◈</div>
             <div class="hm-card-title">共同空間</div>
             <div class="hm-card-sub">一起在這裡</div>
+          </button>
+          <button class="hm-card" data-route="game">
+            <div class="hm-card-icon">⚔</div>
+            <div class="hm-card-title">遊戲廳</div>
+            <div class="hm-card-sub">角色扮演</div>
+          </button>
+          <button class="hm-card" data-route="collection">
+            <div class="hm-card-icon">🗝</div>
+            <div class="hm-card-title">收藏庫</div>
+            <div class="hm-card-sub">書影珍藏</div>
           </button>
           <button class="hm-card" data-route="usage">
             <div class="hm-card-icon">⚡</div>
