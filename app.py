@@ -819,22 +819,36 @@ def space_outing():
         you_name = me.get("name") or "然然"
         persona = bot.get("persona") or ""
 
+        space = get_space_settings()
+        space_desc_parts = []
+        if space.get("room_desc"): space_desc_parts.append(f"空間：{space['room_desc']}")
+        if space.get("atmosphere"): space_desc_parts.append(f"氛圍：{space['atmosphere']}")
+        if space.get("furniture"): space_desc_parts.append(f"家具：{space['furniture']}")
+        space_desc = "\n".join(space_desc_parts)
+        spot = get_random_spot(space)
+
         if is_outing:
             system = (
                 f"你是{name}。{f'個性：{persona}。' if persona else ''}"
-                f"{you_name}剛剛出門了，你在家。"
-                f"用一句話自然銜接她出門這件事，語氣符合你的個性，不超過20字。"
+                f"{space_desc}\n"
+                f"{f'你現在在：{spot}。' if spot else ''}"
+                f"{you_name}剛剛出門了，你一個人留在空間裡。"
+                f"用第三人稱旁白搭配對話，寫出你送她出門後的狀態——動作、感官、內心都可以有，像小說一樣，100字以內。"
+                f"語氣符合你的個性：話少、剋制、說出來的都是真的。用繁體中文。"
             )
-            prompt = f"{you_name}說她要出門了。"
+            prompt = f"{you_name}出門了，寫出{name}送走她之後的狀態。"
         else:
             system = (
                 f"你是{name}。{f'個性：{persona}。' if persona else ''}"
-                f"{you_name}剛剛回家了。"
-                f"用一句話自然銜接她回來這件事，語氣符合你的個性，不超過20字。"
+                f"{space_desc}\n"
+                f"{f'你現在在：{spot}。' if spot else ''}"
+                f"{you_name}剛剛回來了，推開門進來。"
+                f"用第三人稱旁白搭配對話，寫出你迎接她回來的狀態——動作、感官、說的話都可以有，像小說一樣，100字以內。"
+                f"語氣符合你的個性：話少、剋制、說出來的都是真的。用繁體中文。"
             )
-            prompt = f"{you_name}回來了。"
+            prompt = f"{you_name}回來了，寫出{name}迎接她的狀態。"
 
-        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=60)
+        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=200)
         reply = reply.strip()
 
         supabase.table("space_messages").insert({
