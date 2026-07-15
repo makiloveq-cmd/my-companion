@@ -219,6 +219,43 @@
     font-size: 12px; color: var(--text-3);
     min-height: 16px; padding: 0 2px;
   }
+
+  .sp-intimate-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 150;
+    align-items: flex-end; justify-content: center;
+  }
+  .sp-intimate-overlay.show { display: flex; }
+  .sp-intimate-modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 600px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .sp-intimate-title {
+    font-size: 15px; font-weight: 500; color: var(--accent);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sp-intimate-desc {
+    font-size: 13px; color: var(--text-3); line-height: 1.5;
+  }
+  .sp-intimate-textarea {
+    width: 100%; padding: 12px 14px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text);
+    font-size: 14px; outline: none; resize: none;
+    font-family: inherit; line-height: 1.6; min-height: 160px;
+  }
+  .sp-intimate-btns { display: flex; gap: 10px; }
+  .sp-intimate-confirm {
+    flex: 1; padding: 12px; background: var(--accent);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 15px; cursor: pointer;
+  }
+  .sp-intimate-discard {
+    padding: 12px 20px; background: var(--surface2);
+    border: none; border-radius: 12px;
+    color: var(--text-2); font-size: 15px; cursor: pointer;
+  }
   `;
 
   function ensureStyle() {
@@ -250,6 +287,12 @@
           </div>
         </div>
         <div class="sp-end-day-row">
+          <button class="sp-end-day-btn" id="spSealMemoryBtn" style="display:none;">
+            ✦ 封存這段記憶
+          </button>
+          <button class="sp-end-day-btn" id="spManualSealBtn" title="封存這段記憶" style="padding: 5px 10px; font-size: 16px;">
+            🍎
+          </button>
           <button class="sp-end-day-btn" id="spEndDayBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -324,7 +367,25 @@
             <textarea id="sp-s-claude_spots" rows="2" placeholder="書房、沙發角落、廚房流理台旁…"></textarea>
           </div>
 
+          <div class="sp-modal-section-title">珍貴記憶關鍵字（用逗號分隔）</div>
+          <div class="sp-modal-field">
+            <div class="sp-modal-label">說這些詞時，晏會想起珍貴記憶</div>
+            <textarea id="sp-s-intimate_keywords" rows="2" placeholder="上次、還記得嗎、那次、第一次…"></textarea>
+          </div>
+
           <button class="sp-modal-save" id="spSaveSettingsBtn">儲存</button>
+        </div>
+      </div>
+
+      <div class="sp-intimate-overlay" id="spIntimateOverlay">
+        <div class="sp-intimate-modal">
+          <div class="sp-intimate-title">✦ 晏想記住這個瞬間</div>
+          <div class="sp-intimate-desc">你可以編修內容，確認後才會永久保存。</div>
+          <textarea class="sp-intimate-textarea" id="spIntimateContent"></textarea>
+          <div class="sp-intimate-btns">
+            <button class="sp-intimate-discard" id="spIntimateDiscard">不用了</button>
+            <button class="sp-intimate-confirm" id="spIntimateConfirm">✦ 記住這個</button>
+          </div>
         </div>
       </div>
     `;
@@ -574,10 +635,17 @@
 
       const loading = addLoadingRow();
       try {
-        const reply = await trySpaceReply();
+        const spaceRes = await fetch('/space/reply/claude', { method: 'POST' });
+        const spaceData = await spaceRes.json();
         loading.remove();
-        if (reply) renderAI('claude', reply, new Date().toISOString());
-        else renderRetry();
+        if (spaceData.reply) {
+          renderAI('claude', spaceData.reply, new Date().toISOString());
+          // 如果後端說有草稿，顯示封存按鈕
+          if (spaceData.has_draft) {
+            document.getElementById('spSealMemoryBtn').style.display = 'flex';
+          }
+        } else renderRetry();
+        const reply = spaceData.reply;
         try {
           const relRes = await fetch('/relationship_stats');
           const relData = await relRes.json();
@@ -650,6 +718,7 @@
         document.getElementById('sp-s-furniture').value = data.furniture || '';
         document.getElementById('sp-s-corner_details').value = data.corner_details || '';
         document.getElementById('sp-s-claude_spots').value = data.claude_spots || '';
+        document.getElementById('sp-s-intimate_keywords').value = data.intimate_keywords || '';
         updateSceneUI(data.scene || 'home');
       } catch (e) {}
       document.getElementById('spSettingModal').classList.add('show');
@@ -667,6 +736,7 @@
         furniture: document.getElementById('sp-s-furniture').value,
         corner_details: document.getElementById('sp-s-corner_details').value,
         claude_spots: document.getElementById('sp-s-claude_spots').value,
+        intimate_keywords: document.getElementById('sp-s-intimate_keywords').value,
       };
       try {
         await fetch('/space_settings', {
@@ -738,6 +808,79 @@
     } catch (e) {}
 
     await Promise.all([loadPersonas(), loadMessages()]);
+
+    // ── 珍貴記憶確認視窗 ──
+    function showIntimateModal(content) {
+      document.getElementById('spIntimateContent').value = content;
+      document.getElementById('spIntimateOverlay').classList.add('show');
+    }
+    function hideIntimateModal() {
+      document.getElementById('spIntimateOverlay').classList.remove('show');
+    }
+
+    document.getElementById('spIntimateConfirm').onclick = async () => {
+      const content = document.getElementById('spIntimateContent').value.trim();
+      if (!content) return;
+      try {
+        await fetch('/intimate_memories/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        document.getElementById('spSealMemoryBtn').style.display = 'none';
+      } catch (e) {}
+      hideIntimateModal();
+    };
+
+    document.getElementById('spIntimateDiscard').onclick = async () => {
+      try {
+        await fetch('/intimate_memories/discard', { method: 'POST' });
+        document.getElementById('spSealMemoryBtn').style.display = 'none';
+      } catch (e) {}
+      hideIntimateModal();
+    };
+
+    // 手動封存按鈕
+    document.getElementById('spManualSealBtn').onclick = async () => {
+      const btn = document.getElementById('spManualSealBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        await fetch('/intimate_memories/manual_draft', { method: 'POST' });
+        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        const data = await res.json();
+        if (data.has_draft && data.content) {
+          showIntimateModal(data.content);
+        }
+      } catch (e) {}
+      btn.disabled = false;
+      btn.textContent = '🍎';
+    };
+
+    // 封存按鈕
+    document.getElementById('spSealMemoryBtn').onclick = async () => {
+      const btn = document.getElementById('spSealMemoryBtn');
+      btn.disabled = true;
+      btn.textContent = '整理中…';
+      try {
+        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        const data = await res.json();
+        if (data.has_draft && data.content) {
+          showIntimateModal(data.content);
+        }
+      } catch (e) {}
+      btn.disabled = false;
+      btn.textContent = '✦ 封存這段記憶';
+    };
+
+    // 進入空間時檢查有沒有未封存的草稿
+    try {
+      const draftRes = await fetch('/intimate_memories/has_draft');
+      const draftData = await draftRes.json();
+      if (draftData.has_draft) {
+        document.getElementById('spSealMemoryBtn').style.display = 'flex';
+      }
+    } catch (e) {}
 
     return function cleanup() {};
   }
