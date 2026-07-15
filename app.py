@@ -589,6 +589,10 @@ def build_space_system_prompt():
     if space.get("atmosphere"):
         space_parts.append(f"氛圍：{space['atmosphere']}")
 
+    scene_labels = {"home": "在家", "cinema": "放映廳", "outing": "外出中"}
+    scene = space.get("scene", "home")
+    space_parts.append(f"目前場景：{scene_labels.get(scene, '在家')}")
+
     spot = get_random_spot(space)
     if spot:
         space_parts.append(f"你現在在：{spot}")
@@ -750,13 +754,11 @@ def space_background():
 
 
 @app.route("/space/scene", methods=["GET"])
-@require_auth
 def space_scene_get():
     scene = get_space_settings().get("scene", "home")
     return jsonify({"scene": scene})
 
 @app.route("/space/scene", methods=["POST"])
-@require_auth
 def space_scene_post():
     data = request.json
     scene = data.get("scene", "home")
