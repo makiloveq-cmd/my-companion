@@ -1935,6 +1935,68 @@ def intimate_memory_delete(memory_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ===== 收藏庫 =====
+
+@app.route("/collection/books", methods=["GET"])
+def collection_books_get():
+    try:
+        rows = supabase.table("book_logs").select("*").order("id", desc=True).execute().data
+        return jsonify({"books": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/collection/books", methods=["POST"])
+def collection_books_post():
+    data = request.json
+    try:
+        supabase.table("book_logs").insert({
+            "title": data.get("title", ""),
+            "your_view": data.get("your_view", ""),
+            "his_view": data.get("his_view", ""),
+            "conclusion": data.get("conclusion", ""),
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/collection/books/<int:book_id>", methods=["DELETE"])
+def collection_books_delete(book_id):
+    try:
+        supabase.table("book_logs").delete().eq("id", book_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/collection/movies", methods=["GET"])
+def collection_movies_get():
+    try:
+        rows = supabase.table("movie_logs").select("*").order("id", desc=True).execute().data
+        return jsonify({"movies": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/collection/movies", methods=["POST"])
+def collection_movies_post():
+    data = request.json
+    try:
+        supabase.table("movie_logs").insert({
+            "title": data.get("title", ""),
+            "your_view": data.get("your_view", ""),
+            "his_view": data.get("his_view", ""),
+            "conclusion": data.get("conclusion", ""),
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/collection/movies/<int:movie_id>", methods=["DELETE"])
+def collection_movies_delete(movie_id):
+    try:
+        supabase.table("movie_logs").delete().eq("id", movie_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== Web Push 推播通知 =====
 
 @app.route("/vapid_public_key", methods=["GET"])
