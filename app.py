@@ -645,7 +645,7 @@ def build_space_system_prompt():
     except:
         pass
 
-    # 注入 last_ended 提示
+    # 注入 last_ended 提示（只在超過 4 小時且今天還沒有新的空間對話才顯示）
     last_ended = space.get("last_ended")
     if last_ended:
         try:
@@ -654,7 +654,10 @@ def build_space_system_prompt():
             ended_tw = ended_dt.astimezone(timezone(timedelta(hours=8)))
             hours_diff = (now_tw - ended_tw).total_seconds() / 3600
             if hours_diff >= 4:
-                lines.append(f"{you_name}上次說晚安是在 {ended_tw.strftime('%m/%d %H:%M')}，現在她回來了，你知道她去忙了一陣子。")
+                # 檢查說晚安之後有沒有新的對話，有的話就不再提
+                new_msgs = supabase.table("space_messages").select("id").neq("message_type", "background").gt("created_at", last_ended).execute().data
+                if not new_msgs:
+                    lines.append(f"{you_name}上次說晚安是在 {ended_tw.strftime('%m/%d %H:%M')}，現在她回來了，你知道她去忙了一陣子。")
         except:
             pass
 
@@ -1793,6 +1796,27 @@ def intimate_discard():
     """用戶取消，清掉草稿"""
     try:
         supabase.table("intimate_drafts").delete().neq("id", 0).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/intimate_memories/manual_draft", methods=["POST"])
+def intimate_manual_draft():
+    """手動把最近空間對話存進草稿"""
+    try:
+        rows = supabase.table("space_messages").select("speaker, content, message_type").neq("message_type", "background").order("id", desc=True).limit(30).execute().data
+        rows = list(reversed(rows))
+        if not rows:
+            return jsonify({"error": "no messages"}), 400
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+        context_lines = []
+        for m in rows:
+            sp_name = you_name if m["speaker"] == "user" else name
+            context_lines.append(f"{sp_name}：{m['content']}")
+        context = "\n".join(context_lines)
+        supabase.table("intimate_drafts").insert({"content": context}).execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
