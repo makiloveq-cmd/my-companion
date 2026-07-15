@@ -797,6 +797,56 @@ def space_scene_post():
     invalidate_cache("space_settings")
     return jsonify({"status": "ok"})
 
+@app.route("/space/outing", methods=["POST"])
+def space_outing():
+    """切換外出/回家狀態，並生成銜接回應"""
+    try:
+        data = request.json
+        is_outing = data.get("outing", True)
+        now = datetime.now(timezone.utc).isoformat()
+
+        supabase.table("space_settings").upsert({
+            "key": "outing",
+            "value": "true" if is_outing else "false",
+            "updated_at": now
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        persona = bot.get("persona") or ""
+
+        if is_outing:
+            system = (
+                f"你是{name}。{f'個性：{persona}。' if persona else ''}"
+                f"{you_name}剛剛出門了，你在家。"
+                f"用一句話自然銜接她出門這件事，語氣符合你的個性，不超過20字。"
+            )
+            prompt = f"{you_name}說她要出門了。"
+        else:
+            system = (
+                f"你是{name}。{f'個性：{persona}。' if persona else ''}"
+                f"{you_name}剛剛回家了。"
+                f"用一句話自然銜接她回來這件事，語氣符合你的個性，不超過20字。"
+            )
+            prompt = f"{you_name}回來了。"
+
+        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=60)
+        reply = reply.strip()
+
+        supabase.table("space_messages").insert({
+            "speaker": "claude",
+            "content": reply,
+            "message_type": "chat"
+        }).execute()
+
+        return jsonify({"status": "ok", "reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/space/end_day", methods=["POST"])
 def space_end_day():
     try:

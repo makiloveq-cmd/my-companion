@@ -290,6 +290,9 @@
           <button class="sp-end-day-btn" id="spSealMemoryBtn" style="display:none;">
             ✦ 封存這段記憶
           </button>
+          <button class="sp-end-day-btn" id="spOutingBtn" title="出門/回家" style="padding: 5px 10px; font-size: 16px;">
+            🚪
+          </button>
           <button class="sp-end-day-btn" id="spManualSealBtn" title="封存這段記憶" style="padding: 5px 10px; font-size: 16px;">
             🍎
           </button>
@@ -838,6 +841,36 @@
         document.getElementById('spSealMemoryBtn').style.display = 'none';
       } catch (e) {}
       hideIntimateModal();
+    };
+
+    // 外出/回家按鈕
+    let isOuting = false;
+    try {
+      const outRes = await fetch('/space_settings');
+      const outData = await outRes.json();
+      isOuting = outData.outing === 'true';
+      document.getElementById('spOutingBtn').textContent = isOuting ? '🏠' : '🚪';
+    } catch (e) {}
+
+    document.getElementById('spOutingBtn').onclick = async () => {
+      const btn = document.getElementById('spOutingBtn');
+      btn.disabled = true;
+      isOuting = !isOuting;
+      btn.textContent = '⏳';
+      try {
+        const res = await fetch('/space/outing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outing: isOuting })
+        });
+        const data = await res.json();
+        btn.textContent = isOuting ? '🏠' : '🚪';
+        if (data.reply) renderAI('claude', data.reply, new Date().toISOString());
+      } catch (e) {
+        isOuting = !isOuting;
+        btn.textContent = isOuting ? '🏠' : '🚪';
+      }
+      btn.disabled = false;
     };
 
     // 手動封存按鈕
