@@ -250,6 +250,16 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 關鍵字觸發注入珍貴記憶
+    try:
+        recent_msgs = load_memory(bot_key)
+        last_user_msg = next((m["content"] for m in reversed(recent_msgs) if m["role"] == "user"), "")
+        intimate_context = get_intimate_memories_for_prompt(last_user_msg)
+        if intimate_context:
+            lines.append(f"【珍貴記憶】以下是你們曾經共同經歷的親密時刻，她提到相關的事時你會自然想起這些：\n{intimate_context}")
+    except:
+        pass
+
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
@@ -449,7 +459,7 @@ def persona_page():
 
 # ===== 空間設定 =====
 
-SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots"]
+SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "intimate_keywords"]
 
 @app.route("/space_settings", methods=["GET"])
 def space_settings_get():
@@ -649,6 +659,16 @@ def build_space_system_prompt():
             pass
 
     # ── 修改處：精簡後的寫作規則 ──
+    # 關鍵字觸發注入珍貴記憶
+    try:
+        last_space = supabase.table("space_messages").select("content, speaker").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+        last_user_space = next((m["content"] for m in last_space if m["speaker"] == "user"), "")
+        intimate_context = get_intimate_memories_for_prompt(last_user_space)
+        if intimate_context:
+            lines.append(f"【珍貴記憶】以下是你們曾經共同經歷的親密時刻，她提到相關的事時你會自然想起這些：\n{intimate_context}")
+    except:
+        pass
+
     lines.append(
         f"【寫作方式】\n"
         f"用第三人稱旁白搭配對話，像寫小說一樣。動作、感官、內心狀態穿插在對話之間，段落之間換行。"
@@ -739,6 +759,7 @@ def space_reply():
             "message_type": "chat"
         }).execute()
         threading.Thread(target=maybe_space_summarize, daemon=True).start()
+        threading.Thread(target=maybe_detect_intimate, args=(recent, reply), daemon=True).start()
         return jsonify({"reply": reply, "name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1669,6 +1690,119 @@ def relationship_quote():
         quote = call_claude(system, [{"role": "user", "content": user_prompt}], max_tokens=100)
         quote = quote.strip().strip('「」""')
         return jsonify({"quote": quote})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== 珍貴記憶 =====
+
+_pending_intimate = {}  # 暫存待確認的珍貴記憶
+
+def maybe_detect_intimate(recent_messages, last_reply):
+    """背景偵測空間對話是否有親密互動，有的話生成摘要暫存"""
+    try:
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+
+        # 取最近 10 則對話作為判斷素材
+        context_lines = []
+        for m in recent_messages[-10:]:
+            if m.get("message_type") == "background":
+                continue
+            sp_name = you_name if m["speaker"] == "user" else name
+            context_lines.append(f"{sp_name}：{m['content']}")
+        context_lines.append(f"{name}：{last_reply}")
+        context = "\n".join(context_lines)
+
+        # 第一步：判斷有沒有親密互動
+        detect_prompt = (
+            "請判斷以下對話是否包含明確的親密互動（從前戲到事後的情慾/肉體互動過程）。"
+            "只回傳 yes 或 no，不要其他文字。"
+        )
+        result = call_claude(detect_prompt, [{"role": "user", "content": context}], max_tokens=5)
+        if "yes" not in result.lower():
+            return
+
+        # 第二步：生成摘要
+        summary_prompt = (
+            f"以下是{name}與{you_name}在共同空間的親密互動對話。"
+            f"請用第一人稱（我）整理成一段珍貴記憶，保留完整的過程細節、情感、說過的話、身體感受。"
+            f"文字細膩真實，不超過 400 字。"
+        )
+        summary = call_claude(summary_prompt, [{"role": "user", "content": context}], max_tokens=600)
+        summary = summary.strip()
+
+        # 暫存，等待用戶確認
+        _pending_intimate["content"] = summary
+        _pending_intimate["raw"] = context
+    except Exception as e:
+        print(f"[intimate detect error] {e}")
+
+def get_intimate_memories_for_prompt(user_message):
+    """根據關鍵字判斷是否注入珍貴記憶"""
+    try:
+        space = get_space_settings()
+        keywords_raw = space.get("intimate_keywords", "")
+        if not keywords_raw:
+            return None
+        keywords = [k.strip() for k in keywords_raw.replace("、", ",").replace("，", ",").split(",") if k.strip()]
+        if not any(kw in user_message for kw in keywords):
+            return None
+        rows = supabase.table("intimate_memories").select("content, created_at").order("id", desc=True).limit(5).execute().data
+        if not rows:
+            return None
+        tw_tz = timezone(timedelta(hours=8))
+        parts = []
+        for r in rows:
+            ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d")
+            parts.append(f"[{ts}]\n{r['content']}")
+        return "\n\n---\n\n".join(parts)
+    except:
+        return None
+
+@app.route("/intimate_memories/pending", methods=["GET"])
+def intimate_pending_get():
+    """前端輪詢，看有沒有待確認的珍貴記憶"""
+    if _pending_intimate.get("content"):
+        return jsonify({"pending": True, "content": _pending_intimate["content"]})
+    return jsonify({"pending": False})
+
+@app.route("/intimate_memories/confirm", methods=["POST"])
+def intimate_confirm():
+    """用戶確認（可附上編修後的內容）存入資料庫"""
+    data = request.json
+    content = (data.get("content") or _pending_intimate.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "no content"}), 400
+    try:
+        supabase.table("intimate_memories").insert({"content": content}).execute()
+        _pending_intimate.clear()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/intimate_memories/discard", methods=["POST"])
+def intimate_discard():
+    """用戶取消，丟掉暫存"""
+    _pending_intimate.clear()
+    return jsonify({"status": "ok"})
+
+@app.route("/intimate_memories", methods=["GET"])
+def intimate_memories_get():
+    """取得所有珍貴記憶（管理用）"""
+    try:
+        rows = supabase.table("intimate_memories").select("*").order("id", desc=True).execute().data
+        return jsonify({"memories": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/intimate_memories/<int:memory_id>", methods=["DELETE"])
+def intimate_memory_delete(memory_id):
+    """刪除單筆珍貴記憶"""
+    try:
+        supabase.table("intimate_memories").delete().eq("id", memory_id).execute()
+        return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
