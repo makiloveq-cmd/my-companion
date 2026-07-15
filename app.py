@@ -994,6 +994,28 @@ def game_sessions_get():
 
 # ===== 主題設定 =====
 
+@app.route("/theme/custom", methods=["GET"])
+def theme_custom_get():
+    try:
+        rows = supabase.table("identities").select("value").eq("key", "theme_custom").execute().data
+        if rows:
+            import json
+            return jsonify(json.loads(rows[0]["value"]))
+        return jsonify({})
+    except:
+        return jsonify({})
+
+@app.route("/theme/custom", methods=["POST"])
+def theme_custom_post():
+    import json
+    data = request.json
+    supabase.table("identities").upsert({
+        "key": "theme_custom",
+        "value": json.dumps(data),
+        "updated_at": datetime.utcnow().isoformat()
+    }).execute()
+    return jsonify({"status": "ok"})
+
 @app.route("/theme", methods=["GET"])
 def theme_get():
     rows = supabase.table("identities").select("value").eq("key", "theme").execute().data
