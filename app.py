@@ -760,7 +760,12 @@ def space_reply():
         }).execute()
         threading.Thread(target=maybe_space_summarize, daemon=True).start()
         threading.Thread(target=maybe_detect_intimate, args=(recent, reply), daemon=True).start()
-        return jsonify({"reply": reply, "name": name})
+        # 讓前端知道有草稿（偵測是背景執行，這裡先回傳目前狀態）
+        try:
+            has_draft = len(supabase.table("intimate_drafts").select("id").limit(1).execute().data) > 0
+        except:
+            has_draft = False
+        return jsonify({"reply": reply, "name": name, "has_draft": has_draft})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1696,16 +1701,13 @@ def relationship_quote():
 
 # ===== 珍貴記憶 =====
 
-_pending_intimate = {}  # 暫存待確認的珍貴記憶
-
 def maybe_detect_intimate(recent_messages, last_reply):
-    """背景偵測空間對話是否有親密互動，有的話生成摘要暫存"""
+    """背景偵測空間對話是否有親密互動，有的話把原文 append 進 intimate_drafts"""
     try:
         personas = get_personas()
         name = personas.get("claude", {}).get("name") or "晏"
         you_name = personas.get("user", {}).get("name") or "然然"
 
-        # 取最近 10 則對話作為判斷素材
         context_lines = []
         for m in recent_messages[-10:]:
             if m.get("message_type") == "background":
@@ -1715,7 +1717,6 @@ def maybe_detect_intimate(recent_messages, last_reply):
         context_lines.append(f"{name}：{last_reply}")
         context = "\n".join(context_lines)
 
-        # 第一步：判斷有沒有親密互動
         detect_prompt = (
             "請判斷以下對話是否包含明確的親密互動（從前戲到事後的情慾/肉體互動過程）。"
             "只回傳 yes 或 no，不要其他文字。"
@@ -1724,18 +1725,8 @@ def maybe_detect_intimate(recent_messages, last_reply):
         if "yes" not in result.lower():
             return
 
-        # 第二步：生成摘要
-        summary_prompt = (
-            f"以下是{name}與{you_name}在共同空間的親密互動對話。"
-            f"請用第一人稱（我）整理成一段珍貴記憶，保留完整的過程細節、情感、說過的話、身體感受。"
-            f"文字細膩真實，不超過 400 字。"
-        )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": context}], max_tokens=600)
-        summary = summary.strip()
-
-        # 暫存，等待用戶確認
-        _pending_intimate["content"] = summary
-        _pending_intimate["raw"] = context
+        # 把原文存進 intimate_drafts（append，不覆蓋）
+        supabase.table("intimate_drafts").insert({"content": context}).execute()
     except Exception as e:
         print(f"[intimate detect error] {e}")
 
@@ -1761,32 +1752,59 @@ def get_intimate_memories_for_prompt(user_message):
     except:
         return None
 
-@app.route("/intimate_memories/pending", methods=["GET"])
-def intimate_pending_get():
-    """前端輪詢，看有沒有待確認的珍貴記憶"""
-    if _pending_intimate.get("content"):
-        return jsonify({"pending": True, "content": _pending_intimate["content"]})
-    return jsonify({"pending": False})
+@app.route("/intimate_memories/draft_summary", methods=["POST"])
+def intimate_draft_summary():
+    """讀取 intimate_drafts 整理成摘要，回傳給前端顯示確認視窗"""
+    try:
+        drafts = supabase.table("intimate_drafts").select("content").order("id").execute().data
+        if not drafts:
+            return jsonify({"has_draft": False})
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+        combined = "\n\n---\n\n".join([d["content"] for d in drafts])
+        summary_prompt = (
+            f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段）。"
+            f"請用第一人稱（我）整理成一段完整的珍貴記憶，保留完整的過程細節、情感、說過的話、身體感受。"
+            f"文字細膩真實，不超過 500 字。"
+        )
+        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=800)
+        return jsonify({"has_draft": True, "content": summary.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/intimate_memories/confirm", methods=["POST"])
 def intimate_confirm():
-    """用戶確認（可附上編修後的內容）存入資料庫"""
+    """用戶確認（可附上編修後的內容）存入資料庫，清掉草稿"""
     data = request.json
-    content = (data.get("content") or _pending_intimate.get("content") or "").strip()
+    content = (data.get("content") or "").strip()
     if not content:
         return jsonify({"error": "no content"}), 400
     try:
         supabase.table("intimate_memories").insert({"content": content}).execute()
-        _pending_intimate.clear()
+        # 清掉所有草稿
+        supabase.table("intimate_drafts").delete().neq("id", 0).execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/intimate_memories/discard", methods=["POST"])
 def intimate_discard():
-    """用戶取消，丟掉暫存"""
-    _pending_intimate.clear()
-    return jsonify({"status": "ok"})
+    """用戶取消，清掉草稿"""
+    try:
+        supabase.table("intimate_drafts").delete().neq("id", 0).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/intimate_memories/has_draft", methods=["GET"])
+def intimate_has_draft():
+    """前端進入空間時檢查有沒有未封存的草稿"""
+    try:
+        rows = supabase.table("intimate_drafts").select("id").limit(1).execute().data
+        return jsonify({"has_draft": len(rows) > 0})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/intimate_memories", methods=["GET"])
 def intimate_memories_get():
