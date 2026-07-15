@@ -163,6 +163,18 @@ def build_system_prompt(bot_key="claude"):
         f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
     ]
 
+    # 注入最後私聊互動時間
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        last_msg = supabase.table("memories").select("created_at").eq("session_id", bot_key).order("id", desc=True).limit(1).execute().data
+        if last_msg:
+            last_dt = datetime.fromisoformat(last_msg[0]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
+            hours_ago = (datetime.now(timezone.utc) - last_dt.astimezone(timezone.utc)).total_seconds() / 3600
+            if hours_ago >= 1:
+                lines.append(f"你們上次私下說話是在 {last_dt.strftime('%m/%d %H:%M')}（約 {int(hours_ago)} 小時前）。")
+    except:
+        pass
+
     if bot.get("job"):
         lines.append(f"職業：{bot['job']}。")
     if bot.get("appearance"):
@@ -601,14 +613,22 @@ def build_space_system_prompt():
     if claude_summary:
         lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
 
-    # 注入私聊最近對話
+    # 注入私聊最近對話（含時間戳）
     try:
+        tw_tz = timezone(timedelta(hours=8))
         chat_recent = load_memory("claude")[-10:]
         if chat_recent:
             ch_lines = []
             for m in chat_recent:
                 ch_name = you_name if m["role"] == "user" else name
-                ch_lines.append(f"{ch_name}：{m['content']}")
+                ts = ""
+                if m.get("created_at"):
+                    try:
+                        ts = datetime.fromisoformat(m["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
+                        ts = f"[{ts}] "
+                    except:
+                        ts = ""
+                ch_lines.append(f"{ts}{ch_name}：{m['content']}")
             lines.append("【你們私下聊天的最近對話】\n" + "\n".join(ch_lines))
     except:
         pass
