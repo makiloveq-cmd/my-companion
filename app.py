@@ -853,7 +853,7 @@ def space_outing():
             )
             prompt = f"{you_name}回來了，寫出{name}迎接她的狀態。"
 
-        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=200)
+        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=400)
         reply = reply.strip()
 
         supabase.table("space_messages").insert({
