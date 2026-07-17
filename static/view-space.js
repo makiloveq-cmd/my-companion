@@ -446,6 +446,10 @@
           <div class="sp-intimate-title">✦ 晏想記住這個瞬間</div>
           <div class="sp-intimate-desc">你可以編修內容，確認後才會永久保存。</div>
           <textarea class="sp-intimate-textarea" id="spIntimateContent"></textarea>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:12px;color:var(--text-3);">關鍵字（說這些詞晏會想起這段記憶，用逗號分隔）</div>
+            <input type="text" id="spIntimateKeywords" placeholder="那次、第一次、書房…" style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;outline:none;font-family:inherit;">
+          </div>
           <div class="sp-intimate-btns">
             <button class="sp-intimate-discard" id="spIntimateDiscard">不用了</button>
             <button class="sp-intimate-confirm" id="spIntimateConfirm">✦ 記住這個</button>
@@ -978,6 +982,7 @@
     // ── 珍貴記憶確認視窗 ──
     function showIntimateModal(content) {
       document.getElementById('spIntimateContent').value = content;
+      document.getElementById('spIntimateKeywords').value = '';
       document.getElementById('spIntimateOverlay').classList.add('show');
     }
     function hideIntimateModal() {
@@ -996,11 +1001,12 @@
     document.getElementById('spIntimateConfirm').onclick = async () => {
       const content = document.getElementById('spIntimateContent').value.trim();
       if (!content) return;
+      const keywords = document.getElementById('spIntimateKeywords').value.trim();
       try {
         await fetch('/intimate_memories/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content })
+          body: JSON.stringify({ content, keywords })
         });
         resetRecordingMode();
       } catch (e) {}

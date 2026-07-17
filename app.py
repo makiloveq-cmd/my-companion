@@ -1982,24 +1982,24 @@ def maybe_detect_intimate(recent_messages, last_reply):
         print(f"[intimate detect error] {e}")
 
 def get_intimate_memories_for_prompt(user_message):
-    """根據關鍵字判斷是否注入珍貴記憶"""
+    """根據每筆記憶的關鍵字判斷是否注入"""
     try:
-        space = get_space_settings()
-        keywords_raw = space.get("intimate_keywords", "")
-        if not keywords_raw:
-            return None
-        keywords = [k.strip() for k in keywords_raw.replace("、", ",").replace("，", ",").split(",") if k.strip()]
-        if not any(kw in user_message for kw in keywords):
-            return None
-        rows = supabase.table("intimate_memories").select("content, created_at").order("id", desc=True).limit(5).execute().data
+        rows = supabase.table("intimate_memories").select("content, created_at, keywords").order("id", desc=True).limit(20).execute().data
         if not rows:
             return None
         tw_tz = timezone(timedelta(hours=8))
-        parts = []
+        matched = []
         for r in rows:
-            ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d")
-            parts.append(f"[{ts}]\n{r['content']}")
-        return "\n\n---\n\n".join(parts)
+            keywords_raw = r.get("keywords") or ""
+            if not keywords_raw:
+                continue
+            keywords = [k.strip() for k in keywords_raw.replace("、", ",").replace("，", ",").split(",") if k.strip()]
+            if any(kw in user_message for kw in keywords):
+                ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d")
+                matched.append(f"[{ts}]\n{r['content']}")
+        if not matched:
+            return None
+        return "\n\n---\n\n".join(matched[:5])
     except:
         return None
 
@@ -2031,10 +2031,14 @@ def intimate_confirm():
     """用戶確認（可附上編修後的內容）存入資料庫，清掉草稿"""
     data = request.json
     content = (data.get("content") or "").strip()
+    keywords = (data.get("keywords") or "").strip()
     if not content:
         return jsonify({"error": "no content"}), 400
     try:
-        supabase.table("intimate_memories").insert({"content": content}).execute()
+        supabase.table("intimate_memories").insert({
+            "content": content,
+            "keywords": keywords if keywords else None
+        }).execute()
         # 清掉所有草稿
         supabase.table("intimate_drafts").delete().neq("id", 0).execute()
         return jsonify({"status": "ok"})
