@@ -220,6 +220,22 @@
     min-height: 16px; padding: 0 2px;
   }
 
+  .sp-check-circle {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); background: transparent;
+    display: none; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; transition: all 0.15s;
+    margin-top: 6px;
+  }
+  .sp-check-circle.show { display: flex; }
+  .sp-check-circle.checked { background: var(--accent); border-color: var(--accent); }
+  .sp-check-circle.checked::after { content: '✓'; font-size: 13px; color: #fff; }
+
+  .sp-entry-ai, .sp-entry-user {
+    display: flex; align-items: flex-start; gap: 6px;
+  }
+  .sp-entry-user { flex-direction: row-reverse; }
+
   .sp-select-bar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 50;
     background: var(--accent); padding: 12px 20px;
@@ -521,13 +537,15 @@
       if (m) m.scrollTop = m.scrollHeight;
     }
 
-    // ── 長按選取 ──
+    // ── 長按選取（LINE 風格圓圈）──
     let selectMode = false;
     let selectedMessages = [];
+    const allCircles = [];
 
     function enterSelectMode() {
       selectMode = true;
       document.getElementById('spSelectBar').classList.add('show');
+      allCircles.forEach(c => c.classList.add('show'));
     }
 
     function exitSelectMode() {
@@ -535,39 +553,54 @@
       selectedMessages = [];
       document.getElementById('spSelectBar').classList.remove('show');
       document.getElementById('spSelectCount').textContent = '已選 0 則';
-      document.querySelectorAll('[data-selected]').forEach(el => {
-        el.style.outline = '';
-        el.removeAttribute('data-selected');
-      });
+      allCircles.forEach(c => { c.classList.remove('show', 'checked'); });
     }
 
-    function toggleSelectMessage(wrap, msgData) {
-      if (wrap.dataset.selected) {
-        delete wrap.dataset.selected;
-        wrap.style.outline = '';
+    function toggleSelectMessage(circle, msgData) {
+      if (circle.classList.contains('checked')) {
+        circle.classList.remove('checked');
         selectedMessages = selectedMessages.filter(m => m !== msgData);
       } else {
-        wrap.dataset.selected = '1';
-        wrap.style.outline = '2px solid var(--accent)';
-        wrap.style.borderRadius = '12px';
+        circle.classList.add('checked');
         selectedMessages.push(msgData);
       }
       document.getElementById('spSelectCount').textContent = `已選 ${selectedMessages.length} 則`;
     }
 
-    function addLongPress(wrap, msgData) {
+    function addLongPress(wrap, msgData, isUser) {
+      const circle = document.createElement('div');
+      circle.className = 'sp-check-circle';
+      allCircles.push(circle);
+
+      if (isUser) {
+        wrap.appendChild(circle);
+      } else {
+        wrap.insertBefore(circle, wrap.firstChild);
+      }
+
+      circle.onclick = (e) => {
+        e.stopPropagation();
+        if (selectMode) toggleSelectMessage(circle, msgData);
+      };
+
       let timer = null;
-      wrap.addEventListener('pointerdown', () => {
+      const startSelect = () => {
         timer = setTimeout(() => {
           if (!selectMode) enterSelectMode();
-          toggleSelectMessage(wrap, msgData);
+          if (!circle.classList.contains('checked')) {
+            circle.classList.add('checked');
+            selectedMessages.push(msgData);
+            document.getElementById('spSelectCount').textContent = `已選 ${selectedMessages.length} 則`;
+          }
         }, 500);
-      });
-      wrap.addEventListener('pointerup', () => clearTimeout(timer));
-      wrap.addEventListener('pointercancel', () => clearTimeout(timer));
-      wrap.addEventListener('click', () => {
-        if (selectMode) toggleSelectMessage(wrap, msgData);
-      });
+      };
+      const cancelSelect = () => clearTimeout(timer);
+
+      wrap.addEventListener('touchstart', startSelect, { passive: true });
+      wrap.addEventListener('touchend', cancelSelect);
+      wrap.addEventListener('touchcancel', cancelSelect);
+      wrap.addEventListener('mousedown', startSelect);
+      wrap.addEventListener('mouseup', cancelSelect);
     }
 
     document.getElementById('spSelectCancel').onclick = exitSelectMode;
@@ -603,7 +636,7 @@
       if (imageUrl) {
         wrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
       }
-      addLongPress(wrap, { speaker: 'user', content: content || '' });
+      addLongPress(wrap, { speaker: 'user', content: content || '' }, true);
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
     }
@@ -621,7 +654,7 @@
       `;
       wrap.appendChild(av);
       wrap.appendChild(contentWrap);
-      addLongPress(wrap, { speaker: speaker, content: content || '' });
+      addLongPress(wrap, { speaker: speaker, content: content || '' }, false);
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
     }
