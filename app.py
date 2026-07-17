@@ -2206,6 +2206,48 @@ def collection_movies_delete(movie_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 語錄庫 =====
+
+@app.route("/quotes", methods=["GET"])
+def quotes_get():
+    try:
+        rows = supabase.table("quotes").select("*").order("id", desc=True).execute().data
+        return jsonify({"quotes": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/quotes", methods=["POST"])
+def quotes_post():
+    data = request.json
+    try:
+        supabase.table("quotes").insert({
+            "content": data.get("content", ""),
+            "source": data.get("source", ""),
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/quotes/random", methods=["GET"])
+def quotes_random():
+    try:
+        rows = supabase.table("quotes").select("*").execute().data
+        if not rows:
+            return jsonify({"quote": None})
+        import random as rand
+        q = rand.choice(rows)
+        return jsonify({"quote": q})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/quotes/<int:quote_id>", methods=["DELETE"])
+def quotes_delete(quote_id):
+    try:
+        supabase.table("quotes").delete().eq("id", quote_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 通話記錄 =====
 
 @app.route("/call/save", methods=["POST"])

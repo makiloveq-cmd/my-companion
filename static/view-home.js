@@ -46,9 +46,9 @@
           <div class="hm-days-number" id="hmDays">0</div>
           <div class="hm-days-label">days</div>
         </div>
-        <div class="hm-quote-card">
-          <div class="hm-quote-text">"我們建造這個空間，一磚一瓦。"</div>
-          <div class="hm-quote-author">— Rifugio</div>
+        <div class="hm-quote-card" id="hmQuoteCard" style="cursor:pointer;" title="點擊換一句">
+          <div class="hm-quote-text" id="hmQuoteText">"我們建造這個空間，一磚一瓦。"</div>
+          <div class="hm-quote-author" id="hmQuoteAuthor">— Rifugio</div>
         </div>
         <div class="hm-cards-grid">
           <button class="hm-card" data-route="space">
@@ -79,6 +79,19 @@
     const today = new Date();
     const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
     document.getElementById('hmDays').textContent = diff;
+
+    async function loadRandomQuote() {
+      try {
+        const res = await fetch('/quotes/random');
+        const data = await res.json();
+        if (data.quote) {
+          document.getElementById('hmQuoteText').textContent = `"${data.quote.content}"`;
+          document.getElementById('hmQuoteAuthor').textContent = data.quote.source ? `— ${data.quote.source}` : '— Rifugio';
+        }
+      } catch (e) {}
+    }
+    loadRandomQuote();
+    document.getElementById('hmQuoteCard').onclick = loadRandomQuote;
 
     el.querySelectorAll('.hm-card').forEach(card => {
       card.onclick = () => RifugioRouter.navigate(card.dataset.route);

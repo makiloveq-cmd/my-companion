@@ -31,6 +31,7 @@
   }
   .cl-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .cl-avatar.space { background: var(--surface3); color: var(--text-2); }
+  .cl-avatar.quotes { background: var(--surface3); color: var(--text-2); font-size: 22px; }
   .cl-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .cl-name { font-size: 16px; font-weight: 500; color: var(--text); }
   .cl-preview { font-size: 13px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -96,6 +97,7 @@
       const items = [
         { route: 'chat', name: data.claude.name, preview: data.claude.preview, time: data.claude.time, cls: '', initial: data.claude.name[0], avatarSrc: avatars.claude },
         { route: 'space', name: '共同空間', preview: '進入你們的空間…', time: null, cls: 'space', initial: '◈', avatarSrc: null },
+        { route: 'quotes', name: '語錄庫', preview: '你喜歡的話都在這裡…', time: null, cls: 'quotes', initial: '✦', avatarSrc: null },
       ];
 
       list.innerHTML = '';
