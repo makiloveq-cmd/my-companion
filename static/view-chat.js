@@ -60,6 +60,14 @@
   .ch-btn-cancel { background: var(--surface2); color: var(--text-2); }
   .ch-btn-confirm { background: var(--accent); color: #fff; }
 
+  .ch-sound-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: none; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+    background: var(--surface2); color: var(--text-2);
+  }
+  .ch-sound-btn.active { background: var(--accent); color: #fff; }
   .ch-mic-btn {
     width: 36px; height: 36px; border-radius: 50%;
     border: none; cursor: pointer; display: flex;
@@ -184,7 +192,9 @@
       <div class="ch-messages" id="chMessages"></div>
       <div class="ch-voice-bar" id="chVoiceBar">
         <span class="ch-voice-status" id="chVoiceStatus">點麥克風開始說話</span>
-        <audio class="ch-voice-audio" id="chVoiceAudio" controls style="display:none;"></audio>
+        <button id="chVoiceReplay" style="display:none; padding:4px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text-2); font-size:12px; cursor:pointer;">重播</button>
+        <button id="chVoiceClose" style="display:none; padding:4px 10px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text-3); font-size:12px; cursor:pointer;">✕</button>
+        <audio id="chVoiceAudio" style="display:none;"></audio>
       </div>
       <div class="ch-mode-bar" id="chModeBar">
         <span class="ch-mode-label" id="chModeLabel"></span>
@@ -205,6 +215,7 @@
           </button>
           <button class="ch-toolbar-icon" id="chBookBtn" title="討論書" style="font-size:18px;">🖋</button>
           <button class="ch-toolbar-icon" id="chMovieBtn" title="討論電影" style="font-size:18px;">📽</button>
+          <button class="ch-sound-btn" id="chSoundBtn" title="開啟/關閉晏的聲音">🔇</button>
           <button class="ch-mic-btn" id="chMicBtn" title="語音輸入">🎙</button>
           <input type="file" id="chImageInput" accept="image/*" style="display:none">
           <div class="ch-input-wrapper">
@@ -639,11 +650,38 @@
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
+    let soundEnabled = false; // 預設靜音
+    let lastAudioUrl = null;
 
     const micBtn = document.getElementById('chMicBtn');
     const voiceBar = document.getElementById('chVoiceBar');
     const voiceStatus = document.getElementById('chVoiceStatus');
     const voiceAudio = document.getElementById('chVoiceAudio');
+    const soundBtn = document.getElementById('chSoundBtn');
+    const replayBtn = document.getElementById('chVoiceReplay');
+    const closeBtn = document.getElementById('chVoiceClose');
+
+    // 靜音切換
+    soundBtn.onclick = () => {
+      soundEnabled = !soundEnabled;
+      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+      soundBtn.classList.toggle('active', soundEnabled);
+    };
+
+    // 重播
+    replayBtn.onclick = () => {
+      if (lastAudioUrl) {
+        voiceAudio.src = lastAudioUrl;
+        voiceAudio.play().catch(() => {});
+      }
+    };
+
+    // 關閉語音列
+    closeBtn.onclick = () => {
+      voiceBar.classList.remove('show');
+      replayBtn.style.display = 'none';
+      closeBtn.style.display = 'none';
+    };
 
     micBtn.onclick = async () => {
       if (isRecording) {
@@ -695,9 +733,9 @@
       }
     };
 
-    // 晏回覆後自動播放語音
+    // 晏回覆後播放語音（需開啟聲音才播）
     async function playReplyVoice(text) {
-      if (!text) return;
+      if (!text || !soundEnabled) return;
       try {
         const res = await fetch('/voice/tts', {
           method: 'POST',
@@ -707,18 +745,13 @@
         if (!res.ok) return;
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
+        lastAudioUrl = url;
         voiceAudio.src = url;
-        voiceAudio.style.display = 'block';
         voiceBar.classList.add('show');
         voiceStatus.textContent = '晏說：';
+        replayBtn.style.display = 'inline-block';
+        closeBtn.style.display = 'inline-block';
         voiceAudio.play().catch(() => {});
-        voiceAudio.onended = () => {
-          setTimeout(() => {
-            voiceBar.classList.remove('show');
-            voiceAudio.style.display = 'none';
-            voiceStatus.textContent = '點麥克風開始說話';
-          }, 1000);
-        };
       } catch (e) {}
     }
 
