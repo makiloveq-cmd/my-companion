@@ -30,6 +30,9 @@ VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS = {"sub": os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@rifugio.app")}
 
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+
 
 supabase = create_client(
     os.getenv("SUPABASE_URL"),
@@ -2200,6 +2203,75 @@ def collection_movies_delete(movie_id):
     try:
         supabase.table("movie_logs").delete().eq("id", movie_id).execute()
         return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ===== 語音功能 =====
+
+@app.route("/voice/tts", methods=["POST"])
+def voice_tts():
+    """把文字轉成晏的聲音，回傳 mp3"""
+    try:
+        data = request.json
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "no text"}), 400
+        if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
+            return jsonify({"error": "ElevenLabs not configured"}), 500
+
+        import requests as req
+        res = req.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
+            headers={
+                "xi-api-key": ELEVENLABS_API_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "text": text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75,
+                    "style": 0.3,
+                    "use_speaker_boost": True
+                }
+            },
+            timeout=30
+        )
+        if res.status_code != 200:
+            return jsonify({"error": f"ElevenLabs error: {res.status_code}"}), 500
+
+        from flask import Response
+        return Response(res.content, mimetype="audio/mpeg")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/voice/stt", methods=["POST"])
+def voice_stt():
+    """把語音轉成文字（用 OpenAI Whisper）"""
+    try:
+        from flask import request
+        audio_file = request.files.get("audio")
+        if not audio_file:
+            return jsonify({"error": "no audio"}), 400
+
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if not openai_key:
+            return jsonify({"error": "OpenAI not configured"}), 500
+
+        import requests as req
+        res = req.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {openai_key}"},
+            files={"file": (audio_file.filename or "audio.webm", audio_file.read(), audio_file.content_type or "audio/webm")},
+            data={"model": "whisper-1", "language": "zh"},
+            timeout=30
+        )
+        if res.status_code != 200:
+            return jsonify({"error": f"Whisper error: {res.status_code}"}), 500
+
+        result = res.json()
+        return jsonify({"text": result.get("text", "")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

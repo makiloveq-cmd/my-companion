@@ -60,6 +60,31 @@
   .ch-btn-cancel { background: var(--surface2); color: var(--text-2); }
   .ch-btn-confirm { background: var(--accent); color: #fff; }
 
+  .ch-mic-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: none; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+    background: var(--surface2); color: var(--text-2);
+    transition: background 0.15s;
+  }
+  .ch-mic-btn.recording {
+    background: #e05555; color: #fff;
+    animation: ch-pulse 1s infinite;
+  }
+  @keyframes ch-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  .ch-voice-bar {
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 8px 16px; display: none; align-items: center;
+    gap: 10px; flex-shrink: 0;
+  }
+  .ch-voice-bar.show { display: flex; }
+  .ch-voice-status { font-size: 13px; color: var(--text-3); flex: 1; }
+  .ch-voice-audio { width: 100%; max-width: 300px; height: 32px; }
+
   .ch-discuss-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.6); z-index: 100;
@@ -157,6 +182,10 @@
         <button class="ch-header-name" id="chHeaderName">晏</button>
       </div>
       <div class="ch-messages" id="chMessages"></div>
+      <div class="ch-voice-bar" id="chVoiceBar">
+        <span class="ch-voice-status" id="chVoiceStatus">點麥克風開始說話</span>
+        <audio class="ch-voice-audio" id="chVoiceAudio" controls style="display:none;"></audio>
+      </div>
       <div class="ch-mode-bar" id="chModeBar">
         <span class="ch-mode-label" id="chModeLabel"></span>
         <button class="ch-mode-seal" id="chModeSeal">封存</button>
@@ -176,6 +205,7 @@
           </button>
           <button class="ch-toolbar-icon" id="chBookBtn" title="討論書" style="font-size:18px;">🖋</button>
           <button class="ch-toolbar-icon" id="chMovieBtn" title="討論電影" style="font-size:18px;">📽</button>
+          <button class="ch-mic-btn" id="chMicBtn" title="語音輸入">🎙</button>
           <input type="file" id="chImageInput" accept="image/*" style="display:none">
           <div class="ch-input-wrapper">
             <textarea id="chInput" placeholder="說點什麼…" rows="1"></textarea>
@@ -414,6 +444,8 @@
         if (data.error) throw new Error(data.error);
         row.remove();
         addMessage(data.reply, 'ai', null, new Date().toISOString());
+        // 自動播放晏的聲音
+        playReplyVoice(data.reply);
         // 升階偵測
         try {
           const relRes = await fetch('/relationship_stats');
@@ -601,6 +633,93 @@
       document.getElementById('chDiscussOverlay').classList.add('show');
       setTimeout(() => document.getElementById('chDiscussInput').focus(), 100);
       document.getElementById('chDiscussInput')._type = type;
+    }
+
+    // ── 語音功能 ──
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    const micBtn = document.getElementById('chMicBtn');
+    const voiceBar = document.getElementById('chVoiceBar');
+    const voiceStatus = document.getElementById('chVoiceStatus');
+    const voiceAudio = document.getElementById('chVoiceAudio');
+
+    micBtn.onclick = async () => {
+      if (isRecording) {
+        // 停止錄音
+        mediaRecorder.stop();
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+          isRecording = false;
+          micBtn.classList.remove('recording');
+          micBtn.textContent = '🎙';
+          voiceStatus.textContent = '辨識中…';
+          stream.getTracks().forEach(t => t.stop());
+
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('audio', blob, 'audio.webm');
+          try {
+            const res = await fetch('/voice/stt', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.text) {
+              document.getElementById('chInput').value = data.text;
+              voiceStatus.textContent = `辨識完成：${data.text}`;
+              setTimeout(() => {
+                voiceBar.classList.remove('show');
+                voiceStatus.textContent = '點麥克風開始說話';
+              }, 2000);
+            } else {
+              voiceStatus.textContent = '辨識失敗，請重試';
+            }
+          } catch (e) {
+            voiceStatus.textContent = '辨識失敗，請重試';
+          }
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add('recording');
+        micBtn.textContent = '⏹';
+        voiceBar.classList.add('show');
+        voiceStatus.textContent = '錄音中… 再按一次停止';
+      } catch (e) {
+        voiceStatus.textContent = '無法存取麥克風';
+        voiceBar.classList.add('show');
+      }
+    };
+
+    // 晏回覆後自動播放語音
+    async function playReplyVoice(text) {
+      if (!text) return;
+      try {
+        const res = await fetch('/voice/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        voiceAudio.src = url;
+        voiceAudio.style.display = 'block';
+        voiceBar.classList.add('show');
+        voiceStatus.textContent = '晏說：';
+        voiceAudio.play().catch(() => {});
+        voiceAudio.onended = () => {
+          setTimeout(() => {
+            voiceBar.classList.remove('show');
+            voiceAudio.style.display = 'none';
+            voiceStatus.textContent = '點麥克風開始說話';
+          }, 1000);
+        };
+      } catch (e) {}
     }
 
     document.getElementById('chBookBtn').onclick = () => openDiscuss('book');
