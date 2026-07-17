@@ -215,6 +215,7 @@
           </button>
           <button class="ch-toolbar-icon" id="chBookBtn" title="討論書" style="font-size:18px;">🖋</button>
           <button class="ch-toolbar-icon" id="chMovieBtn" title="討論電影" style="font-size:18px;">📽</button>
+          <button class="ch-toolbar-icon" id="chCallBtn" title="通話" style="font-size:18px;">📞</button>
           <button class="ch-sound-btn" id="chSoundBtn" title="開啟/關閉晏的聲音">🔇</button>
           <button class="ch-mic-btn" id="chMicBtn" title="語音輸入">🎙</button>
           <input type="file" id="chImageInput" accept="image/*" style="display:none">
@@ -660,6 +661,19 @@
     const soundBtn = document.getElementById('chSoundBtn');
     const replayBtn = document.getElementById('chVoiceReplay');
     const closeBtn = document.getElementById('chVoiceClose');
+
+    // 通話按鈕
+    document.getElementById('chCallBtn').onclick = async () => {
+      try {
+        const res = await fetch('/personas');
+        const data = await res.json();
+        const botName = data.claude?.name || '晏';
+        const botAvatar = data.claude?.avatar || '';
+        if (window.RifugioCall) {
+          window.RifugioCall.open(botName, botAvatar);
+        }
+      } catch (e) {}
+    };
 
     // 靜音切換
     soundBtn.onclick = () => {

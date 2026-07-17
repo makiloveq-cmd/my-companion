@@ -2206,6 +2206,32 @@ def collection_movies_delete(movie_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 通話記錄 =====
+
+@app.route("/call/save", methods=["POST"])
+def call_save():
+    try:
+        import json
+        data = request.json
+        messages = data.get("messages", [])
+        duration = data.get("duration_seconds", 0)
+        supabase.table("call_logs").insert({
+            "messages": json.dumps(messages),
+            "duration_seconds": duration,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/call/logs", methods=["GET"])
+def call_logs_get():
+    try:
+        rows = supabase.table("call_logs").select("*").order("id", desc=True).execute().data
+        return jsonify({"logs": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 語音功能 =====
 
 @app.route("/voice/tts", methods=["POST"])
