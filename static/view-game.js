@@ -36,6 +36,70 @@
     color: var(--text-2); font-size: 15px; cursor: pointer;
   }
 
+  /* ── 我的世界 ── */
+  .gm-worlds { display: flex; flex-direction: column; height: 100%; }
+  .gm-world-item {
+    background: var(--surface); border-radius: 14px; margin: 0 16px 10px;
+    overflow: hidden; border: 1px solid var(--border);
+  }
+  .gm-world-item-header {
+    padding: 14px 16px; display: flex; align-items: center;
+    justify-content: space-between; cursor: pointer;
+  }
+  .gm-world-item-header:active { background: var(--surface2); }
+  .gm-world-left { display: flex; flex-direction: column; gap: 3px; }
+  .gm-world-title { font-size: 15px; color: var(--text); }
+  .gm-world-meta { font-size: 11px; color: var(--text-3); }
+  .gm-world-status {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    border: 1px solid var(--border); color: var(--text-3);
+  }
+  .gm-world-status.playing { border-color: var(--accent); color: var(--accent); }
+  .gm-world-btns { display: flex; gap: 8px; padding: 0 16px 14px; }
+  .gm-world-continue {
+    flex: 1; padding: 9px; background: var(--accent);
+    border: none; border-radius: 10px; color: #fff;
+    font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .gm-world-pause {
+    padding: 9px 14px; background: var(--surface2);
+    border: none; border-radius: 10px; color: var(--text-2);
+    font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+
+  /* ── 封存確認視窗 ── */
+  .gm-seal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 150;
+    align-items: flex-end; justify-content: center;
+  }
+  .gm-seal-overlay.show { display: flex; }
+  .gm-seal-modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 600px;
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .gm-seal-title { font-size: 15px; font-weight: 500; color: var(--accent); }
+  .gm-seal-desc { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+  .gm-seal-textarea {
+    padding: 12px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 14px; outline: none;
+    resize: none; font-family: inherit; line-height: 1.6; min-height: 120px;
+  }
+  .gm-seal-btns { display: flex; gap: 10px; }
+  .gm-seal-cancel {
+    padding: 11px 18px; background: var(--surface2);
+    border: none; border-radius: 12px;
+    color: var(--text-2); font-size: 14px; cursor: pointer;
+  }
+  .gm-seal-confirm {
+    flex: 1; padding: 11px; background: var(--accent);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+
   /* ── 回憶錄 ── */
   .gm-archive {
     display: flex; flex-direction: column; height: 100%;
@@ -267,7 +331,8 @@
     } catch (e) {}
 
     // 狀態
-    let currentView = 'home'; // home | archive | setup | game
+    let currentView = 'home';
+    let currentSessionId = null; // home | archive | setup | game
     let gameMessages = []; // {role, content}
     let gameSetting = '';
     let isSending = false;
@@ -298,12 +363,14 @@
             <div class="gm-home-subtitle">角色扮演，寫下時代與身份<br>然後，開始演。</div>
             <div class="gm-home-btns">
               <button class="gm-btn-primary" id="gmStartBtn">開始新劇本</button>
+              <button class="gm-btn-secondary" id="gmWorldsBtn">我的世界</button>
               <button class="gm-btn-secondary" id="gmArchiveBtn">回憶錄</button>
             </div>
           </div>
         </div>
       `;
       document.getElementById('gmStartBtn').onclick = renderSetup;
+      document.getElementById('gmWorldsBtn').onclick = renderWorlds;
       document.getElementById('gmArchiveBtn').onclick = renderArchive;
     }
 
@@ -398,11 +465,20 @@
     }
 
     // ── 遊戲中 ──
-    async function startGame() {
+    async function startGame(sessionId = null, existingMessages = null) {
       currentView = 'game';
-      gameMessages = [];
+      currentSessionId = sessionId;
+      gameMessages = existingMessages || [];
       renderGame();
-      // 送出開場設定，取得第一段回應
+      if (existingMessages && existingMessages.length > 0) {
+        // 繼續舊世界，重新渲染歷史
+        existingMessages.forEach(m => {
+          if (m.role === 'user') appendGameUser(m.content);
+          else appendGameAI(m.content);
+        });
+        return;
+      }
+      // 新遊戲，先建立 session 取得 id
       const loading = addGameLoading();
       try {
         const res = await fetch('/game/start', {
@@ -413,11 +489,73 @@
         const data = await res.json();
         loading.remove();
         if (data.reply) {
+          currentSessionId = data.session_id || null;
           gameMessages.push({ role: 'assistant', content: data.reply });
           appendGameAI(data.reply);
         }
       } catch (e) {
         loading.remove();
+      }
+    }
+
+    async function pauseGame() {
+      try {
+        await fetch('/game/pause', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ setting: gameSetting, messages: gameMessages, title: gameSetting.slice(0, 20), session_id: currentSessionId })
+        });
+      } catch (e) {}
+      renderHome();
+    }
+
+    async function renderWorlds() {
+      currentView = 'worlds';
+      el.innerHTML = `
+        <div class="gm-worlds">
+          <div class="gm-archive-header">
+            <button class="gm-back-btn" id="gmWorldsBack">‹</button>
+            <h1>我的世界</h1>
+          </div>
+          <div class="gm-archive-list" id="gmWorldsList" style="padding-top:12px;">
+            <div class="gm-archive-empty">載入中…</div>
+          </div>
+        </div>
+      `;
+      document.getElementById('gmWorldsBack').onclick = renderHome;
+      try {
+        const res = await fetch('/game/sessions?status=active');
+        const data = await res.json();
+        const list = document.getElementById('gmWorldsList');
+        if (!data.sessions || data.sessions.length === 0) {
+          list.innerHTML = '<div class="gm-archive-empty">還沒有進行中的世界</div>';
+          return;
+        }
+        list.innerHTML = '';
+        data.sessions.forEach(s => {
+          const statusLabel = s.status === 'playing' ? '進行中' : '暫停中';
+          const item = document.createElement('div');
+          item.className = 'gm-world-item';
+          item.innerHTML = `
+            <div class="gm-world-item-header">
+              <div class="gm-world-left">
+                <div class="gm-world-title">${escHtml(s.title || s.setting?.slice(0, 20) || '無題')}</div>
+                <div class="gm-world-meta">${s.updated_at ? new Date(s.updated_at).toLocaleDateString('zh-TW') : ''}</div>
+              </div>
+              <span class="gm-world-status ${s.status}">${statusLabel}</span>
+            </div>
+            <div class="gm-world-btns">
+              <button class="gm-world-continue" data-id="${s.id}">繼續</button>
+            </div>
+          `;
+          item.querySelector('.gm-world-continue').onclick = () => {
+            gameSetting = s.setting || '';
+            startGame(s.id, s.messages || []);
+          };
+          list.appendChild(item);
+        });
+      } catch (e) {
+        document.getElementById('gmWorldsList').innerHTML = '<div class="gm-archive-empty">載入失敗</div>';
       }
     }
 
@@ -427,7 +565,8 @@
           <div class="gm-game-header">
             <div class="gm-game-header-top">
               <span class="gm-game-title">✦ 進行中</span>
-              <button class="gm-end-btn" id="gmEndBtn">結束遊戲</button>
+              <button class="gm-pause-btn" id="gmPauseBtn">暫停</button>
+              <button class="gm-end-btn" id="gmEndBtn">封存</button>
             </div>
             <div class="gm-setting-preview">${escHtml(gameSetting)}</div>
           </div>
@@ -446,12 +585,24 @@
         </div>
         <div class="gm-end-modal-overlay" id="gmEndModal">
           <div class="gm-end-modal">
-            <div class="gm-end-modal-title">結束這個劇本</div>
-            <div class="gm-end-modal-hint">幫這個故事取個名字，系統會自動整理摘要存進回憶錄。</div>
+            <div class="gm-end-modal-title">封存這個劇本</div>
+            <div class="gm-end-modal-hint">幫這個故事取個名字，晏會先整理摘要讓你確認。</div>
             <input id="gmTitleInput" placeholder="劇本名稱…" maxlength="30">
             <div class="gm-end-modal-btns">
               <button class="gm-end-cancel" id="gmEndCancel">取消</button>
-              <button class="gm-end-confirm" id="gmEndConfirm">儲存並結束</button>
+              <button class="gm-end-confirm" id="gmEndConfirm">整理摘要</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="gm-seal-overlay" id="gmSealOverlay">
+          <div class="gm-seal-modal">
+            <div class="gm-seal-title">✦ 封存前確認</div>
+            <div class="gm-seal-desc">這是晏整理的劇本摘要，你可以直接編修。</div>
+            <textarea class="gm-seal-textarea" id="gmSealSummary"></textarea>
+            <div class="gm-seal-btns">
+              <button class="gm-seal-cancel" id="gmSealCancel">不封存了</button>
+              <button class="gm-seal-confirm" id="gmSealConfirm">✦ 封存進回憶錄</button>
             </div>
           </div>
         </div>
@@ -470,6 +621,7 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendGameMessage(); }
       });
       document.getElementById('gmInput').addEventListener('input', (e) => autoGrow(e.target));
+      document.getElementById('gmPauseBtn').onclick = () => pauseGame();
       document.getElementById('gmEndBtn').onclick = () => {
         document.getElementById('gmEndModal').classList.add('show');
         document.getElementById('gmTitleInput').focus();
@@ -477,7 +629,40 @@
       document.getElementById('gmEndCancel').onclick = () => {
         document.getElementById('gmEndModal').classList.remove('show');
       };
-      document.getElementById('gmEndConfirm').onclick = endGame;
+      document.getElementById('gmEndConfirm').onclick = async () => {
+        const titleInput = document.getElementById('gmTitleInput');
+        const title = titleInput ? titleInput.value.trim() : '';
+        if (!title) { if (titleInput) titleInput.focus(); return; }
+        const confirmBtn = document.getElementById('gmEndConfirm');
+        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '整理中…'; }
+        document.getElementById('gmEndModal').classList.remove('show');
+        try {
+          const res = await fetch('/game/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ setting: gameSetting, messages: gameMessages, title })
+          });
+          const data = await res.json();
+          if (data.summary) {
+            document.getElementById('gmSealSummary').value = data.summary;
+            document.getElementById('gmSealOverlay').classList.add('show');
+            document.getElementById('gmSealConfirm').onclick = async () => {
+              const summary = document.getElementById('gmSealSummary').value.trim();
+              await fetch('/game/seal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ setting: gameSetting, messages: gameMessages, title, summary, session_id: currentSessionId })
+              });
+              document.getElementById('gmSealOverlay').classList.remove('show');
+              renderHome();
+            };
+            document.getElementById('gmSealCancel').onclick = () => {
+              document.getElementById('gmSealOverlay').classList.remove('show');
+            };
+          }
+        } catch (e) {}
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '整理摘要'; }
+      };
     }
 
     function autoGrow(el) {
@@ -564,6 +749,13 @@
         if (data.reply) {
           gameMessages.push({ role: 'assistant', content: data.reply });
           appendGameAI(data.reply);
+          if (currentSessionId) {
+            fetch('/game/autosave', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: currentSessionId, messages: gameMessages })
+            }).catch(() => {});
+          }
         }
       } catch (e) {
         loading.remove();

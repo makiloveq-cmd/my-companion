@@ -925,6 +925,7 @@ def build_game_system_prompt(setting):
 
 @app.route("/game/start", methods=["POST"])
 def game_start():
+    import json
     data = request.json
     setting = data.get("setting", "")
     personas = get_personas()
@@ -934,7 +935,18 @@ def game_start():
         system = build_game_system_prompt(setting)
         messages = [{"role": "user", "content": f"（開幕）{setting}"}]
         reply = call_claude(system, messages, max_tokens=800)
-        return jsonify({"reply": reply, "name": name})
+        # 建立新 session，狀態為 playing
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("game_sessions").insert({
+            "setting": setting,
+            "title": setting[:20],
+            "status": "playing",
+            "messages": json.dumps([{"role": "assistant", "content": reply}]),
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        session_id = result.data[0]["id"] if result.data else None
+        return jsonify({"reply": reply, "name": name, "session_id": session_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1002,8 +1014,124 @@ def game_end():
 @app.route("/game/sessions", methods=["GET"])
 def game_sessions_get():
     try:
-        rows = supabase.table("game_sessions").select("*").order("id", desc=True).execute().data
+        status = request.args.get("status", "")
+        query = supabase.table("game_sessions").select("*").order("updated_at", desc=True)
+        if status == "active":
+            query = query.in_("status", ["playing", "paused"])
+        elif status == "archived":
+            query = query.eq("status", "archived")
+        rows = query.execute().data
         return jsonify({"sessions": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/pause", methods=["POST"])
+def game_pause():
+    """暫停遊戲——儲存對話歷史，狀態改為 paused"""
+    try:
+        import json
+        data = request.json
+        session_id = data.get("session_id")
+        messages = data.get("messages", [])
+        setting = data.get("setting", "")
+        title = data.get("title", "無題")
+        now = datetime.now(timezone.utc).isoformat()
+        if session_id:
+            supabase.table("game_sessions").update({
+                "status": "paused",
+                "messages": json.dumps(messages),
+                "updated_at": now
+            }).eq("id", session_id).execute()
+        else:
+            result = supabase.table("game_sessions").insert({
+                "setting": setting,
+                "title": title,
+                "status": "paused",
+                "messages": json.dumps(messages),
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            session_id = result.data[0]["id"] if result.data else None
+        return jsonify({"status": "ok", "session_id": session_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/autosave", methods=["POST"])
+def game_autosave():
+    """每次對話後自動儲存進度"""
+    try:
+        import json
+        data = request.json
+        session_id = data.get("session_id")
+        messages = data.get("messages", [])
+        if not session_id:
+            return jsonify({"status": "no_session"})
+        supabase.table("game_sessions").update({
+            "messages": json.dumps(messages),
+            "status": "playing",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/summarize", methods=["POST"])
+def game_summarize():
+    """生成摘要但不儲存，讓前端顯示確認視窗"""
+    try:
+        data = request.json
+        setting = data.get("setting", "")
+        messages = data.get("messages", [])
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        name = bot.get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+        context_lines = []
+        for m in messages:
+            speaker = you_name if m["role"] == "user" else name
+            context_lines.append(f"{speaker}：{m['content']}")
+        context_text = "\n".join(context_lines[-40:])
+        summary_prompt = (
+            f"以下是一段角色扮演劇本的對話記錄，背景設定是：{setting}\n\n"
+            f"請用第三人稱寫一段完整的劇本摘要，保留重要的場景、情感轉折、對話亮點，"
+            f"文字細膩有文學性，不超過400字。"
+        )
+        summary = call_claude(summary_prompt, [{"role": "user", "content": context_text}], max_tokens=600)
+        return jsonify({"summary": summary.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/seal", methods=["POST"])
+def game_seal():
+    """用戶確認摘要後正式封存"""
+    try:
+        import json
+        data = request.json
+        setting = data.get("setting", "")
+        messages = data.get("messages", [])
+        title = data.get("title", "無題")
+        summary = data.get("summary", "")
+        session_id = data.get("session_id")
+        now = datetime.now(timezone.utc).isoformat()
+        if session_id:
+            supabase.table("game_sessions").update({
+                "title": title,
+                "summary": summary,
+                "status": "archived",
+                "messages": json.dumps(messages),
+                "updated_at": now
+            }).eq("id", session_id).execute()
+        else:
+            supabase.table("game_sessions").insert({
+                "setting": setting,
+                "title": title,
+                "summary": summary,
+                "status": "archived",
+                "messages": json.dumps(messages),
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+        return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
