@@ -622,6 +622,7 @@
       document.getElementById('spSendBtn').disabled = true;
       input.value = '';
       input.style.height = 'auto';
+      localStorage.removeItem('rifugio_space_draft');
 
       const sentAt = new Date().toISOString();
       const imageUrl = pendingImageUrl;
@@ -749,6 +750,17 @@
         });
       } catch (e) {}
       closeSettings();
+    }
+
+    // 暫存空間輸入框
+    const spaceDraftKey = 'rifugio_space_draft';
+    const spInputEl = document.getElementById('spInput');
+    if (spInputEl) {
+      const saved = localStorage.getItem(spaceDraftKey);
+      if (saved) { spInputEl.value = saved; autoGrow(spInputEl); }
+      spInputEl.addEventListener('input', () => {
+        localStorage.setItem(spaceDraftKey, spInputEl.value);
+      });
     }
 
     // 綁定事件

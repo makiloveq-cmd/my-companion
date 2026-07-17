@@ -608,6 +608,17 @@
         </div>
       `;
 
+      // 暫存遊戲廳輸入框
+      const gameDraftKey = 'rifugio_game_draft';
+      const gmInputEl = document.getElementById('gmInput');
+      if (gmInputEl) {
+        const saved = localStorage.getItem(gameDraftKey);
+        if (saved) { gmInputEl.value = saved; autoGrow(gmInputEl); }
+        gmInputEl.addEventListener('input', () => {
+          localStorage.setItem(gameDraftKey, gmInputEl.value);
+        });
+      }
+
       document.getElementById('gmSendBtn').onclick = sendGameMessage;
       document.getElementById('gmNewlineBtn').onclick = () => {
         const ta = document.getElementById('gmInput');
@@ -732,6 +743,7 @@
       isSending = true;
       document.getElementById('gmSendBtn').disabled = true;
       input.value = '';
+      localStorage.removeItem('rifugio_game_draft');
       input.style.height = 'auto';
 
       gameMessages.push({ role: 'user', content: text });

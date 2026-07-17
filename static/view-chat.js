@@ -495,6 +495,7 @@
       if (!msg && !pendingImageUrl) return;
       input.value = '';
       input.style.height = 'auto';
+      localStorage.removeItem('rifugio_chat_draft');
       const imageUrl = pendingImageUrl;
       removeImage();
       const messageId = generateMessageId();
@@ -850,6 +851,17 @@
     await loadAvatars();
     await loadNames();
     await loadHistory();
+
+    // 暫存輸入框內容
+    const chatDraftKey = 'rifugio_chat_draft';
+    const chatInput = document.getElementById('chInput');
+    if (chatInput) {
+      const saved = localStorage.getItem(chatDraftKey);
+      if (saved) chatInput.value = saved;
+      chatInput.addEventListener('input', () => {
+        localStorage.setItem(chatDraftKey, chatInput.value);
+      });
+    }
 
     return function cleanup() {};
   }
