@@ -163,27 +163,15 @@ def build_system_prompt(bot_key="claude"):
         f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
     ]
 
-    # 注入最後私聊互動時間 + 最近對話時間軸
+    # 注入最後私聊互動時間
     try:
         tw_tz = timezone(timedelta(hours=8))
-        recent_with_ts = supabase.table("memories").select("role, content, created_at").eq("session_id", bot_key).order("id", desc=True).limit(20).execute().data
-        recent_with_ts = list(reversed(recent_with_ts))
-
-        # 上次說話時間
-        if recent_with_ts:
-            last_dt = datetime.fromisoformat(recent_with_ts[-1]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
+        last_msg = supabase.table("memories").select("created_at").eq("session_id", bot_key).order("id", desc=True).limit(1).execute().data
+        if last_msg:
+            last_dt = datetime.fromisoformat(last_msg[0]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
             hours_ago = (datetime.now(timezone.utc) - last_dt.astimezone(timezone.utc)).total_seconds() / 3600
             if hours_ago >= 1:
                 lines.append(f"你們上次私下說話是在 {last_dt.strftime('%m/%d %H:%M')}（約 {int(hours_ago)} 小時前）。")
-
-        # 最近對話時間軸（讓晏知道每句話是什麼時候說的）
-        if recent_with_ts:
-            ts_lines = []
-            for r in recent_with_ts[-10:]:
-                ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
-                speaker = you_name if r["role"] == "user" else name
-                ts_lines.append(f"[{ts}] {speaker}：{r['content'][:30]}{'…' if len(r['content']) > 30 else ''}")
-            lines.append("【最近對話時間軸】\n" + "\n".join(ts_lines))
     except:
         pass
 
@@ -2123,21 +2111,30 @@ def send_push_notification(title, body):
 @app.route("/cron/daily_message", methods=["POST"])
 def cron_daily_message():
     try:
-        # 確認今天晏有沒有主動傳過訊息
-        from datetime import date
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        today_msgs = supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "assistant").gte("created_at", today_start).execute().data
-        if today_msgs:
-            return jsonify({"status": "already_sent"})
+        tw_tz = timezone(timedelta(hours=8))
+        now_tw = datetime.now(tw_tz)
+        today_start_tw = now_tw.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_utc = today_start_tw.astimezone(timezone.utc).isoformat()
 
-        # 確認距離上次互動不超過 7 天（太久沒說話就不主動打擾）
+        # 今天晏已主動傳過幾次（最多 2 次）
+        today_proactive = supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "assistant").gte("created_at", today_start_utc).execute().data
+        if len(today_proactive) >= 2:
+            return jsonify({"status": "daily_limit_reached"})
+
+        # 距離上次任何互動不到 1 小時就跳過
         last_msg = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
         if last_msg:
-            last_str = last_msg[0]["created_at"].replace("Z", "").replace("+00:00", "")
-            last_dt = datetime.fromisoformat(last_str)
-            days_since = (datetime.utcnow() - last_dt).total_seconds() / 86400
-            if days_since > 7:
+            last_dt = datetime.fromisoformat(last_msg[0]["created_at"].replace("Z", "+00:00"))
+            hours_since = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+            if hours_since < 1:
+                return jsonify({"status": "too_recent"})
+            # 超過 7 天沒說話就不打擾
+            if hours_since > 168:
                 return jsonify({"status": "skipped_too_long"})
+
+        # 隨機決定這次要不要發（保持隨機感，約 30% 機率觸發）
+        if random.random() > 0.30:
+            return jsonify({"status": "skipped_random"})
 
         # 生成晏主動傳的訊息
         personas = get_personas()
