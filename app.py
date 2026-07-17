@@ -163,15 +163,27 @@ def build_system_prompt(bot_key="claude"):
         f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
     ]
 
-    # 注入最後私聊互動時間
+    # 注入最後私聊互動時間 + 最近對話時間軸
     try:
         tw_tz = timezone(timedelta(hours=8))
-        last_msg = supabase.table("memories").select("created_at").eq("session_id", bot_key).order("id", desc=True).limit(1).execute().data
-        if last_msg:
-            last_dt = datetime.fromisoformat(last_msg[0]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
+        recent_with_ts = supabase.table("memories").select("role, content, created_at").eq("session_id", bot_key).order("id", desc=True).limit(20).execute().data
+        recent_with_ts = list(reversed(recent_with_ts))
+
+        # 上次說話時間
+        if recent_with_ts:
+            last_dt = datetime.fromisoformat(recent_with_ts[-1]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
             hours_ago = (datetime.now(timezone.utc) - last_dt.astimezone(timezone.utc)).total_seconds() / 3600
             if hours_ago >= 1:
                 lines.append(f"你們上次私下說話是在 {last_dt.strftime('%m/%d %H:%M')}（約 {int(hours_ago)} 小時前）。")
+
+        # 最近對話時間軸（讓晏知道每句話是什麼時候說的）
+        if recent_with_ts:
+            ts_lines = []
+            for r in recent_with_ts[-10:]:
+                ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
+                speaker = you_name if r["role"] == "user" else name
+                ts_lines.append(f"[{ts}] {speaker}：{r['content'][:30]}{'…' if len(r['content']) > 30 else ''}")
+            lines.append("【最近對話時間軸】\n" + "\n".join(ts_lines))
     except:
         pass
 
