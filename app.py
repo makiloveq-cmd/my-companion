@@ -327,7 +327,7 @@ def maybe_space_summarize():
     ])
     summary_context = context
     summary_text = call_claude(
-        f"你是{name}。請把以下在共同空間發生的對話，整理成記憶摘要。只記錄這段對話裡新發生的事、場景變化、情感、然然說過的話、你們之間的默契或玩笑。用第一人稱（我）記錄，像寫給自己看的備忘錄，不超過 300 字。",
+        f"你是{name}。請把以下在共同空間發生的對話，整理成記憶摘要。只記錄這段對話裡新發生的事、場景變化、情感、{you_name}說過的話、你們之間的默契或玩笑。用{name}的第一人稱（我是{name}）記錄，像寫給自己看的備忘錄，不超過 300 字。",
         [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
         max_tokens=1500
     )
@@ -725,12 +725,21 @@ def space_send():
     data = request.json
     content = data.get("content", "")
     image_url = data.get("image_url")
+    recording = data.get("recording", False)
     supabase.table("space_messages").insert({
         "speaker": "user",
         "content": content,
         "message_type": "chat",
         "image_url": image_url
     }).execute()
+    # 記錄模式——存進 intimate_drafts
+    if recording and content:
+        try:
+            personas = get_personas()
+            you_name = personas.get("user", {}).get("name") or "然然"
+            supabase.table("intimate_drafts").insert({"content": f"{you_name}：{content}"}).execute()
+        except:
+            pass
     return jsonify({"status": "ok"})
 
 @app.route("/space/reply/claude", methods=["POST"])
@@ -781,6 +790,13 @@ def space_reply():
         }).execute()
         threading.Thread(target=maybe_space_summarize, daemon=True).start()
         threading.Thread(target=maybe_detect_intimate, args=(recent, reply), daemon=True).start()
+        # 記錄模式——晏的回覆也存進草稿
+        recording = request.json.get("recording", False) if request.json else False
+        if recording and reply:
+            try:
+                supabase.table("intimate_drafts").insert({"content": f"{name}：{reply}"}).execute()
+            except:
+                pass
         # 讓前端知道有草稿（偵測是背景執行，這裡先回傳目前狀態）
         try:
             has_draft = len(supabase.table("intimate_drafts").select("id").limit(1).execute().data) > 0

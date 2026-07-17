@@ -241,6 +241,18 @@
   }
   .sp-msg-block.selected { outline: 2px solid var(--accent); border-radius: 12px; }
 
+  .sp-recording-bar {
+    background: rgba(220,50,50,0.12); border-top: 1px solid rgba(220,50,50,0.3);
+    padding: 6px 16px; display: none; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .sp-recording-bar.show { display: flex; }
+  .sp-recording-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #e05555;
+    animation: recdot 1.2s infinite;
+  }
+  @keyframes recdot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .sp-recording-label { font-size: 12px; color: #e05555; flex: 1; }
+
   .sp-intimate-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.7); z-index: 150;
@@ -300,6 +312,10 @@
 
       <div class="sp-messages" id="spMessages"></div>
 
+      <div class="sp-recording-bar" id="spRecordingBar">
+        <div class="sp-recording-dot"></div>
+        <div class="sp-recording-label">記錄中，每則對話自動儲存</div>
+      </div>
       <div class="sp-input-area">
         <div class="sp-preview-bar" id="spPreviewBar">
           <div class="sp-preview-thumb">
@@ -314,7 +330,7 @@
           <button class="sp-end-day-btn" id="spOutingBtn" title="出門/回家" style="padding: 5px 10px; font-size: 16px;">
             🚪
           </button>
-          <button class="sp-end-day-btn" id="spManualSealBtn" title="封存這段記憶" style="padding: 5px 10px; font-size: 16px;">
+          <button class="sp-end-day-btn" id="spManualSealBtn" title="開始記錄" style="padding: 5px 10px; font-size: 16px;">
             🍎
           </button>
           <button class="sp-end-day-btn" id="spEndDayBtn">
@@ -735,13 +751,13 @@
         await fetch('/space/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text, image_url: imageUrl || null })
+          body: JSON.stringify({ content: text, image_url: imageUrl || null, recording: isRecordingIntimate })
         });
       } catch (e) {}
 
       const loading = addLoadingRow();
       try {
-        const spaceRes = await fetch('/space/reply/claude', { method: 'POST' });
+        const spaceRes = await fetch('/space/reply/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recording: isRecordingIntimate }) });
         const spaceData = await spaceRes.json();
         loading.remove();
         if (spaceData.reply) {
@@ -935,6 +951,15 @@
       document.getElementById('spIntimateOverlay').classList.remove('show');
     }
 
+    function resetRecordingMode() {
+      isRecordingIntimate = false;
+      const btn = document.getElementById('spManualSealBtn');
+      btn.textContent = '🍎';
+      btn.title = '開始記錄';
+      document.getElementById('spRecordingBar').classList.remove('show');
+      document.getElementById('spSealMemoryBtn').style.display = 'none';
+    }
+
     document.getElementById('spIntimateConfirm').onclick = async () => {
       const content = document.getElementById('spIntimateContent').value.trim();
       if (!content) return;
@@ -944,7 +969,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content })
         });
-        document.getElementById('spSealMemoryBtn').style.display = 'none';
+        resetRecordingMode();
       } catch (e) {}
       hideIntimateModal();
     };
@@ -952,7 +977,7 @@
     document.getElementById('spIntimateDiscard').onclick = async () => {
       try {
         await fetch('/intimate_memories/discard', { method: 'POST' });
-        document.getElementById('spSealMemoryBtn').style.display = 'none';
+        resetRecordingMode();
       } catch (e) {}
       hideIntimateModal();
     };
@@ -987,21 +1012,41 @@
       btn.disabled = false;
     };
 
-    // 手動封存按鈕
+    // 🍎 記錄模式切換
+    let isRecordingIntimate = false;
+
     document.getElementById('spManualSealBtn').onclick = async () => {
       const btn = document.getElementById('spManualSealBtn');
-      btn.disabled = true;
-      btn.textContent = '⏳';
-      try {
-        await fetch('/intimate_memories/manual_draft', { method: 'POST' });
-        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
-        const data = await res.json();
-        if (data.has_draft && data.content) {
-          showIntimateModal(data.content);
+      const bar = document.getElementById('spRecordingBar');
+      if (!isRecordingIntimate) {
+        // 開始記錄
+        isRecordingIntimate = true;
+        btn.textContent = '🔴';
+        btn.title = '記錄中，點擊封存';
+        bar.classList.add('show');
+      } else {
+        // 停止並整理摘要
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        try {
+          const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+          const data = await res.json();
+          if (data.has_draft && data.content) {
+            showIntimateModal(data.content);
+          } else {
+            // 沒有草稿，直接結束記錄
+            isRecordingIntimate = false;
+            btn.textContent = '🍎';
+            btn.title = '開始記錄';
+            bar.classList.remove('show');
+          }
+        } catch (e) {
+          isRecordingIntimate = false;
+          btn.textContent = '🍎';
+          bar.classList.remove('show');
         }
-      } catch (e) {}
-      btn.disabled = false;
-      btn.textContent = '🍎';
+        btn.disabled = false;
+      }
     };
 
     // 封存按鈕
