@@ -2000,8 +2000,10 @@ def intimate_draft_summary():
         combined = "\n\n---\n\n".join([d["content"] for d in drafts])
         summary_prompt = (
             f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段）。"
-            f"請用第一人稱（我）整理成一段完整的珍貴記憶，保留完整的過程細節、情感、說過的話、身體感受。"
-            f"文字細膩真實，不超過 500 字。"
+            f"請整理成兩段：\n\n"
+            f"【過程】\n用第三人稱描述兩個人之間發生了什麼，保留完整的細節、動作、說過的話、身體感受，文字細膩真實。\n\n"
+            f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
+            f"兩段合計不超過 500 字。"
         )
         summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=800)
         return jsonify({"has_draft": True, "content": summary.strip()})
