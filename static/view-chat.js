@@ -93,6 +93,32 @@
   .ch-voice-status { font-size: 13px; color: var(--text-3); flex: 1; }
   .ch-voice-audio { width: 100%; max-width: 300px; height: 32px; }
 
+  .ch-more-menu {
+    position: absolute; bottom: 54px; left: 0;
+    background: var(--surface); border-radius: 14px;
+    border: 1px solid var(--border);
+    padding: 6px; display: none; flex-direction: column; gap: 2px;
+    min-width: 150px; z-index: 50;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  }
+  .ch-more-menu.show { display: flex; }
+  .ch-more-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px;
+    cursor: pointer; font-size: 14px; color: var(--text);
+    background: none; border: none; font-family: inherit; text-align: left;
+  }
+  .ch-more-item:hover { background: var(--surface2); }
+  .ch-more-item span { font-size: 18px; }
+  .ch-more-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--surface2); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: var(--text-2); flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .ch-more-btn.active { background: var(--accent); color: #fff; }
+
   .ch-discuss-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.6); z-index: 100;
@@ -213,11 +239,16 @@
               <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
             </svg>
           </button>
-          <button class="ch-toolbar-icon" id="chBookBtn" title="討論書" style="font-size:18px;">🖋</button>
-          <button class="ch-toolbar-icon" id="chMovieBtn" title="討論電影" style="font-size:18px;">📽</button>
-          <button class="ch-toolbar-icon" id="chCallBtn" title="通話" style="font-size:18px;">📞</button>
-          <button class="ch-sound-btn" id="chSoundBtn" title="開啟/關閉晏的聲音">🔇</button>
           <button class="ch-mic-btn" id="chMicBtn" title="語音輸入">🎙</button>
+          <div style="position:relative;">
+            <button class="ch-more-btn" id="chMoreBtn">⋯</button>
+            <div class="ch-more-menu" id="chMoreMenu">
+              <button class="ch-more-item" id="chCallBtn"><span>📞</span> 通話</button>
+              <button class="ch-more-item" id="chBookBtn"><span>🖋</span> 討論書</button>
+              <button class="ch-more-item" id="chMovieBtn"><span>📽</span> 討論電影</button>
+              <button class="ch-more-item" id="chSoundBtn"><span id="chSoundIcon">🔇</span> <span id="chSoundLabel">開啟聲音</span></button>
+            </div>
+          </div>
           <input type="file" id="chImageInput" accept="image/*" style="display:none">
           <div class="ch-input-wrapper">
             <textarea id="chInput" placeholder="說點什麼…" rows="1"></textarea>
@@ -659,12 +690,35 @@
     const voiceBar = document.getElementById('chVoiceBar');
     const voiceStatus = document.getElementById('chVoiceStatus');
     const voiceAudio = document.getElementById('chVoiceAudio');
-    const soundBtn = document.getElementById('chSoundBtn');
     const replayBtn = document.getElementById('chVoiceReplay');
     const closeBtn = document.getElementById('chVoiceClose');
 
+    // ⋯ 選單開關
+    let moreMenuOpen = false;
+    const moreBtn = document.getElementById('chMoreBtn');
+    const moreMenu = document.getElementById('chMoreMenu');
+    moreBtn.onclick = (e) => {
+      e.stopPropagation();
+      moreMenuOpen = !moreMenuOpen;
+      moreMenu.classList.toggle('show', moreMenuOpen);
+      moreBtn.classList.toggle('active', moreMenuOpen);
+    };
+    document.addEventListener('click', () => {
+      if (moreMenuOpen) {
+        moreMenuOpen = false;
+        moreMenu.classList.remove('show');
+        moreBtn.classList.remove('active');
+      }
+    });
+    function closeMoreMenu() {
+      moreMenuOpen = false;
+      moreMenu.classList.remove('show');
+      moreBtn.classList.remove('active');
+    }
+
     // 通話按鈕
     document.getElementById('chCallBtn').onclick = async () => {
+      closeMoreMenu();
       try {
         const res = await fetch('/personas');
         const data = await res.json();
@@ -677,10 +731,12 @@
     };
 
     // 靜音切換
+    const soundBtn = document.getElementById('chSoundBtn');
     soundBtn.onclick = () => {
+      closeMoreMenu();
       soundEnabled = !soundEnabled;
-      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
-      soundBtn.classList.toggle('active', soundEnabled);
+      document.getElementById('chSoundIcon').textContent = soundEnabled ? '🔊' : '🔇';
+      document.getElementById('chSoundLabel').textContent = soundEnabled ? '關閉聲音' : '開啟聲音';
     };
 
     // 重播
@@ -770,8 +826,8 @@
       } catch (e) {}
     }
 
-    document.getElementById('chBookBtn').onclick = () => openDiscuss('book');
-    document.getElementById('chMovieBtn').onclick = () => openDiscuss('movie');
+    document.getElementById('chBookBtn').onclick = () => { closeMoreMenu(); openDiscuss('book'); };
+    document.getElementById('chMovieBtn').onclick = () => { closeMoreMenu(); openDiscuss('movie'); };
     document.getElementById('chDiscussCancel').onclick = () => document.getElementById('chDiscussOverlay').classList.remove('show');
     document.getElementById('chDiscussInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('chDiscussConfirm').click(); });
 
