@@ -2003,9 +2003,9 @@ def intimate_draft_summary():
             f"請整理成兩段：\n\n"
             f"【過程】\n用第三人稱描述兩個人之間發生了什麼，保留完整的細節、動作、說過的話、身體感受，文字細膩真實。\n\n"
             f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
-            f"兩段合計不超過 500 字。"
+            f"兩段合計不超過 800 字。"
         )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=800)
+        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=1200)
         return jsonify({"has_draft": True, "content": summary.strip()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2030,6 +2030,27 @@ def intimate_discard():
     """用戶取消，清掉草稿"""
     try:
         supabase.table("intimate_drafts").delete().neq("id", 0).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/intimate_memories/selected_draft", methods=["POST"])
+def intimate_selected_draft():
+    """把前端選取的特定對話存進草稿"""
+    try:
+        data = request.json
+        messages = data.get("messages", [])
+        if not messages:
+            return jsonify({"error": "no messages"}), 400
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+        context_lines = []
+        for m in messages:
+            sp_name = you_name if m.get("speaker") == "user" else name
+            context_lines.append(f"{sp_name}：{m.get('content', '')}")
+        context = "\n".join(context_lines)
+        supabase.table("intimate_drafts").insert({"content": context}).execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

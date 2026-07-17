@@ -220,6 +220,27 @@
     min-height: 16px; padding: 0 2px;
   }
 
+  .sp-select-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: var(--accent); padding: 12px 20px;
+    display: none; align-items: center; justify-content: space-between;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .sp-select-bar.show { display: flex; }
+  .sp-select-count { font-size: 14px; color: #fff; }
+  .sp-select-btns { display: flex; gap: 10px; }
+  .sp-select-cancel {
+    padding: 6px 14px; background: rgba(255,255,255,0.2);
+    border: none; border-radius: 20px; color: #fff;
+    font-size: 13px; cursor: pointer;
+  }
+  .sp-select-confirm {
+    padding: 6px 14px; background: #fff;
+    border: none; border-radius: 20px; color: var(--accent);
+    font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .sp-msg-block.selected { outline: 2px solid var(--accent); border-radius: 12px; }
+
   .sp-intimate-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.7); z-index: 150;
@@ -380,6 +401,14 @@
         </div>
       </div>
 
+      <div class="sp-select-bar" id="spSelectBar">
+        <span class="sp-select-count" id="spSelectCount">已選 0 則</span>
+        <div class="sp-select-btns">
+          <button class="sp-select-cancel" id="spSelectCancel">取消</button>
+          <button class="sp-select-confirm" id="spSelectConfirm">封存選取</button>
+        </div>
+      </div>
+
       <div class="sp-intimate-overlay" id="spIntimateOverlay">
         <div class="sp-intimate-modal">
           <div class="sp-intimate-title">✦ 晏想記住這個瞬間</div>
@@ -476,6 +505,77 @@
       if (m) m.scrollTop = m.scrollHeight;
     }
 
+    // ── 長按選取 ──
+    let selectMode = false;
+    let selectedMessages = [];
+
+    function enterSelectMode() {
+      selectMode = true;
+      document.getElementById('spSelectBar').classList.add('show');
+    }
+
+    function exitSelectMode() {
+      selectMode = false;
+      selectedMessages = [];
+      document.getElementById('spSelectBar').classList.remove('show');
+      document.getElementById('spSelectCount').textContent = '已選 0 則';
+      document.querySelectorAll('[data-selected]').forEach(el => {
+        el.style.outline = '';
+        el.removeAttribute('data-selected');
+      });
+    }
+
+    function toggleSelectMessage(wrap, msgData) {
+      if (wrap.dataset.selected) {
+        delete wrap.dataset.selected;
+        wrap.style.outline = '';
+        selectedMessages = selectedMessages.filter(m => m !== msgData);
+      } else {
+        wrap.dataset.selected = '1';
+        wrap.style.outline = '2px solid var(--accent)';
+        wrap.style.borderRadius = '12px';
+        selectedMessages.push(msgData);
+      }
+      document.getElementById('spSelectCount').textContent = `已選 ${selectedMessages.length} 則`;
+    }
+
+    function addLongPress(wrap, msgData) {
+      let timer = null;
+      wrap.addEventListener('pointerdown', () => {
+        timer = setTimeout(() => {
+          if (!selectMode) enterSelectMode();
+          toggleSelectMessage(wrap, msgData);
+        }, 500);
+      });
+      wrap.addEventListener('pointerup', () => clearTimeout(timer));
+      wrap.addEventListener('pointercancel', () => clearTimeout(timer));
+      wrap.addEventListener('click', () => {
+        if (selectMode) toggleSelectMessage(wrap, msgData);
+      });
+    }
+
+    document.getElementById('spSelectCancel').onclick = exitSelectMode;
+
+    document.getElementById('spSelectConfirm').onclick = async () => {
+      if (selectedMessages.length === 0) return;
+      const btn = document.getElementById('spSelectConfirm');
+      btn.textContent = '整理中…';
+      btn.disabled = true;
+      try {
+        await fetch('/intimate_memories/selected_draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: selectedMessages })
+        });
+        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        const data = await res.json();
+        if (data.has_draft && data.content) showIntimateModal(data.content);
+      } catch (e) {}
+      btn.textContent = '封存選取';
+      btn.disabled = false;
+      exitSelectMode();
+    };
+
     function renderUser(content, createdAt, imageUrl) {
       const wrap = document.createElement('div');
       wrap.className = 'sp-entry-user';
@@ -487,6 +587,7 @@
       if (imageUrl) {
         wrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
       }
+      addLongPress(wrap, { speaker: 'user', content: content || '' });
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
     }
@@ -504,6 +605,7 @@
       `;
       wrap.appendChild(av);
       wrap.appendChild(contentWrap);
+      addLongPress(wrap, { speaker: speaker, content: content || '' });
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
     }
