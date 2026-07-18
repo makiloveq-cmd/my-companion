@@ -273,6 +273,16 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 關鍵字觸發注入朋友記憶
+    try:
+        recent_msgs_2 = load_memory(bot_key)
+        last_user_msg_2 = next((m["content"] for m in reversed(recent_msgs_2) if m["role"] == "user"), "")
+        friend_context = get_friend_memories_for_prompt(last_user_msg_2)
+        if friend_context:
+            lines.append(f"【朋友資訊】然然提到了你認識的人：\n{friend_context}")
+    except:
+        pass
+
     lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
@@ -687,6 +697,16 @@ def build_space_system_prompt():
         intimate_context = get_intimate_memories_for_prompt(last_user_space)
         if intimate_context:
             lines.append(f"【珍貴記憶】以下是你們曾經共同經歷的親密時刻，她提到相關的事時你會自然想起這些：\n{intimate_context}")
+    except:
+        pass
+
+    # 關鍵字觸發注入朋友記憶
+    try:
+        last_space2 = supabase.table("space_messages").select("content, speaker").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+        last_user_space2 = next((m["content"] for m in last_space2 if m["speaker"] == "user"), "")
+        friend_context = get_friend_memories_for_prompt(last_user_space2)
+        if friend_context:
+            lines.append(f"【朋友資訊】然然提到了你認識的人：\n{friend_context}")
     except:
         pass
 
@@ -1981,6 +2001,32 @@ def maybe_detect_intimate(recent_messages, last_reply):
     except Exception as e:
         print(f"[intimate detect error] {e}")
 
+def get_friend_memories_for_prompt(user_message):
+    """根據關鍵字注入朋友記憶"""
+    try:
+        rows = supabase.table("guest_memories").select("guest_name, content, keywords").eq("status", "confirmed").execute().data
+        if not rows:
+            return None
+        matched = {}
+        for r in rows:
+            keywords_raw = r.get("keywords") or ""
+            if not keywords_raw:
+                continue
+            keywords = [k.strip() for k in keywords_raw.replace("、", ",").replace("，", ",").split(",") if k.strip()]
+            if any(kw in user_message for kw in keywords):
+                name = r["guest_name"]
+                if name not in matched:
+                    matched[name] = []
+                matched[name].append(r["content"])
+        if not matched:
+            return None
+        parts = []
+        for name, mems in matched.items():
+            parts.append(f"【{name}】\n" + "\n".join(mems[:3]))
+        return "\n\n".join(parts)
+    except:
+        return None
+
 def get_intimate_memories_for_prompt(user_message):
     """根據每筆記憶的關鍵字判斷是否注入"""
     try:
@@ -2249,6 +2295,82 @@ def collection_movies_delete(movie_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 朋友關係網 =====
+
+@app.route("/friends", methods=["GET"])
+def friends_get():
+    """取得所有朋友及其記憶"""
+    try:
+        rows = supabase.table("guest_memories").select("*").order("guest_name").order("id").execute().data
+        friends = {}
+        for r in rows:
+            name = r["guest_name"]
+            if name not in friends:
+                friends[name] = {"name": name, "keywords": r.get("keywords", ""), "memories": []}
+            friends[name]["memories"].append({
+                "id": r["id"], "content": r["content"],
+                "status": r.get("status", "confirmed"),
+                "source": r.get("source", ""),
+                "created_at": r.get("created_at", "")
+            })
+        return jsonify({"friends": list(friends.values())})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/<friend_name>", methods=["PUT"])
+def friend_update(friend_name):
+    """更新朋友的關鍵字"""
+    try:
+        data = request.json
+        keywords = data.get("keywords", "")
+        supabase.table("guest_memories").update({"keywords": keywords}).eq("guest_name", friend_name).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/<friend_name>", methods=["DELETE"])
+def friend_delete(friend_name):
+    """刪除朋友的所有記憶"""
+    try:
+        supabase.table("guest_memories").delete().eq("guest_name", friend_name).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/memories", methods=["POST"])
+def friend_memory_add():
+    """新增朋友記憶"""
+    try:
+        data = request.json
+        supabase.table("guest_memories").insert({
+            "guest_name": data.get("guest_name"),
+            "content": data.get("content"),
+            "keywords": data.get("keywords", ""),
+            "status": data.get("status", "confirmed"),
+            "source": data.get("source", "手動新增")
+        }).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/memories/<int:memory_id>", methods=["DELETE"])
+def friend_memory_delete(memory_id):
+    """刪除單筆記憶"""
+    try:
+        supabase.table("guest_memories").delete().eq("id", memory_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/memories/<int:memory_id>/confirm", methods=["POST"])
+def friend_memory_confirm(memory_id):
+    """確認待確認的記憶"""
+    try:
+        supabase.table("guest_memories").update({"status": "confirmed"}).eq("id", memory_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 訪客系統 =====
 
 import secrets
@@ -2475,14 +2597,31 @@ def guest_end(token):
             "summary": summary
         }).eq("token", token).execute()
 
-        # 存進 guest_memories
+        # 存進 guest_memories（confirmed 是來訪記錄，pending 是 AI 觀察待確認）
         memory_text = (
             f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}] {guest_name}來訪。{summary[:150]}"
         )
         supabase.table("guest_memories").insert({
             "guest_name": guest_name,
-            "content": memory_text
+            "content": memory_text,
+            "status": "confirmed",
+            "source": "訪客來訪"
         }).execute()
+
+        # AI 對這位朋友的觀察——存成 pending 等你確認
+        obs_prompt = (
+            f"根據這次與{guest_name}的對話，用一句話說出你對她最重要的觀察或印象（20字以內）。"
+            f"只說那一句話，不要其他文字。"
+        )
+        observation = call_claude(obs_prompt, [{"role": "user", "content": summary}], max_tokens=50)
+        observation = observation.strip()
+        if observation:
+            supabase.table("guest_memories").insert({
+                "guest_name": guest_name,
+                "content": observation,
+                "status": "pending",
+                "source": f"訪客來訪後 AI 觀察（{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}）"
+            }).execute()
 
         return jsonify({"status": "ok", "summary": summary})
     except Exception as e:

@@ -79,6 +79,7 @@
             <input class="gst-input" id="gstPassword" placeholder="留空則不需密碼" type="password">
           </div>
           <button class="gst-create-btn" id="gstCreateBtn">產生連結</button>
+          <button class="gst-btn" id="gstFriendsBtn" style="margin-top:4px;">👥 管理朋友記憶庫</button>
           <div id="gstResult" style="display:none;" class="gst-result">
             <div class="gst-result-label">連結已產生，複製給你的朋友：</div>
             <div class="gst-result-url" id="gstResultUrl"></div>
@@ -163,6 +164,10 @@
         list.innerHTML = '<div class="gst-empty">載入失敗</div>';
       }
     }
+
+    document.getElementById('gstFriendsBtn').onclick = () => {
+      if (window.RifugioRouter) RifugioRouter.navigate('friends');
+    };
 
     document.getElementById('gstCreateBtn').onclick = async () => {
       const name = document.getElementById('gstGuestName').value.trim();
