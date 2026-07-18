@@ -810,6 +810,9 @@ def space_reply():
         }).execute()
         threading.Thread(target=maybe_space_summarize, daemon=True).start()
         threading.Thread(target=maybe_detect_intimate, args=(recent, reply), daemon=True).start()
+        last_user_content = next((m["content"] for m in reversed(recent) if m["speaker"] == "user"), "")
+        if last_user_content:
+            threading.Thread(target=maybe_detect_friend_info, args=(last_user_content, reply), daemon=True).start()
         # 記錄模式——晏的回覆也存進草稿
         recording = request.json.get("recording", False) if request.json else False
         if recording and reply:
@@ -1305,6 +1308,8 @@ def chat_claude():
             if depth in ("deep", "vulnerable"):
                 apply_trust_bonus(depth)
         threading.Thread(target=bg_trust, daemon=True).start()
+        # 背景偵測朋友新資訊
+        threading.Thread(target=maybe_detect_friend_info, args=(user_message, reply), daemon=True).start()
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1969,6 +1974,49 @@ def relationship_quote():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+def maybe_detect_friend_info(user_message, ai_reply):
+    """背景偵測對話裡有沒有關於朋友的新資訊，有的話存成 pending"""
+    try:
+        friend_rows = supabase.table("guest_memories").select("guest_name, keywords").eq("status", "confirmed").execute().data
+        if not friend_rows:
+            return
+        # 找出對話裡提到的朋友
+        mentioned = set()
+        seen_names = set()
+        for r in friend_rows:
+            name = r["guest_name"]
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+            keywords_raw = r.get("keywords") or name
+            keywords = [k.strip() for k in keywords_raw.replace("、", ",").replace("，", ",").split(",") if k.strip()]
+            if any(kw in user_message for kw in keywords):
+                mentioned.add(name)
+
+        if not mentioned:
+            return
+
+        for friend_name in mentioned:
+            detect_prompt = (
+                f"以下是一段對話，其中提到了一個叫{friend_name}的人。\n"
+                f"用戶說：{user_message}\n"
+                f"請判斷這段話有沒有包含關於{friend_name}的新資訊或事實（不是感受，是事實）。\n"
+                f"如果有，用一句話（20字以內）說出那個新資訊。\n"
+                f"如果沒有新資訊，只回傳：無\n"
+                f"只回傳那一句話或「無」，不要其他文字。"
+            )
+            result = call_claude(detect_prompt, [{"role": "user", "content": user_message}], max_tokens=50)
+            result = result.strip()
+            if result and result != "無" and len(result) > 2:
+                supabase.table("guest_memories").insert({
+                    "guest_name": friend_name,
+                    "content": result,
+                    "status": "pending",
+                    "source": "對話偵測"
+                }).execute()
+    except Exception as e:
+        print(f"[friend detect error] {e}")
 
 # ===== 珍貴記憶 =====
 

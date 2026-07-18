@@ -64,6 +64,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 </div>
 <div class="messages" id="msgs" style="display:none;"></div>
 <div class="input-area" id="inputArea" style="display:none;">
+  <button class="send-btn" id="newlineBtn" style="background:var(--surface);color:var(--text-2);font-size:13px;" title="換行">↵</button>
   <textarea class="input-box" id="inputBox" placeholder="說點什麼…" rows="1"></textarea>
   <button class="send-btn" id="sendBtn">›</button>
 </div>
@@ -219,6 +220,15 @@ document.getElementById('pwBtn').onclick = () => {
 document.getElementById('pwInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('pwBtn').click();
 });
+document.getElementById('newlineBtn').onclick = () => {
+  const input = document.getElementById('inputBox');
+  const pos = input.selectionStart;
+  input.value = input.value.slice(0, pos) + '\n' + input.value.slice(pos);
+  input.selectionStart = input.selectionEnd = pos + 1;
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  input.focus();
+};
 document.getElementById('sendBtn').onclick = send;
 document.getElementById('inputBox').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
