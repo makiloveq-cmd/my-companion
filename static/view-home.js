@@ -14,17 +14,21 @@
   .hm-quote-card { background: var(--surface); border-radius: 16px; padding: 24px; width: 100%; max-width: 340px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
   .hm-quote-text { font-size: 14px; line-height: 1.8; color: var(--text-2); font-style: italic; text-align: center; }
   .hm-quote-author { font-size: 12px; color: var(--accent); text-align: center; margin-top: 12px; letter-spacing: 1px; }
-  .hm-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 340px; }
+  .hm-cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 8px; width: 100%; max-width: 340px; }
   .hm-card {
-    background: var(--surface); border-radius: 16px; padding: 20px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06); cursor: pointer;
-    transition: transform 0.15s; border: none; text-decoration: none; color: inherit;
-    display: flex; flex-direction: column; gap: 8px; font-family: inherit; text-align: left;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; background: none; border: none; padding: 0;
+    font-family: inherit; transition: opacity 0.15s;
   }
-  .hm-card:active { transform: scale(0.97); }
-  .hm-card-icon { font-size: 22px; }
-  .hm-card-title { font-size: 13px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
-  .hm-card-sub { font-size: 11px; color: var(--text-3); }
+  .hm-card:active { opacity: 0.7; }
+  .hm-card-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .hm-card-title { font-size: 11px; color: var(--text-2); text-align: center; line-height: 1.3; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .hm-card-sub { display: none; }
   `;
 
   function ensureStyle() {
@@ -65,6 +69,11 @@
             <div class="hm-card-icon">🗝</div>
             <div class="hm-card-title">收藏庫</div>
             <div class="hm-card-sub">書影珍藏</div>
+          </button>
+          <button class="hm-card" data-route="guest">
+            <div class="hm-card-icon">🚪</div>
+            <div class="hm-card-title">訪客</div>
+            <div class="hm-card-sub">會客廳</div>
           </button>
           <button class="hm-card" data-route="usage">
             <div class="hm-card-icon">⚡</div>
