@@ -74,6 +74,10 @@
               <option value="100">100 則</option>
             </select>
           </div>
+          <div>
+            <div class="gst-label" style="margin-bottom:6px;">密碼保護（可留空）</div>
+            <input class="gst-input" id="gstPassword" placeholder="留空則不需密碼" type="password">
+          </div>
           <button class="gst-create-btn" id="gstCreateBtn">產生連結</button>
           <div id="gstResult" style="display:none;" class="gst-result">
             <div class="gst-result-label">連結已產生，複製給你的朋友：</div>
@@ -101,12 +105,13 @@
           const card = document.createElement('div');
           card.className = 'gst-card';
           const statusLabel = s.status === 'active' ? '進行中' : '已結束';
+          const hasPw = s.has_password ? ' 🔒' : '';
           const statusClass = s.status === 'active' ? 'active' : 'ended';
           const url = `${location.origin}/visit/${s.token}`;
           card.innerHTML = `
             <div class="gst-card-header">
               <div class="gst-card-left">
-                <div class="gst-card-name">${s.guest_name || '訪客'}</div>
+                <div class="gst-card-name">${s.guest_name || '訪客'}${hasPw}</div>
                 <div class="gst-card-meta">${formatDate(s.created_at)} ・ ${s.message_count || 0} 則訊息</div>
               </div>
               <span class="gst-badge ${statusClass}">${statusLabel}</span>
@@ -170,7 +175,7 @@
         const res = await fetch('/guest/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ guest_name: name, ttl_hours: ttl, max_messages: max })
+          body: JSON.stringify({ guest_name: name, ttl_hours: ttl, max_messages: max, password: document.getElementById('gstPassword').value.trim() })
         });
         const data = await res.json();
         if (data.url) {

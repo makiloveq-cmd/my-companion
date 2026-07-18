@@ -2265,6 +2265,7 @@ def guest_create():
         token = secrets.token_hex(32)
         session_id = str(uuid.uuid4())
         expires_at = (datetime.now(timezone.utc) + timedelta(hours=ttl_hours)).isoformat()
+        password = data.get("password", "").strip()
         supabase.table("guest_sessions").insert({
             "id": session_id,
             "token": token,
@@ -2273,7 +2274,8 @@ def guest_create():
             "messages": "[]",
             "expires_at": expires_at,
             "message_count": 0,
-            "max_messages": max_messages
+            "max_messages": max_messages,
+            "password": password if password else None
         }).execute()
         base_url = request.host_url.rstrip("/")
         return jsonify({"status": "ok", "token": token, "url": f"{base_url}/visit/{token}", "expires_at": expires_at})
@@ -2333,6 +2335,13 @@ def guest_chat(token):
         if not message:
             return jsonify({"error": "empty message"}), 400
 
+        # 密碼驗證
+        session_password = session.get("password")
+        if session_password:
+            provided = data.get("password", "")
+            if provided != session_password:
+                return jsonify({"error": "wrong password"}), 403
+
         guest_name = session.get("guest_name", "訪客")
         personas = get_personas()
         bot = personas.get("claude", {})
@@ -2342,10 +2351,12 @@ def guest_chat(token):
         persona = bot.get("persona") or ""
 
         # 讀取對這位訪客的記憶
-        memory_rows = supabase.table("guest_memories").select("content").eq("guest_name", guest_name).order("id", desc=True).limit(3).execute().data
+        memory_rows = supabase.table("guest_memories").select("content, keywords").eq("guest_name", guest_name).order("id", desc=True).limit(5).execute().data
         memory_context = ""
         if memory_rows:
-            memory_context = f"\n【你對{guest_name}的印象】\n" + "\n".join([m["content"] for m in memory_rows])
+            mem_texts = [m["content"] for m in memory_rows if m.get("content")]
+            if mem_texts:
+                memory_context = f"\n【你對{guest_name}的了解】\n" + "\n".join(mem_texts)
 
         system = (
             f"你是{name}，{you_name}的伴侶。現在{guest_name}透過訪客連結來找你聊天。"
@@ -2376,6 +2387,47 @@ def guest_chat(token):
         }).eq("token", token).execute()
 
         return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/<token>/verify", methods=["POST"])
+def guest_verify(token):
+    """驗證訪客密碼"""
+    try:
+        rows = supabase.table("guest_sessions").select("password, status, expires_at").eq("token", token).execute().data
+        if not rows:
+            return jsonify({"error": "invalid token"}), 403
+        session = rows[0]
+        if session["status"] != "active":
+            return jsonify({"error": "session closed"}), 403
+        session_password = session.get("password")
+        if not session_password:
+            return jsonify({"ok": True})  # 沒設密碼直接通過
+        provided = (request.json or {}).get("password", "")
+        if provided == session_password:
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "wrong password"}), 403
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/<token>/history", methods=["GET"])
+def guest_history(token):
+    """取得訪客對話歷史"""
+    try:
+        import json as json_lib
+        rows = supabase.table("guest_sessions").select("messages, guest_name").eq("token", token).execute().data
+        if not rows:
+            return jsonify({"error": "invalid token"}), 403
+        session = rows[0]
+        messages_raw = session.get("messages", "[]")
+        if isinstance(messages_raw, str):
+            try:
+                messages = json_lib.loads(messages_raw)
+            except:
+                messages = []
+        else:
+            messages = messages_raw if isinstance(messages_raw, list) else []
+        return jsonify({"messages": messages, "guest_name": session.get("guest_name", "訪客")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -2440,7 +2492,10 @@ def guest_end(token):
 def guest_sessions_list():
     """取得所有訪客會話（管理用）"""
     try:
-        rows = supabase.table("guest_sessions").select("id, token, guest_name, status, created_at, expires_at, message_count, summary").order("created_at", desc=True).execute().data
+        rows = supabase.table("guest_sessions").select("id, token, guest_name, status, created_at, expires_at, message_count, summary, password").order("created_at", desc=True).execute().data
+        for r in rows:
+            r["has_password"] = bool(r.get("password"))
+            r.pop("password", None)
         return jsonify({"sessions": rows})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

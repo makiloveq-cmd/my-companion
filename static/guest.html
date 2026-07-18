@@ -7,11 +7,7 @@
 <title>Rifugio — 訪客空間</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg: #0f1117; --surface: #1a1d27; --surface2: #222535;
-  --border: rgba(255,255,255,0.08); --text: #e8e6e0;
-  --text-2: #a09890; --text-3: #666; --accent: #3a5a8a;
-}
+:root { --bg: #0f1117; --surface: #1a1d27; --surface2: #222535; --border: rgba(255,255,255,0.08); --text: #e8e6e0; --text-2: #a09890; --text-3: #666; --accent: #3a5a8a; }
 body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; height: 100dvh; display: flex; flex-direction: column; }
 .header { padding: max(44px, env(safe-area-inset-top)) 20px 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .header-name { font-size: 17px; font-weight: 500; }
@@ -32,15 +28,42 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .dot-anim span:nth-child(2) { animation-delay: 0.2s; }
 .dot-anim span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
+
+/* 密碼畫面 */
+.pw-screen {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px; padding: 2rem;
+}
+.pw-title { font-size: 20px; color: var(--text); }
+.pw-sub { font-size: 14px; color: var(--text-3); }
+.pw-input {
+  width: 100%; max-width: 300px; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; color: var(--text); font-size: 16px;
+  outline: none; font-family: inherit; text-align: center; letter-spacing: 2px;
+}
+.pw-btn {
+  width: 100%; max-width: 300px; padding: 12px;
+  background: var(--accent); border: none; border-radius: 12px;
+  color: #fff; font-size: 16px; cursor: pointer; font-family: inherit;
+}
+.pw-error { font-size: 13px; color: #e06060; }
 </style>
 </head>
 <body>
-<div class="header">
+<div class="header" style="display:none;" id="chatHeader">
   <div class="header-name" id="hdrName">載入中…</div>
   <div class="header-sub" id="hdrSub"></div>
 </div>
-<div class="messages" id="msgs"></div>
-<div class="input-area" id="inputArea">
+<div id="pwScreen" class="pw-screen">
+  <div class="pw-title">Rifugio</div>
+  <div class="pw-sub">請輸入密碼進入訪客空間</div>
+  <input class="pw-input" id="pwInput" type="password" placeholder="••••••">
+  <div class="pw-error" id="pwError" style="display:none;">密碼錯誤，請重試</div>
+  <button class="pw-btn" id="pwBtn">進入</button>
+</div>
+<div class="messages" id="msgs" style="display:none;"></div>
+<div class="input-area" id="inputArea" style="display:none;">
   <textarea class="input-box" id="inputBox" placeholder="說點什麼…" rows="1"></textarea>
   <button class="send-btn" id="sendBtn">›</button>
 </div>
@@ -49,20 +72,80 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 const token = location.pathname.split('/visit/')[1];
 let ended = false;
 let botName = '晏';
+let sessionPassword = '';
 
-async function init() {
+async function verifyAndEnter(pw) {
+  try {
+    const res = await fetch(`/guest/${token}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      sessionPassword = pw;
+      document.getElementById('pwScreen').style.display = 'none';
+      document.getElementById('chatHeader').style.display = 'block';
+      document.getElementById('msgs').style.display = 'flex';
+      document.getElementById('inputArea').style.display = 'flex';
+      await initChat();
+    } else {
+      document.getElementById('pwError').style.display = 'block';
+    }
+  } catch (e) {
+    document.getElementById('pwError').style.display = 'block';
+  }
+}
+
+async function checkPassword() {
   try {
     const res = await fetch(`/guest/${token}/info`);
     const data = await res.json();
     if (data.error || data.status !== 'active') {
-      showEnded('這個連結已無效或已結束。');
+      showDirectError('這個連結已無效或已結束。');
       return;
     }
+    botName = '晏';
     document.getElementById('hdrName').textContent = botName;
     document.getElementById('hdrSub').textContent = `訪客：${data.guest_name}`;
-    addMsg('ai', `你好，我是${botName}。很高興認識你。`);
+
+    // 先試試沒有密碼能不能進
+    const verRes = await fetch(`/guest/${token}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: '' })
+    });
+    const verData = await verRes.json();
+    if (verData.ok) {
+      // 沒有設密碼，直接進入
+      document.getElementById('pwScreen').style.display = 'none';
+      document.getElementById('chatHeader').style.display = 'block';
+      document.getElementById('msgs').style.display = 'flex';
+      document.getElementById('inputArea').style.display = 'flex';
+      await initChat();
+    }
+    // 有密碼就停在密碼畫面
   } catch (e) {
-    showEnded('載入失敗，請重試。');
+    showDirectError('載入失敗，請重試。');
+  }
+}
+
+function showDirectError(msg) {
+  document.getElementById('pwScreen').innerHTML = `<div style="color:var(--text-3);font-size:14px;text-align:center;">${msg}</div>`;
+}
+
+async function initChat() {
+  // 載入歷史記錄
+  try {
+    const res = await fetch(`/guest/${token}/history`);
+    const data = await res.json();
+    if (data.messages && data.messages.length > 0) {
+      data.messages.forEach(m => addMsg(m.role === 'user' ? 'user' : 'ai', m.content));
+    } else {
+      addMsg('ai', `你好，我是${botName}。很高興認識你。`);
+    }
+  } catch (e) {
+    addMsg('ai', `你好，我是${botName}。很高興認識你。`);
   }
 }
 
@@ -112,7 +195,7 @@ async function send() {
     const res = await fetch(`/guest/${token}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg })
+      body: JSON.stringify({ message: msg, password: sessionPassword })
     });
     const data = await res.json();
     loading.remove();
@@ -120,7 +203,6 @@ async function send() {
       botName = data.name || botName;
       addMsg('ai', data.reply);
     } else if (data.error === 'message limit reached') {
-      loading.remove();
       showEnded('對話次數已達上限，感謝你的到來。');
     }
   } catch (e) {
@@ -130,6 +212,13 @@ async function send() {
   document.getElementById('sendBtn').disabled = false;
 }
 
+document.getElementById('pwBtn').onclick = () => {
+  const pw = document.getElementById('pwInput').value;
+  verifyAndEnter(pw);
+};
+document.getElementById('pwInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('pwBtn').click();
+});
 document.getElementById('sendBtn').onclick = send;
 document.getElementById('inputBox').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -139,7 +228,7 @@ document.getElementById('inputBox').addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
-init();
+checkPassword();
 </script>
 </body>
 </html>
