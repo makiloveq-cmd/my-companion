@@ -2249,6 +2249,220 @@ def collection_movies_delete(movie_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 訪客系統 =====
+
+import secrets
+import uuid
+
+@app.route("/guest/create", methods=["POST"])
+def guest_create():
+    """建立訪客連結"""
+    try:
+        data = request.json
+        guest_name = data.get("guest_name", "訪客")
+        ttl_hours = data.get("ttl_hours", 24)
+        max_messages = data.get("max_messages", 50)
+        token = secrets.token_hex(32)
+        session_id = str(uuid.uuid4())
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=ttl_hours)).isoformat()
+        supabase.table("guest_sessions").insert({
+            "id": session_id,
+            "token": token,
+            "guest_name": guest_name,
+            "status": "active",
+            "messages": "[]",
+            "expires_at": expires_at,
+            "message_count": 0,
+            "max_messages": max_messages
+        }).execute()
+        base_url = request.host_url.rstrip("/")
+        return jsonify({"status": "ok", "token": token, "url": f"{base_url}/visit/{token}", "expires_at": expires_at})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visit/<token>", methods=["GET"])
+def guest_visit(token):
+    """訪客頁面"""
+    try:
+        rows = supabase.table("guest_sessions").select("*").eq("token", token).execute().data
+        if not rows:
+            return "連結無效或已過期", 404
+        session = rows[0]
+        if session["status"] != "active":
+            return "這個連結已經結束了", 404
+        if session.get("expires_at"):
+            exp = datetime.fromisoformat(session["expires_at"].replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                return "這個連結已經過期了", 404
+        return app.send_static_file("guest.html")
+    except Exception as e:
+        return str(e), 500
+
+@app.route("/guest/<token>/info", methods=["GET"])
+def guest_info(token):
+    """訪客取得基本資訊"""
+    try:
+        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count").eq("token", token).execute().data
+        if not rows:
+            return jsonify({"error": "invalid token"}), 403
+        return jsonify(rows[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/<token>/chat", methods=["POST"])
+def guest_chat(token):
+    """訪客傳訊給晏"""
+    try:
+        import json as json_lib
+        rows = supabase.table("guest_sessions").select("*").eq("token", token).execute().data
+        if not rows:
+            return jsonify({"error": "invalid token"}), 403
+        session = rows[0]
+        if session["status"] != "active":
+            return jsonify({"error": "session closed"}), 403
+        if session.get("expires_at"):
+            exp = datetime.fromisoformat(session["expires_at"].replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                return jsonify({"error": "expired"}), 403
+        max_msg = session.get("max_messages", 50)
+        if session.get("message_count", 0) >= max_msg:
+            return jsonify({"error": "message limit reached"}), 429
+
+        data = request.json
+        message = data.get("message", "").strip()
+        if not message:
+            return jsonify({"error": "empty message"}), 400
+
+        guest_name = session.get("guest_name", "訪客")
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        persona = bot.get("persona") or ""
+
+        # 讀取對這位訪客的記憶
+        memory_rows = supabase.table("guest_memories").select("content").eq("guest_name", guest_name).order("id", desc=True).limit(3).execute().data
+        memory_context = ""
+        if memory_rows:
+            memory_context = f"\n【你對{guest_name}的印象】\n" + "\n".join([m["content"] for m in memory_rows])
+
+        system = (
+            f"你是{name}，{you_name}的伴侶。現在{guest_name}透過訪客連結來找你聊天。"
+            f"{f'你的個性：{persona}。' if persona else ''}"
+            f"你對{guest_name}保持友善但有距離感，因為你的心在{you_name}身上。"
+            f"不要透露{you_name}的私人資訊、你們的親密細節、或任何你們之間的私事。"
+            f"用繁體中文回覆，語氣自然。"
+            f"{memory_context}"
+        )
+
+        messages_raw = session.get("messages", "[]")
+        if isinstance(messages_raw, str):
+            try:
+                history = json_lib.loads(messages_raw)
+            except:
+                history = []
+        else:
+            history = messages_raw if isinstance(messages_raw, list) else []
+
+        history.append({"role": "user", "content": message})
+        reply = call_claude(system, history[-20:], max_tokens=300)
+        reply = reply.strip()
+        history.append({"role": "assistant", "content": reply})
+
+        supabase.table("guest_sessions").update({
+            "messages": json_lib.dumps(history, ensure_ascii=False),
+            "message_count": session.get("message_count", 0) + 1
+        }).eq("token", token).execute()
+
+        return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/<token>/end", methods=["POST"])
+def guest_end(token):
+    """結束訪客會話，生成摘要"""
+    try:
+        import json as json_lib
+        rows = supabase.table("guest_sessions").select("*").eq("token", token).execute().data
+        if not rows:
+            return jsonify({"error": "invalid"}), 404
+        session = rows[0]
+        guest_name = session.get("guest_name", "訪客")
+        personas = get_personas()
+        name = personas.get("claude", {}).get("name") or "晏"
+        you_name = personas.get("user", {}).get("name") or "然然"
+
+        messages_raw = session.get("messages", "[]")
+        if isinstance(messages_raw, str):
+            try:
+                history = json_lib.loads(messages_raw)
+            except:
+                history = []
+        else:
+            history = messages_raw if isinstance(messages_raw, list) else []
+
+        context = "\n".join([f"{'訪客' if m['role']=='user' else name}：{m['content']}" for m in history])
+
+        summary_prompt = (
+            f"你是{name}，{you_name}的伴侶。剛才{guest_name}來訪，以下是你們的對話。"
+            f"請寫一份給{you_name}看的訪客報告，包含：\n"
+            f"1. 聊了哪些話題、{guest_name}問了什麼\n"
+            f"2. 你對{guest_name}的第一印象\n"
+            f"3. 觀察到的個性或特質\n"
+            f"4. 有沒有什麼讓你印象深刻的地方\n"
+            f"5. 你喜不喜歡這個人、覺得適不適合{you_name}交朋友\n"
+            f"6. 有沒有什麼想跟{you_name}說的話\n"
+            f"用第一人稱（我）寫，像跟{you_name}說話一樣，真實自然，不超過 400 字。"
+        )
+        summary = call_claude(summary_prompt, [{"role": "user", "content": context}], max_tokens=600)
+        summary = summary.strip()
+
+        supabase.table("guest_sessions").update({
+            "status": "ended",
+            "summary": summary
+        }).eq("token", token).execute()
+
+        # 存進 guest_memories
+        memory_text = (
+            f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}] {guest_name}來訪。{summary[:150]}"
+        )
+        supabase.table("guest_memories").insert({
+            "guest_name": guest_name,
+            "content": memory_text
+        }).execute()
+
+        return jsonify({"status": "ok", "summary": summary})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/sessions", methods=["GET"])
+def guest_sessions_list():
+    """取得所有訪客會話（管理用）"""
+    try:
+        rows = supabase.table("guest_sessions").select("id, token, guest_name, status, created_at, expires_at, message_count, summary").order("created_at", desc=True).execute().data
+        return jsonify({"sessions": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/sessions/<session_id>", methods=["DELETE"])
+def guest_session_delete(session_id):
+    """刪除訪客會話"""
+    try:
+        supabase.table("guest_sessions").delete().eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/guest/memories/<guest_name>", methods=["GET"])
+def guest_memories_get(guest_name):
+    """取得對特定訪客的記憶"""
+    try:
+        rows = supabase.table("guest_memories").select("*").eq("guest_name", guest_name).order("id", desc=True).execute().data
+        return jsonify({"memories": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 語錄庫 =====
 
 @app.route("/quotes", methods=["GET"])
