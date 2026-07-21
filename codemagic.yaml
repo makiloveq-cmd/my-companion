@@ -1,6 +1,6 @@
 workflows:
   ios-workflow:
-    name: Rifugio iOS Build
+    name: Rifugio iOS Build (Unsigned)
     max_build_duration: 60
     environment:
       node: 20.0.0
@@ -16,17 +16,25 @@ workflows:
       - name: Sync Capacitor
         script: |
           npx cap sync ios
-      - name: Set up code signing
+      - name: Build unsigned IPA
         script: |
-          xcode-project use-profiles
-      - name: Build iOS
-        script: |
-          xcode-project build-ipa \
-            --workspace ios/App/App.xcworkspace \
-            --scheme App
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+          
+          mkdir -p build/ipa
+          cd build/Build/Products/Release-iphoneos
+          mkdir -p Payload
+          cp -r App.app Payload/
+          zip -r ../../../../build/ipa/Rifugio.ipa Payload
     artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - build/ipa/Rifugio.ipa
     publishing:
       email:
         recipients:
