@@ -1,0 +1,12 @@
+{
+  "appId": "com.rifugio.app",
+  "appName": "Rifugio",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://rifugio.zeabur.app",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}

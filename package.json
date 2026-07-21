@@ -1,0 +1,16 @@
+{
+  "name": "rifugio",
+  "version": "1.0.0",
+  "description": "Rifugio iOS App",
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/cli": "^6.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npx cap sync ios",
+    "cap:open": "npx cap open ios"
+  }
+}
