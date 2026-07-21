@@ -16,7 +16,14 @@ workflows:
           npx cap add ios || true
       - name: Generate icons
         script: |
-          npx capacitor-assets generate --iconBackgroundColor '#04080f' --iconBackgroundColorDark '#04080f' --splashBackgroundColor '#04080f' --splashBackgroundColorDark '#04080f' --ios || true
+          npx capacitor-assets generate \
+            --assetPath assets \
+            --iconBackgroundColor '#04080f' \
+            --iconBackgroundColorDark '#04080f' \
+            --splashBackgroundColor '#04080f' \
+            --splashBackgroundColorDark '#04080f' \
+            --ios || true
+          ls -la assets/
       - name: Sync Capacitor
         script: |
           npx cap sync ios
