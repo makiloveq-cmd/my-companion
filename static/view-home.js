@@ -3,15 +3,15 @@
   const STYLE_ID = 'view-home-style';
   const CSS = `
   .hm-main {
-    flex: 1; overflow-y: auto;
-    padding: max(48px, env(safe-area-inset-top)) 24px 24px;
-    display: flex; flex-direction: column; align-items: center; gap: 24px;
+    flex: 1; overflow-y: hidden;
+    padding: max(24px, env(safe-area-inset-top)) 24px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
   }
-  .hm-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 42px; color: var(--text); letter-spacing: 2px; text-align: center; }
+  .hm-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 36px; color: var(--text); letter-spacing: 2px; text-align: center; }
   .hm-days-card { text-align: center; }
-  .hm-days-number { font-size: 72px; font-weight: 300; color: var(--accent); line-height: 1; }
+  .hm-days-number { font-size: 60px; font-weight: 300; color: var(--accent); line-height: 1; }
   .hm-days-label { font-size: 13px; color: var(--text-3); letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
-  .hm-quote-card { background: var(--surface); border-radius: 16px; padding: 24px; width: 100%; max-width: 340px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+  .hm-quote-card { background: var(--surface); border-radius: 16px; padding: 16px; width: 100%; max-width: 340px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
   .hm-quote-text { font-size: 14px; line-height: 1.8; color: var(--text-2); font-style: italic; text-align: center; }
   .hm-quote-author { font-size: 12px; color: var(--accent); text-align: center; margin-top: 12px; letter-spacing: 1px; }
   .hm-cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 8px; width: 100%; max-width: 340px; }
