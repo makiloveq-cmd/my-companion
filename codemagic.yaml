@@ -20,40 +20,39 @@ workflows:
         script: |
           ICON_SRC="assets/icon-only.png"
           ICON_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
-          
-          # 安裝 sips (macOS 內建) 來 resize
           for size in 20 29 40 58 60 76 80 87 120 152 167 180 1024; do
             sips -z $size $size "$ICON_SRC" --out "$ICON_DIR/Icon-${size}.png" 2>/dev/null || true
           done
-          
-          # 寫入 Contents.json
-          cat > "$ICON_DIR/Contents.json" << 'JSON'
-          {
-            "images": [
-              {"idiom":"iphone","scale":"2x","size":"20x20","filename":"Icon-40.png"},
-              {"idiom":"iphone","scale":"3x","size":"20x20","filename":"Icon-60.png"},
-              {"idiom":"iphone","scale":"2x","size":"29x29","filename":"Icon-58.png"},
-              {"idiom":"iphone","scale":"3x","size":"29x29","filename":"Icon-87.png"},
-              {"idiom":"iphone","scale":"2x","size":"40x40","filename":"Icon-80.png"},
-              {"idiom":"iphone","scale":"3x","size":"40x40","filename":"Icon-120.png"},
-              {"idiom":"iphone","scale":"2x","size":"60x60","filename":"Icon-120.png"},
-              {"idiom":"iphone","scale":"3x","size":"60x60","filename":"Icon-180.png"},
-              {"idiom":"ipad","scale":"1x","size":"20x20","filename":"Icon-20.png"},
-              {"idiom":"ipad","scale":"2x","size":"20x20","filename":"Icon-40.png"},
-              {"idiom":"ipad","scale":"1x","size":"29x29","filename":"Icon-29.png"},
-              {"idiom":"ipad","scale":"2x","size":"29x29","filename":"Icon-58.png"},
-              {"idiom":"ipad","scale":"1x","size":"40x40","filename":"Icon-40.png"},
-              {"idiom":"ipad","scale":"2x","size":"40x40","filename":"Icon-80.png"},
-              {"idiom":"ipad","scale":"1x","size":"76x76","filename":"Icon-76.png"},
-              {"idiom":"ipad","scale":"2x","size":"76x76","filename":"Icon-152.png"},
-              {"idiom":"ipad","scale":"2x","size":"83.5x83.5","filename":"Icon-167.png"},
-              {"idiom":"ios-marketing","scale":"1x","size":"1024x1024","filename":"Icon-1024.png"}
+          python3 -c "
+          import json
+          contents = {
+            'images': [
+              {'idiom':'iphone','scale':'2x','size':'20x20','filename':'Icon-40.png'},
+              {'idiom':'iphone','scale':'3x','size':'20x20','filename':'Icon-60.png'},
+              {'idiom':'iphone','scale':'2x','size':'29x29','filename':'Icon-58.png'},
+              {'idiom':'iphone','scale':'3x','size':'29x29','filename':'Icon-87.png'},
+              {'idiom':'iphone','scale':'2x','size':'40x40','filename':'Icon-80.png'},
+              {'idiom':'iphone','scale':'3x','size':'40x40','filename':'Icon-120.png'},
+              {'idiom':'iphone','scale':'2x','size':'60x60','filename':'Icon-120.png'},
+              {'idiom':'iphone','scale':'3x','size':'60x60','filename':'Icon-180.png'},
+              {'idiom':'ipad','scale':'1x','size':'20x20','filename':'Icon-20.png'},
+              {'idiom':'ipad','scale':'2x','size':'20x20','filename':'Icon-40.png'},
+              {'idiom':'ipad','scale':'1x','size':'29x29','filename':'Icon-29.png'},
+              {'idiom':'ipad','scale':'2x','size':'29x29','filename':'Icon-58.png'},
+              {'idiom':'ipad','scale':'1x','size':'40x40','filename':'Icon-40.png'},
+              {'idiom':'ipad','scale':'2x','size':'40x40','filename':'Icon-80.png'},
+              {'idiom':'ipad','scale':'1x','size':'76x76','filename':'Icon-76.png'},
+              {'idiom':'ipad','scale':'2x','size':'76x76','filename':'Icon-152.png'},
+              {'idiom':'ipad','scale':'2x','size':'83.5x83.5','filename':'Icon-167.png'},
+              {'idiom':'ios-marketing','scale':'1x','size':'1024x1024','filename':'Icon-1024.png'}
             ],
-            "info":{"author":"xcode","version":1}
+            'info': {'author': 'xcode', 'version': 1}
           }
-JSON
-          echo "Icons set successfully"
-          ls "$ICON_DIR"
+          with open('ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json', 'w') as f:
+            json.dump(contents, f, indent=2)
+          print('Contents.json written')
+          "
+          echo "Done setting icons"
       - name: Build unsigned IPA
         script: |
           xcodebuild \
@@ -65,7 +64,6 @@ JSON
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
-          
           mkdir -p build/ipa
           cd build/Build/Products/Release-iphoneos
           mkdir -p Payload
