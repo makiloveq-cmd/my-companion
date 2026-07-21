@@ -798,7 +798,13 @@
     }
 
     renderHome();
-    return function cleanup() {};
+    return function cleanup() {
+      // 清除所有可能殘留的 fixed overlay（避免換頁後蓋在其他頁面上）
+      ['gmEndModal', 'gmSealOverlay'].forEach(id => {
+        const el2 = document.getElementById(id);
+        if (el2) el2.classList.remove('show');
+      });
+    };
   }
 
   window.RifugioViews = window.RifugioViews || {};

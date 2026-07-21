@@ -29,10 +29,10 @@
   .ch-bubble { padding: 12px 16px; border-radius: 16px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
   .ch-bubble.user { background: var(--bubble-user); color: #fff; border-radius: 16px 16px 4px 16px; }
   .ch-bubble.ai { background: var(--bubble-ai); color: var(--text); border: 1px solid var(--border); border-radius: 16px 16px 16px 4px; }
-  .ch-bubble.has-img { padding: 0; background: transparent; border: none; }
-  .ch-bubble.has-img .ch-img { max-width: 200px; max-height: 260px; border-radius: 14px; display: block; cursor: pointer; border: 1px solid var(--border); }
+  .ch-bubble.has-img { padding: 0; background: transparent; border: none; max-width: 220px; overflow: hidden; border-radius: 14px; }
+  .ch-bubble.has-img .ch-img { width: 100%; max-width: 220px; max-height: 260px; border-radius: 14px; display: block; cursor: pointer; border: 1px solid var(--border); object-fit: cover; vertical-align: bottom; }
   .ch-bubble.has-img .ch-caption { margin-top: 4px; padding: 8px 12px; font-size: 14px; line-height: 1.5; }
-  .ch-time { font-size: 11px; color: var(--text-3); padding: 0 4px; align-self: flex-end; }
+  .ch-time { font-size: 11px; color: var(--text-3); padding: 0 4px; align-self: flex-end; white-space: nowrap; }
   .ch-input-area { background: var(--surface); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0; }
   .ch-preview-bar { display: none; align-items: center; gap: 10px; padding: 8px 16px 0; }
   .ch-preview-bar.show { display: flex; }
@@ -434,9 +434,12 @@
       if (role !== 'ai') {
         block.appendChild(bubble);
       }
-      block.appendChild(timeEl);
+      // 時間戳放在 row 層，跟 block 並排，align-self:flex-end 對齊底部
+      // user row 是 row-reverse，DOM順序: avatar → block → time，視覺: time → block → avatar
+      // ai row 正常順序: avatar → block → time
       row.appendChild(avatar);
       row.appendChild(block);
+      row.appendChild(timeEl);
       const messages = document.getElementById('chMessages');
       if (messages) {
         messages.appendChild(row);
