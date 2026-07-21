@@ -10,9 +10,13 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
+          npm install @capacitor/assets --save-dev
       - name: Add iOS platform
         script: |
           npx cap add ios || true
+      - name: Generate icons
+        script: |
+          npx capacitor-assets generate --iconBackgroundColor '#04080f' --iconBackgroundColorDark '#04080f' --splashBackgroundColor '#04080f' --splashBackgroundColorDark '#04080f' --ios || true
       - name: Sync Capacitor
         script: |
           npx cap sync ios

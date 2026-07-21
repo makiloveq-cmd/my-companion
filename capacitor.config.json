@@ -7,7 +7,6 @@
     "cleartext": false
   },
   "ios": {
-    "contentInset": "always",
-    "icon": "assets/rifugio-icon-1024.png"
+    "contentInset": "always"
   }
 }
