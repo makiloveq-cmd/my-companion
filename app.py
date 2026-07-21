@@ -967,7 +967,6 @@ def build_game_system_prompt(setting):
 
 @app.route("/game/start", methods=["POST"])
 def game_start():
-    import json
     data = request.json
     setting = data.get("setting", "")
     personas = get_personas()
@@ -983,7 +982,7 @@ def game_start():
             "setting": setting,
             "title": setting[:20],
             "status": "playing",
-            "messages": json.dumps([{"role": "assistant", "content": reply}]),
+            "messages": [{"role": "assistant", "content": reply}],
             "created_at": now,
             "updated_at": now
         }).execute()
@@ -1071,7 +1070,6 @@ def game_sessions_get():
 def game_pause():
     """暫停遊戲——儲存對話歷史，狀態改為 paused"""
     try:
-        import json
         data = request.json
         session_id = data.get("session_id")
         messages = data.get("messages", [])
@@ -1081,7 +1079,7 @@ def game_pause():
         if session_id:
             supabase.table("game_sessions").update({
                 "status": "paused",
-                "messages": json.dumps(messages),
+                "messages": messages,
                 "updated_at": now
             }).eq("id", session_id).execute()
         else:
@@ -1089,7 +1087,7 @@ def game_pause():
                 "setting": setting,
                 "title": title,
                 "status": "paused",
-                "messages": json.dumps(messages),
+                "messages": messages,
                 "created_at": now,
                 "updated_at": now
             }).execute()
@@ -1102,14 +1100,13 @@ def game_pause():
 def game_autosave():
     """每次對話後自動儲存進度"""
     try:
-        import json
         data = request.json
         session_id = data.get("session_id")
         messages = data.get("messages", [])
         if not session_id:
             return jsonify({"status": "no_session"})
         supabase.table("game_sessions").update({
-            "messages": json.dumps(messages),
+            "messages": messages,
             "status": "playing",
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", session_id).execute()
@@ -1147,7 +1144,6 @@ def game_summarize():
 def game_seal():
     """用戶確認摘要後正式封存"""
     try:
-        import json
         data = request.json
         setting = data.get("setting", "")
         messages = data.get("messages", [])
@@ -1160,7 +1156,7 @@ def game_seal():
                 "title": title,
                 "summary": summary,
                 "status": "archived",
-                "messages": json.dumps(messages),
+                "messages": messages,
                 "updated_at": now
             }).eq("id", session_id).execute()
         else:
@@ -1169,7 +1165,7 @@ def game_seal():
                 "title": title,
                 "summary": summary,
                 "status": "archived",
-                "messages": json.dumps(messages),
+                "messages": messages,
                 "created_at": now,
                 "updated_at": now
             }).execute()
@@ -2752,12 +2748,11 @@ def quotes_delete(quote_id):
 @app.route("/call/save", methods=["POST"])
 def call_save():
     try:
-        import json
         data = request.json
         messages = data.get("messages", [])
         duration = data.get("duration_seconds", 0)
         supabase.table("call_logs").insert({
-            "messages": json.dumps(messages),
+            "messages": messages,
             "duration_seconds": duration,
             "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
