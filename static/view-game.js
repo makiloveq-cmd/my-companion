@@ -37,7 +37,7 @@
   }
 
   /* ── 我的世界 ── */
-  .gm-worlds { display: flex; flex-direction: column; height: 100%; }
+  .gm-worlds { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .gm-world-item {
     background: var(--surface); border-radius: 14px; margin: 0 16px 10px;
     overflow: hidden; border: 1px solid var(--border);
@@ -102,7 +102,7 @@
 
   /* ── 回憶錄 ── */
   .gm-archive {
-    display: flex; flex-direction: column; height: 100%;
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
   }
   .gm-archive-header {
     display: flex; align-items: center; gap: 12px;
@@ -145,7 +145,7 @@
 
   /* ── 設定頁 ── */
   .gm-setup {
-    display: flex; flex-direction: column; height: 100%;
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
   }
   .gm-setup-header {
     display: flex; align-items: center; gap: 12px;
@@ -182,7 +182,7 @@
 
   /* ── 遊戲中 ── */
   .gm-game {
-    display: flex; flex-direction: column; height: 100%;
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
   }
   .gm-game-header {
     padding: 10px 16px; border-bottom: 1px solid var(--border);
