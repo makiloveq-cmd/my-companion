@@ -982,6 +982,7 @@ def game_start():
             "setting": setting,
             "title": setting[:20],
             "status": "playing",
+            "summary": "",
             "messages": [{"role": "assistant", "content": reply}],
             "created_at": now,
             "updated_at": now
@@ -989,7 +990,8 @@ def game_start():
         session_id = result.data[0]["id"] if result.data else None
         return jsonify({"reply": reply, "name": name, "session_id": session_id})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 @app.route("/game/reply", methods=["POST"])
 def game_reply():
@@ -1087,6 +1089,7 @@ def game_pause():
                 "setting": setting,
                 "title": title,
                 "status": "paused",
+                "summary": "",
                 "messages": messages,
                 "created_at": now,
                 "updated_at": now
