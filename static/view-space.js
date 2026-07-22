@@ -945,16 +945,114 @@
       e.target.value = '';
     };
 
+    // 陪睡畫面
+    const SLEEP_QUOTES = [
+      '閉上眼睛。\n我在。',
+      '不用說話。\n就這樣。',
+      '先把今天放下。\n明天再說。',
+      '呼吸慢一點。\n我陪著你。',
+      '累了就睡。\n這裡很安全。',
+      '把腦袋清空。\n我守著你。',
+    ];
+
+    function showSleepScreen() {
+      const existing = document.getElementById('spSleepScreen');
+      if (existing) existing.remove();
+
+      const quote = SLEEP_QUOTES[Math.floor(Math.random() * SLEEP_QUOTES.length)];
+      const overlay = document.createElement('div');
+      overlay.id = 'spSleepScreen';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; background: #04080f;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        z-index: 9999; padding: 40px 32px;
+        font-family: var(--font-sans);
+      `;
+
+      overlay.innerHTML = `
+        <canvas id="spStarCanvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+        <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:32px;text-align:center;">
+          <div style="color:#1e2d4a;font-size:11px;letter-spacing:0.4em;">· · · · · · ·</div>
+          <div style="color:#5a7a9a;font-size:15px;letter-spacing:0.12em;line-height:2.2;white-space:pre-line;">${quote}</div>
+          <div style="color:#1e2d4a;font-size:11px;letter-spacing:0.4em;">· · · · · · ·</div>
+          <button id="spCantSleepBtn" style="
+            background: #080f1a; border: 0.5px solid #1e2d4a;
+            border-radius: 20px; color: #3a5a78; font-size: 13px;
+            padding: 11px 32px; cursor: pointer; letter-spacing: 0.08em;
+            margin-top: 16px; font-family: var(--font-sans);
+          ">睡不著</button>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      // 星星動畫
+      const canvas = document.getElementById('spStarCanvas');
+      const ctx = canvas.getContext('2d');
+      let stars = [];
+      let animId;
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // 建立星星
+      for (let i = 0; i < 120; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: Math.random() * 1.2 + 0.2,
+          alpha: Math.random() * 0.6 + 0.1,
+          speed: Math.random() * 0.003 + 0.001,
+          phase: Math.random() * Math.PI * 2,
+          drift: (Math.random() - 0.5) * 0.08,
+        });
+      }
+
+      function drawStars() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const t = Date.now() * 0.001;
+        stars.forEach(s => {
+          const a = s.alpha * (0.5 + 0.5 * Math.sin(t * s.speed * 60 + s.phase));
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(160,190,220,${a})`;
+          ctx.fill();
+          s.x += s.drift;
+          if (s.x < 0) s.x = canvas.width;
+          if (s.x > canvas.width) s.x = 0;
+        });
+        animId = requestAnimationFrame(drawStars);
+      }
+      drawStars();
+
+      // 淡入
+      overlay.style.opacity = '0';
+      overlay.style.transition = 'opacity 1.2s ease';
+      requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+      // 睡不著按鈕
+      document.getElementById('spCantSleepBtn').onclick = () => {
+        cancelAnimationFrame(animId);
+        window.removeEventListener('resize', resizeCanvas);
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 800);
+      };
+    }
+
     // 結束今天按鈕
     document.getElementById('spEndDayBtn').onclick = async () => {
       const btn = document.getElementById('spEndDayBtn');
       btn.disabled = true;
-      try {
-        await fetch('/space/end_day', { method: 'POST' });
-        btn.innerHTML = '✦ 晚安';
-      } catch (e) {
-        btn.disabled = false;
-      }
+      // 後台生成日記，不等待
+      fetch('/space/end_day', { method: 'POST' }).catch(() => {});
+      // 直接進入陪睡畫面
+      showSleepScreen();
+      btn.innerHTML = '✦ 晚安';
     };
 
     // 場景按鈕綁定
