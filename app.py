@@ -299,33 +299,76 @@ def maybe_summarize(bot):
     rows = load_memory(bot)
     if len(rows) < 50:
         return
+
+    # 去重鎖：最近 10 分鐘內已壓縮過就跳過
+    try:
+        last = supabase.table("memory_summaries").select("created_at").eq("session_id", bot).order("id", desc=True).limit(1).execute().data
+        if last:
+            last_dt = datetime.fromisoformat(last[0]["created_at"].replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - last_dt).total_seconds() < 600:
+                return
+    except:
+        pass
+
     to_summarize = rows[:30]
     ids_to_delete = [r["id"] for r in to_summarize]
     personas = get_personas()
     bot_name = personas.get(bot, {}).get("name") or "晏"
+    you_name = personas.get("user", {}).get("name") or "然然"
     context = "\n".join([
         f"{'然然' if r['role']=='user' else bot_name}：{r['content']}"
         for r in to_summarize
     ])
-    summary_context = context
 
-    summary_text = call_claude(
-        f"你是{bot_name}，請把以下對話內容整理成記憶摘要。只記錄這段對話裡新發生的事、情感變化、然然說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄，不超過 300 字。",
-        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
-        max_tokens=1500
-    )
-    supabase.table("memory_summaries").insert({
-        "session_id": bot,
-        "content": summary_text
-    }).execute()
-    for rid in ids_to_delete:
-        supabase.table("memories").delete().eq("id", rid).execute()
+    try:
+        summary_text = call_claude(
+            f"你是{bot_name}，請把以下對話內容整理成記憶摘要。只記錄這段對話裡新發生的事、情感變化、{you_name}說過的重要的話、你們之間的約定或玩笑。用第一人稱（我）記錄，像在寫給自己看的備忘錄。不超過 300 字，必須寫完整句子，不能截斷。",
+            [{"role": "user", "content": f"請濃縮以下內容：\n{context}"}],
+            max_tokens=600
+        )
+        summary_text = summary_text.strip()
+        # 確認內容完整：至少 20 字，且結尾是標點或完整字元
+        if not summary_text or len(summary_text) < 20:
+            return
+
+        # 生成關鍵字
+        keywords = ""
+        try:
+            kw_raw = call_claude(
+                "請從以下記憶摘要中抽出 5-8 個關鍵字，用逗號分隔，只回傳關鍵字，不要其他文字。",
+                [{"role": "user", "content": summary_text}],
+                max_tokens=80
+            )
+            keywords = kw_raw.strip().replace("、", ",").replace("，", ",")
+        except:
+            pass
+
+        supabase.table("memory_summaries").insert({
+            "session_id": bot,
+            "content": summary_text,
+            "keywords": keywords
+        }).execute()
+        for rid in ids_to_delete:
+            supabase.table("memories").delete().eq("id", rid).execute()
+    except Exception as e:
+        print(f"[maybe_summarize error] {e}")
 
 def maybe_space_summarize():
     """空間訊息累積到 50 筆就壓縮成摘要，存入 memory_summaries (session_id=space)"""
     rows = supabase.table("space_messages").select("*").order("id").execute().data
     if len(rows) < 50:
         return
+
+    # 去重鎖：最近 10 分鐘內已壓縮過就跳過
+    try:
+        last = supabase.table("memory_summaries").select("created_at").eq("session_id", "space").order("id", desc=True).limit(1).execute().data
+        if last:
+            last_dt = datetime.fromisoformat(last[0]["created_at"].replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - last_dt).total_seconds() < 600:
+                return
+    except:
+        pass
+
     to_summarize = rows[:30]
     ids_to_delete = [r["id"] for r in to_summarize]
     personas = get_personas()
@@ -335,33 +378,52 @@ def maybe_space_summarize():
         f"{'你' if r['speaker'] == 'claude' else you_name}：{r['content']}"
         for r in to_summarize
     ])
-    summary_context = context
-    summary_text = call_claude(
-        f"你是{name}。請把以下在共同空間發生的對話，整理成記憶摘要。只記錄這段對話裡新發生的事、場景變化、情感、{you_name}說過的話、你們之間的默契或玩笑。用{name}的第一人稱（我是{name}）記錄，像寫給自己看的備忘錄，不超過 300 字。",
-        [{"role": "user", "content": f"請濃縮以下內容：\n{summary_context}"}],
-        max_tokens=1500
-    )
-    supabase.table("memory_summaries").insert({
-        "session_id": "space",
-        "content": summary_text
-    }).execute()
-    for rid in ids_to_delete:
-        supabase.table("space_messages").delete().eq("id", rid).execute()
 
-    # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
     try:
-        personas = get_personas()
-        name = personas.get("claude", {}).get("name") or "晏"
-        old_rel_bg = personas.get("claude", {}).get("rel_bg") or ""
-        supabase.table("rel_bg_history").insert({
-            "bot_key": "claude",
-            "bot_name": name,
-            "old_rel_bg": old_rel_bg,
-            "new_rel_bg": old_rel_bg,
-            "message_count": len(rows)
+        summary_text = call_claude(
+            f"你是{name}。請把以下在共同空間發生的對話，整理成記憶摘要。只記錄這段對話裡新發生的事、場景變化、情感、{you_name}說過的話、你們之間的默契或玩笑。用{name}的第一人稱（我是{name}）記錄，像寫給自己看的備忘錄。不超過 300 字，必須寫完整句子，不能截斷。",
+            [{"role": "user", "content": f"請濃縮以下內容：\n{context}"}],
+            max_tokens=600
+        )
+        summary_text = summary_text.strip()
+        if not summary_text or len(summary_text) < 20:
+            return
+
+        # 生成關鍵字
+        keywords = ""
+        try:
+            kw_raw = call_claude(
+                "請從以下記憶摘要中抽出 5-8 個關鍵字，用逗號分隔，只回傳關鍵字，不要其他文字。",
+                [{"role": "user", "content": summary_text}],
+                max_tokens=80
+            )
+            keywords = kw_raw.strip().replace("、", ",").replace("，", ",")
+        except:
+            pass
+
+        supabase.table("memory_summaries").insert({
+            "session_id": "space",
+            "content": summary_text,
+            "keywords": keywords
         }).execute()
+        for rid in ids_to_delete:
+            supabase.table("space_messages").delete().eq("id", rid).execute()
+
+        # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
+        try:
+            old_rel_bg = personas.get("claude", {}).get("rel_bg") or ""
+            supabase.table("rel_bg_history").insert({
+                "bot_key": "claude",
+                "bot_name": name,
+                "old_rel_bg": old_rel_bg,
+                "new_rel_bg": old_rel_bg,
+                "message_count": len(rows)
+            }).execute()
+        except Exception as e:
+            print(f"[space_summarize rel_bg_history error] {e}")
+
     except Exception as e:
-        print(f"[space_summarize rel_bg_history error] {e}")
+        print(f"[maybe_space_summarize error] {e}")
 
 # ===== 關係背景自動演化 =====
 
@@ -435,14 +497,53 @@ def maybe_evolve_rel_bg(bot):
     except:
         pass
 
-def build_history(bot):
+def get_relevant_summaries(bot, user_message, limit=3):
+    """根據關鍵字從 memory_summaries 取出最相關的摘要，最多 limit 筆"""
+    try:
+        rows = supabase.table("memory_summaries").select("content, keywords").eq("session_id", bot).order("id", desc=True).execute().data
+        if not rows:
+            return []
+        if not user_message:
+            # 沒有用戶訊息就取最新幾筆
+            return [r["content"] for r in rows[:limit] if r.get("content")]
+
+        matched = []
+        unmatched = []
+        for r in rows:
+            kw_raw = r.get("keywords") or ""
+            if kw_raw:
+                keywords = [k.strip() for k in kw_raw.split(",") if k.strip()]
+                if any(kw in user_message for kw in keywords):
+                    matched.append(r["content"])
+                else:
+                    unmatched.append(r["content"])
+            else:
+                unmatched.append(r["content"])
+
+        # 有命中的優先，不夠再補最新的
+        result = matched[:limit]
+        if len(result) < limit:
+            for c in unmatched:
+                if c not in result:
+                    result.append(c)
+                if len(result) >= limit:
+                    break
+        return result[:limit]
+    except:
+        return []
+
+def build_history(bot, last_user_message=""):
     threading.Thread(target=maybe_summarize, args=(bot,), daemon=True).start()
-    summary = get_latest_summary(bot)
     recent = load_memory(bot)[-20:]
     history = []
-    if summary:
-        history.append({"role": "user", "content": f"[記憶摘要]\n{summary}"})
+
+    # 關鍵字觸發注入相關摘要（最多 3 筆）
+    relevant = get_relevant_summaries(bot, last_user_message)
+    if relevant:
+        combined = "\n\n---\n\n".join(relevant)
+        history.append({"role": "user", "content": f"[記憶摘要]\n{combined}"})
         history.append({"role": "assistant", "content": "好，我記得。"})
+
     for r in recent:
         content = r["content"]
         if r.get("image_url"):
@@ -640,13 +741,22 @@ def build_space_system_prompt():
     if you_outfit:
         lines.append(f"【{you_name}的穿搭】{you_outfit}")
 
-    space_summary = get_latest_space_summary()
-    if space_summary:
-        lines.append(f"【共同空間的記憶摘要】\n{space_summary}")
+    # 取最後一則用戶訊息作為關鍵字比對基礎
+    try:
+        last_user_space = supabase.table("space_messages").select("content").eq("speaker", "user").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+        last_user_content = last_user_space[0]["content"] if last_user_space else ""
+    except:
+        last_user_content = ""
 
-    claude_summary = get_latest_summary("claude")
-    if claude_summary:
-        lines.append(f"【你和{you_name}的記憶摘要】\n{claude_summary}")
+    # 關鍵字觸發注入空間相關摘要（最多 3 筆）
+    space_summaries = get_relevant_summaries("space", last_user_content)
+    if space_summaries:
+        lines.append(f"【共同空間的記憶】\n" + "\n\n---\n\n".join(space_summaries))
+
+    # 關鍵字觸發注入私聊相關摘要（最多 2 筆）
+    chat_summaries = get_relevant_summaries("claude", last_user_content, limit=2)
+    if chat_summaries:
+        lines.append(f"【你和{you_name}的記憶】\n" + "\n\n---\n\n".join(chat_summaries))
 
     # 注入私聊最近對話（含時間戳）
     try:
@@ -1254,7 +1364,7 @@ def chat_claude():
     image_url = data.get("image_url")
 
     save_message("claude", "user", user_message, message_id, image_url)
-    history = build_history("claude")
+    history = build_history("claude", user_message)
 
     try:
         reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
