@@ -595,7 +595,7 @@
             selectedMessages.push(msgData);
             document.getElementById('spSelectCount').textContent = `已選 ${selectedMessages.length} 則`;
           }
-        }, 800);
+        }, 1000);
       };
       const cancelSelect = () => clearTimeout(timer);
 

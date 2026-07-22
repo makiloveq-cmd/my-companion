@@ -708,11 +708,28 @@
       }
       const contentWrap = document.createElement('div');
       contentWrap.className = 'gm-content-wrap';
-      contentWrap.innerHTML = `
-        <div class="gm-speaker-name">${escHtml(botName)}</div>
-        <div class="gm-bubble">${escHtml(text)}</div>
-        <div class="gm-time">${formatTime(new Date().toISOString())}</div>
-      `;
+
+      // 名字
+      const nameEl = document.createElement('div');
+      nameEl.className = 'gm-speaker-name';
+      nameEl.textContent = botName;
+      contentWrap.appendChild(nameEl);
+
+      // 按段落分開顯示
+      const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(p => p);
+      paragraphs.forEach(para => {
+        const bubble = document.createElement('div');
+        bubble.className = 'gm-bubble';
+        bubble.textContent = para;
+        contentWrap.appendChild(bubble);
+      });
+
+      // 時間
+      const timeEl = document.createElement('div');
+      timeEl.className = 'gm-time';
+      timeEl.textContent = formatTime(new Date().toISOString());
+      contentWrap.appendChild(timeEl);
+
       wrap.appendChild(av);
       wrap.appendChild(contentWrap);
       document.getElementById('gmMessages').appendChild(wrap);
