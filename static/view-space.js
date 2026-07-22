@@ -950,7 +950,7 @@
             });
             const data = await res.json();
             outingSessionId = data.session_id;
-            if (data.reply) appendSpaceMessage('claude', data.reply, data.name);
+            if (data.reply) renderAI('claude', data.reply, data.name);
           } catch(e) {}
         });
       };
@@ -1330,7 +1330,7 @@
           body: JSON.stringify({ session_id: visitorSessionId })
         });
         const data = await res.json();
-        if (data.reply) appendSpaceMessage('claude', data.reply, data.name);
+        if (data.reply) renderAI('claude', data.reply, data.name);
         showVisitorBar(data.visitor_name);
       } catch(e) {}
     }
@@ -1358,19 +1358,20 @@
       if (!visitorSessionId) return;
       const bar = document.getElementById('spVisitorBar');
       if (bar) bar.remove();
+      const endedSessionId = visitorSessionId;
+      visitorSessionId = null;
+      visitorMode = null;
       try {
         const res = await fetch('/visitor/end', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ session_id: visitorSessionId })
+          body: JSON.stringify({ session_id: endedSessionId })
         });
         const data = await res.json();
-        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode);
+        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, endedSessionId);
       } catch(e) {}
-      visitorSessionId = null;
-      visitorMode = null;
     }
 
-    function showVisitorSummary(summary, visitorName, mode) {
+    function showVisitorSummary(summary, visitorName, mode, sessionId) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
       const canAddNote = mode === 'together';
@@ -1389,10 +1390,10 @@
       document.body.appendChild(modal);
       modal.querySelector('#visitorSummaryOk').onclick = async () => {
         const note = canAddNote ? modal.querySelector('#visitorNoteArea')?.value.trim() : '';
-        if (note) {
+        if (note && sessionId) {
           await fetch('/visitor/note', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ session_id: visitorSessionId || 0, note })
+            body: JSON.stringify({ session_id: sessionId, note })
           });
         }
         modal.remove();
