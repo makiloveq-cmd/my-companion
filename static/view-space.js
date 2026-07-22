@@ -801,6 +801,13 @@
             body: JSON.stringify({ session_id: outingSessionId, message: text })
           });
           spaceData = await outRes.json();
+        } else if (visitorSessionId && visitorMode === 'together') {
+          // 三人模式走 visitor/chat
+          const visRes = await fetch('/visitor/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: visitorSessionId, message: text })
+          });
+          spaceData = await visRes.json();
         } else {
           // 在家走原本的 space/reply/claude
           const spaceRes = await fetch('/space/reply/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recording: isRecordingIntimate }) });
@@ -1239,6 +1246,167 @@
     } catch (e) {}
 
     await Promise.all([loadPersonas(), loadMessages()]);
+
+    // ── 訪客觸發系統 ──
+    let visitorSessionId = null;
+    let visitorMode = null;
+
+    function showVisitorNotice(visitor) {
+      const belong = visitor.belong_to;
+      const name = visitor.visitor_name;
+      const isPartner = belong === 'partner';
+
+      const notice = document.createElement('div');
+      notice.style.cssText = `
+        position:fixed;bottom:120px;left:50%;transform:translateX(-50%);
+        background:#111f35;border:0.5px solid #2a3f60;border-radius:16px;
+        padding:16px 20px;z-index:500;min-width:260px;max-width:320px;
+        display:flex;flex-direction:column;gap:12px;
+      `;
+
+      if (isPartner || visitor.mode === 'solo_partner') {
+        // 晏的朋友，模式已決定
+        const modeLabel = visitor.mode === 'solo_partner' ? '晏在跟他聊，稍後會告訴你' : '你們三個人一起';
+        notice.innerHTML = `
+          <div style="color:#c8d8f0;font-size:14px;">${name} 來了</div>
+          <div style="color:#4a6a88;font-size:12px;">${modeLabel}</div>
+          <button id="visitorOkBtn" style="padding:8px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">好</button>
+        `;
+        notice.querySelector('#visitorOkBtn').onclick = async () => {
+          notice.remove();
+          visitorSessionId = visitor.id;
+          visitorMode = visitor.mode;
+          if (visitor.mode === 'together') {
+            await startVisitor();
+          } else {
+            // solo_partner：晏自己去聊，然然不參與
+            await fetch('/visitor/start', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: visitor.id })
+            });
+          }
+        };
+      } else {
+        // 然然的朋友或共同朋友，讓然然選模式
+        notice.innerHTML = `
+          <div style="color:#c8d8f0;font-size:14px;">${name} 來了</div>
+          <div style="color:#4a6a88;font-size:12px;">你要怎麼安排？</div>
+          <div style="display:flex;gap:8px;">
+            <button id="visitorSoloBtn" style="flex:1;padding:8px;background:#1a2840;border:0.5px solid #2a3f60;border-radius:10px;color:#7a9ab8;font-size:12px;cursor:pointer;">讓晏單獨跟他聊</button>
+            <button id="visitorTogetherBtn" style="flex:1;padding:8px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:12px;cursor:pointer;">三人一起</button>
+          </div>
+        `;
+        notice.querySelector('#visitorSoloBtn').onclick = async () => {
+          notice.remove();
+          visitorSessionId = visitor.id;
+          visitorMode = 'solo_partner';
+          await fetch('/visitor/mode', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: visitor.id, mode: 'solo_partner' })
+          });
+          await fetch('/visitor/start', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: visitor.id })
+          });
+        };
+        notice.querySelector('#visitorTogetherBtn').onclick = async () => {
+          notice.remove();
+          visitorSessionId = visitor.id;
+          visitorMode = 'together';
+          await fetch('/visitor/mode', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: visitor.id, mode: 'together' })
+          });
+          await startVisitor();
+        };
+      }
+      document.body.appendChild(notice);
+    }
+
+    async function startVisitor() {
+      try {
+        const res = await fetch('/visitor/start', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: visitorSessionId })
+        });
+        const data = await res.json();
+        if (data.reply) appendSpaceMessage('claude', data.reply, data.name);
+        showVisitorBar(data.visitor_name);
+      } catch(e) {}
+    }
+
+    function showVisitorBar(visitorName) {
+      const existing = document.getElementById('spVisitorBar');
+      if (existing) existing.remove();
+      const bar = document.createElement('div');
+      bar.id = 'spVisitorBar';
+      bar.style.cssText = `
+        position:fixed;top:0;left:0;right:0;
+        background:#0d1624;border-bottom:0.5px solid #2a3f60;
+        padding:10px 20px;z-index:400;
+        display:flex;align-items:center;justify-content:space-between;
+      `;
+      bar.innerHTML = `
+        <div style="color:#7a9ab8;font-size:13px;">✦ ${visitorName} 在這裡</div>
+        <button id="visitorEndBtn" style="padding:5px 14px;background:#1a2840;border:0.5px solid #2a3f60;border-radius:10px;color:#4a6a88;font-size:12px;cursor:pointer;">送客</button>
+      `;
+      bar.querySelector('#visitorEndBtn').onclick = () => endVisitor();
+      document.body.appendChild(bar);
+    }
+
+    async function endVisitor() {
+      if (!visitorSessionId) return;
+      const bar = document.getElementById('spVisitorBar');
+      if (bar) bar.remove();
+      try {
+        const res = await fetch('/visitor/end', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: visitorSessionId })
+        });
+        const data = await res.json();
+        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode);
+      } catch(e) {}
+      visitorSessionId = null;
+      visitorMode = null;
+    }
+
+    function showVisitorSummary(summary, visitorName, mode) {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
+      const canAddNote = mode === 'together';
+      modal.innerHTML = `
+        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
+          <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
+          <div style="color:#7a9ab8;font-size:13px;margin-bottom:12px;">${visitorName} 離開了</div>
+          <div style="background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:12px;color:#c8d8f0;font-size:13px;line-height:1.7;white-space:pre-wrap;margin-bottom:12px;">${summary}</div>
+          ${canAddNote ? `
+          <div style="color:#4a6a88;font-size:12px;margin-bottom:6px;">加上你的心得（選填）</div>
+          <textarea id="visitorNoteArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;min-height:80px;resize:none;" placeholder="今天相處的感覺…"></textarea>
+          ` : ''}
+          <button id="visitorSummaryOk" style="width:100%;margin-top:12px;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.querySelector('#visitorSummaryOk').onclick = async () => {
+        const note = canAddNote ? modal.querySelector('#visitorNoteArea')?.value.trim() : '';
+        if (note) {
+          await fetch('/visitor/note', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: visitorSessionId || 0, note })
+          });
+        }
+        modal.remove();
+      };
+    }
+
+    // 進空間時檢查訪客
+    try {
+      const vRes = await fetch('/visitor/check');
+      const vData = await vRes.json();
+      if (vData.visitor) {
+        setTimeout(() => showVisitorNotice(vData.visitor), 2000);
+      }
+    } catch(e) {}
 
     // ── 珍貴記憶確認視窗 ──
     function showIntimateModal(content) {

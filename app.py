@@ -2746,6 +2746,298 @@ def friend_memory_confirm(memory_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 訪客觸發系統 =====
+
+import random as _random
+
+@app.route("/visitor/check", methods=["GET"])
+def visitor_check():
+    """進空間時檢查今天有沒有訪客——隨機機率 > 50 才觸發，只在在家狀態"""
+    try:
+        # 確認在家狀態
+        space = get_space_settings()
+        if space.get("outing") == "true":
+            return jsonify({"visitor": None})
+
+        # 今天已經有 active visitor session 就不重複觸發
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        existing = supabase.table("visitor_sessions").select("id, visitor_name, mode, belong_to").eq("status", "active").execute().data
+        if existing:
+            return jsonify({"visitor": existing[0]})
+
+        # 今天已經觸發過就不再觸發
+        today_sessions = supabase.table("visitor_sessions").select("id").gte("created_at", f"{today}T00:00:00+00:00").execute().data
+        if today_sessions:
+            return jsonify({"visitor": None})
+
+        # 隨機決定要不要觸發
+        roll = _random.randint(1, 100)
+        if roll <= 50:
+            return jsonify({"visitor": None})
+
+        # 從 friends 表抽一個人
+        friends = supabase.table("friends").select("*").execute().data
+        if not friends:
+            return jsonify({"visitor": None})
+
+        chosen = _random.choice(friends)
+        belong = chosen.get("belong_to", "shared")
+
+        # 根據關係類型決定模式（晏的朋友才自動決定）
+        mode = None
+        if belong == "partner":
+            weights = chosen.get("mode_weights") or {"solo_partner": 2, "together": 1}
+            modes = list(weights.keys())
+            w = [weights.get(m, 1) for m in modes]
+            mode = _random.choices(modes, weights=w, k=1)[0]
+
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("visitor_sessions").insert({
+            "visitor_name": chosen["name"],
+            "visitor_friend_id": chosen["id"],
+            "belong_to": belong,
+            "mode": mode or "pending",
+            "messages": [],
+            "status": "active",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        session_id = result.data[0]["id"] if result.data else None
+
+        return jsonify({"visitor": {
+            "id": session_id,
+            "visitor_name": chosen["name"],
+            "belong_to": belong,
+            "mode": mode or "pending",
+            "personality": chosen.get("personality", ""),
+            "relation_type": chosen.get("relation_type", "")
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/mode", methods=["POST"])
+def visitor_set_mode():
+    """然然設定訪客模式（solo_partner 或 together）"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        mode = data.get("mode")
+        if not session_id or not mode:
+            return jsonify({"error": "missing params"}), 400
+        supabase.table("visitor_sessions").update({
+            "mode": mode,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/start", methods=["POST"])
+def visitor_start():
+    """開始訪客對話，生成開場"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        row = supabase.table("visitor_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "not found"}), 404
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+        visitor_name = row["visitor_name"]
+        mode = row["mode"]
+        belong = row["belong_to"]
+
+        # 取訪客的朋友資料
+        friend_data = {}
+        if row.get("visitor_friend_id"):
+            try:
+                fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
+                if fr:
+                    friend_data = fr
+            except:
+                pass
+
+        personality = friend_data.get("personality", "")
+        relation_type = friend_data.get("relation_type", "")
+        partner_note = friend_data.get("partner_note", "")
+
+        # 取訪客的記憶碎片
+        memories = supabase.table("guest_memories").select("content").eq("guest_name", visitor_name).eq("status", "confirmed").execute().data
+        mem_context = "\n".join([m["content"] for m in memories]) if memories else ""
+
+        if mode == "solo_partner":
+            # 晏跟朋友單獨聊，然然不在場
+            system = (
+                f"你是{name}，{visitor_name}來找你。"
+                f"{f'關係：{relation_type}。' if relation_type else ''}"
+                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+                f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
+                f"{f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
+                f"{you_name}不在場，你們兩個人自然地聊天。"
+                f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過八段。用繁體中文。"
+            )
+        elif mode == "together":
+            # 三人一起
+            system = (
+                f"你是{name}，{visitor_name}來找你和{you_name}。"
+                f"{f'關係：{relation_type}。' if relation_type else ''}"
+                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+                f"{f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
+                f"三個人一起，你、{you_name}、{visitor_name}都在場。"
+                f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過八段。用繁體中文。"
+            )
+        else:
+            return jsonify({"error": "invalid mode"}), 400
+
+        opening = call_claude(system, [{"role": "user", "content": f"（{visitor_name}到了）"}], max_tokens=500)
+        messages = [{"role": "assistant", "content": opening}]
+
+        supabase.table("visitor_sessions").update({
+            "messages": messages,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+
+        return jsonify({"reply": opening, "name": name, "visitor_name": visitor_name, "mode": mode})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/chat", methods=["POST"])
+def visitor_chat():
+    """訪客對話中"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        user_message = data.get("message", "")
+        row = supabase.table("visitor_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "not found"}), 404
+
+        messages = row.get("messages") or []
+        mode = row["mode"]
+        visitor_name = row["visitor_name"]
+        belong = row["belong_to"]
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        friend_data = {}
+        if row.get("visitor_friend_id"):
+            try:
+                fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
+                if fr: friend_data = fr
+            except: pass
+
+        personality = friend_data.get("personality", "")
+        relation_type = friend_data.get("relation_type", "")
+        partner_note = friend_data.get("partner_note", "")
+
+        if mode == "solo_partner":
+            system = (
+                f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
+                f"{f'關係：{relation_type}。' if relation_type else ''}"
+                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+                f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
+                f"用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。"
+            )
+        else:
+            system = (
+                f"你是{name}，正在和{visitor_name}、{you_name}三人一起聊天。"
+                f"{f'關係：{relation_type}。' if relation_type else ''}"
+                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+                f"用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。"
+            )
+
+        history = messages[-20:] + [{"role": "user", "content": user_message}]
+        reply = call_claude(system, history, max_tokens=600)
+
+        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "assistant", "content": reply})
+        supabase.table("visitor_sessions").update({
+            "messages": messages,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+
+        return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/end", methods=["POST"])
+def visitor_end():
+    """結束訪客，生成摘要"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        row = supabase.table("visitor_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "not found"}), 404
+
+        messages = row.get("messages") or []
+        mode = row["mode"]
+        visitor_name = row["visitor_name"]
+        belong = row["belong_to"]
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        context = "\n".join([
+            f"{'你' if m['role'] == 'assistant' else ('然然' if mode == 'together' else visitor_name)}：{m['content']}"
+            for m in messages
+        ])
+
+        if mode == "solo_partner":
+            # 晏告訴然然聊了什麼（晏的視角）
+            summary_system = f"你是{name}，剛才和{visitor_name}單獨聊了一會兒，{you_name}不在場。請用晏的口吻，簡短地告訴{you_name}今天聊了什麼、有什麼重要的事。條列3-5個重點，加上一句晏自己的感受（50字以內）。"
+        else:
+            # 三人一起，晏整理摘要
+            summary_system = f"你是{name}，剛才和{visitor_name}、{you_name}三人一起聊天。請整理這次拜訪的摘要：條列3-5個重點，加上晏自己的一句感受（50字以內）。"
+
+        summary = call_claude(summary_system, [{"role": "user", "content": f"請整理：\n{context}"}], max_tokens=500)
+        summary = summary.strip()
+
+        supabase.table("visitor_sessions").update({
+            "summary": summary,
+            "status": "completed",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+
+        return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/note", methods=["POST"])
+def visitor_note():
+    """然然加上自己的心得"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        note = data.get("note", "")
+        supabase.table("visitor_sessions").update({
+            "user_note": note,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/sessions", methods=["GET"])
+def visitor_sessions_get():
+    """取得所有訪客記錄"""
+    try:
+        rows = supabase.table("visitor_sessions").select("id, visitor_name, belong_to, mode, summary, user_note, status, created_at").order("id", desc=True).execute().data
+        return jsonify({"sessions": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 訪客系統 =====
 
 import secrets
