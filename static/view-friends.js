@@ -270,6 +270,7 @@
 
       card.querySelector(`[data-fid="${f.id}"]`).onclick = async () => {
         const updateData = {
+          name: f.name,
           belong_to: card.querySelector(`#frBelong-${safeId}`)?.value,
           relation_type: card.querySelector(`#frRelation-${safeId}`)?.value.trim(),
           personality: card.querySelector(`#frPersonality-${safeId}`)?.value.trim(),
@@ -277,8 +278,15 @@
           partner_note: card.querySelector(`#frNote-${safeId}`)?.value.trim() || '',
         };
         if (f.id) {
+          // 已有 friends 表記錄，直接更新
           await fetch(`/friends/${f.id}`, {
             method: 'PUT', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(updateData)
+          });
+        } else {
+          // 舊資料沒有 friends 表記錄，先建立
+          await fetch('/friends', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify(updateData)
           });
         }
@@ -294,7 +302,15 @@
 
       card.querySelector(`[data-delid="${f.id}"]`).onclick = async () => {
         if (!confirm(`確定要刪除 ${f.name}？`)) return;
-        if (f.id) await fetch(`/friends/${f.id}`, { method: 'DELETE' });
+        if (f.id) {
+          await fetch(`/friends/${f.id}`, { method: 'DELETE' });
+        } else {
+          // 舊資料沒有 friends 表記錄，只刪 guest_memories
+          await fetch('/friends/memories/by-name', {
+            method: 'DELETE', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ guest_name: f.name })
+          });
+        }
         loadFriends();
       };
 

@@ -2712,6 +2712,19 @@ def friend_delete(friend_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/friends/memories/by-name", methods=["DELETE"])
+def friend_delete_by_name():
+    """刪除舊資料（只有guest_memories，沒有friends表記錄）"""
+    try:
+        data = request.json
+        guest_name = data.get("guest_name", "")
+        if not guest_name:
+            return jsonify({"error": "no name"}), 400
+        supabase.table("guest_memories").delete().eq("guest_name", guest_name).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/friends/memories", methods=["POST"])
 def friend_memory_add():
     """新增朋友記憶"""
