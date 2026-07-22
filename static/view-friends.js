@@ -284,11 +284,13 @@
             body: JSON.stringify(updateData)
           });
         } else {
-          // 舊資料沒有 friends 表記錄，先建立
-          await fetch('/friends', {
+          // 舊資料沒有 friends 表記錄，先建立，並把新 id 存回 f.id 避免重複建立
+          const res = await fetch('/friends', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify(updateData)
           });
+          const data = await res.json();
+          if (data.id) f.id = data.id;
         }
         const newMem = card.querySelector(`#frNewMem-${safeId}`)?.value.trim();
         if (newMem) {
@@ -296,6 +298,7 @@
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ guest_name: f.name, content: newMem, status: 'confirmed', source: '手動新增' })
           });
+          card.querySelector(`#frNewMem-${safeId}`).value = '';
         }
         loadFriends();
       };
