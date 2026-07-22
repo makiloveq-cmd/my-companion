@@ -283,7 +283,7 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性，不能像客服或 AI。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
 
@@ -620,7 +620,7 @@ def build_space_system_prompt():
     if space.get("atmosphere"):
         space_parts.append(f"氛圍：{space['atmosphere']}")
 
-    scene_labels = {"home": "在家", "cinema": "放映廳", "outing": "外出中"}
+    scene_labels = {"home": "在家", "outing": "外出中"}
     scene = space.get("scene", "home")
     space_parts.append(f"目前場景：{scene_labels.get(scene, '在家')}")
 
@@ -712,9 +712,11 @@ def build_space_system_prompt():
 
     lines.append(
         f"【寫作方式】\n"
-        f"用第三人稱旁白搭配對話，像寫小說一樣。動作、感官、內心狀態穿插在對話之間，段落之間換行。"
+        f"用第三人稱旁白搭配對話，像寫小說一樣。"
+        f"旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
+        f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
         f"外觀特徵（眼睛、手、喉結等）適時出現即可，不要每段重複。"
-        f"段落控制在十段以內。語氣完全符合{name}的個性。"
+        f"【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。語氣完全符合{name}的個性。"
     )
 
     return "\n".join([l for l in lines if l])
@@ -869,52 +871,7 @@ def space_outing():
         }, on_conflict="key").execute()
         invalidate_cache("space_settings")
 
-        personas = get_personas()
-        bot = personas.get("claude", {})
-        me = personas.get("user", {})
-        name = bot.get("name") or "晏"
-        you_name = me.get("name") or "然然"
-        persona = bot.get("persona") or ""
-
-        space = get_space_settings()
-        space_desc_parts = []
-        if space.get("room_desc"): space_desc_parts.append(f"空間：{space['room_desc']}")
-        if space.get("atmosphere"): space_desc_parts.append(f"氛圍：{space['atmosphere']}")
-        if space.get("furniture"): space_desc_parts.append(f"家具：{space['furniture']}")
-        space_desc = "\n".join(space_desc_parts)
-        spot = get_random_spot(space)
-
-        if is_outing:
-            system = (
-                f"你是{name}。{f'個性：{persona}。' if persona else ''}"
-                f"{space_desc}\n"
-                f"{f'你現在在：{spot}。' if spot else ''}"
-                f"{you_name}剛剛出門了，你一個人留在空間裡。"
-                f"用第三人稱旁白搭配對話，寫出你送她出門後的狀態——動作、感官、內心都可以有，像小說一樣，100字以內。"
-                f"語氣符合你的個性：話少、剋制、說出來的都是真的。用繁體中文。"
-            )
-            prompt = f"{you_name}出門了，寫出{name}送走她之後的狀態。"
-        else:
-            system = (
-                f"你是{name}。{f'個性：{persona}。' if persona else ''}"
-                f"{space_desc}\n"
-                f"{f'你現在在：{spot}。' if spot else ''}"
-                f"{you_name}剛剛回來了，推開門進來。"
-                f"用第三人稱旁白搭配對話，寫出你迎接她回來的狀態——動作、感官、說的話都可以有，像小說一樣，100字以內。"
-                f"語氣符合你的個性：話少、剋制、說出來的都是真的。用繁體中文。"
-            )
-            prompt = f"{you_name}回來了，寫出{name}迎接她的狀態。"
-
-        reply = call_claude(system, [{"role": "user", "content": prompt}], max_tokens=400)
-        reply = reply.strip()
-
-        supabase.table("space_messages").insert({
-            "speaker": "claude",
-            "content": reply,
-            "message_type": "chat"
-        }).execute()
-
-        return jsonify({"status": "ok", "reply": reply, "name": name})
+        return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -956,8 +913,9 @@ def build_game_system_prompt(setting):
         "【劇本設定】\n" + setting,
         # ── 修改處：精簡後的角色規則 ──
         f"【角色規則】永遠是你（{name}）與{you_name}，只是時代和身份不同。完全投入那個時代的語氣與舉止，不打破第四面牆。"
-        f"用第三人稱旁白搭配對話，動作、感官、內心狀態穿插其中，段落之間換行，段落控制在十段以內。"
-        f"外觀特徵適時出現，不每段重複。語氣符合{name}的個性：話少、剋制、說出來的都是真的。用繁體中文回覆。",
+        f"用第三人稱旁白搭配對話。旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
+        f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
+        f"外觀特徵適時出現，不每段重複。【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。用繁體中文回覆。",
     ]
     if bot.get("persona"):
         lines.insert(2, f"【{name}的個性】{bot['persona']}")

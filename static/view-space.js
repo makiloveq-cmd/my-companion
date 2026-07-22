@@ -388,7 +388,6 @@
           <div class="sp-modal-section-title">場景</div>
           <div class="sp-scene-row" id="spSceneRow">
             <button class="sp-scene-btn" data-scene="home" id="sceneHome">🏠 家</button>
-            <button class="sp-scene-btn" data-scene="cinema" id="sceneCinema">🎬 放映廳</button>
             <button class="sp-scene-btn" data-scene="outing" id="sceneOuting">✦ 外出</button>
           </div>
           <div class="sp-scene-hint" id="spSceneHint"></div>
@@ -836,8 +835,7 @@
 
     const SCENE_HINTS = {
       home: '整個家都在這裡，廚房、浴室、臥室隨意走動。',
-      cinema: '家裡的放映廳，投影和劇院音響，想看什麼都行。',
-      outing: '出門了，去哪裡由然然決定，切換時會自動記下出門前的狀態。'
+      outing: '出門了，去哪裡由然然決定。'
     };
     let currentScene = 'home';
 
@@ -861,7 +859,7 @@
         });
         const h1 = document.querySelector('.sp-header h1');
         if (h1) {
-          const labels = { home: '✦ 共同空間', cinema: '✦ 放映廳', outing: '✦ 外出' };
+          const labels = { home: '✦ 共同空間', outing: '✦ 外出' };
           h1.textContent = labels[scene] || '✦ 共同空間';
         }
       } catch (e) {}
@@ -972,7 +970,7 @@
       updateSceneUI(initScene);
       const h1 = document.querySelector('.sp-header h1');
       if (h1) {
-        const labels = { home: '✦ 共同空間', cinema: '✦ 放映廳', outing: '✦ 外出' };
+        const labels = { home: '✦ 共同空間', outing: '✦ 外出' };
         h1.textContent = labels[initScene] || '✦ 共同空間';
       }
     } catch (e) {}
