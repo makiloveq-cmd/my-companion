@@ -748,6 +748,30 @@ def build_space_system_prompt():
     except:
         last_user_content = ""
 
+    # 注入最近3次外出記憶（有關鍵字就比對，沒有就取最新）
+    try:
+        outing_rows = supabase.table("outing_sessions").select("summary, keywords, destination, created_at").eq("status", "completed").order("id", desc=True).limit(10).execute().data
+        if outing_rows:
+            matched = []
+            unmatched = []
+            for r in outing_rows:
+                if not r.get("summary"):
+                    continue
+                kw_raw = r.get("keywords") or ""
+                if kw_raw and last_user_content:
+                    kws = [k.strip() for k in kw_raw.split(",") if k.strip()]
+                    if any(kw in last_user_content for kw in kws):
+                        matched.append(r["summary"])
+                    else:
+                        unmatched.append(r["summary"])
+                else:
+                    unmatched.append(r["summary"])
+            outing_summaries = (matched + unmatched)[:3]
+            if outing_summaries:
+                lines.append(f"【外出記憶】\n" + "\n\n---\n\n".join(outing_summaries))
+    except:
+        pass
+
     # 關鍵字觸發注入空間相關摘要（最多 3 筆）
     space_summaries = get_relevant_summaries("space", last_user_content)
     if space_summaries:
@@ -985,7 +1009,179 @@ def space_outing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/space/end_day", methods=["POST"])
+@app.route("/outing/start", methods=["POST"])
+def outing_start():
+    """建立新的外出 session"""
+    try:
+        data = request.json
+        destination = data.get("destination", "")
+        if not destination:
+            return jsonify({"error": "no destination"}), 400
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        system = (
+            f"你是{name}，和{you_name}是同居情侶，現在你們一起出門了。"
+            f"目的地：{destination}。"
+            f"用第三人稱旁白搭配對話，旁白和對話分開段落。"
+            f"段落不超過五段，語氣符合{name}的個性：話少、剋制。用繁體中文。"
+        )
+        opening = call_claude(system, [{"role": "user", "content": f"（出門，前往{destination}）"}], max_tokens=400)
+
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("outing_sessions").insert({
+            "destination": destination,
+            "messages": [{"role": "assistant", "content": opening}],
+            "status": "active",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        session_id = result.data[0]["id"] if result.data else None
+
+        supabase.table("space_settings").upsert({
+            "key": "outing",
+            "value": "true",
+            "updated_at": now
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+
+        return jsonify({"reply": opening, "name": name, "session_id": session_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/outing/chat", methods=["POST"])
+def outing_chat():
+    """外出中的對話"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        user_message = data.get("message", "")
+        if not session_id:
+            return jsonify({"error": "no session_id"}), 400
+
+        row = supabase.table("outing_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "session not found"}), 404
+
+        messages = row.get("messages") or []
+        destination = row.get("destination", "")
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        system = (
+            f"你是{name}，和{you_name}是同居情侶，現在你們一起在外出中。"
+            f"目的地：{destination}。"
+            f"用第三人稱旁白搭配對話，旁白和對話分開段落。"
+            f"【嚴格限制】段落總數不得超過十段。語氣符合{name}的個性：話少、剋制。用繁體中文。"
+        )
+
+        history = messages[-20:] + [{"role": "user", "content": user_message}]
+        reply = call_claude(system, history, max_tokens=600)
+
+        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "assistant", "content": reply})
+        supabase.table("outing_sessions").update({
+            "messages": messages,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+
+        return jsonify({"reply": reply, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/outing/end", methods=["POST"])
+def outing_end():
+    """結束外出，生成摘要供確認"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        if not session_id:
+            return jsonify({"error": "no session_id"}), 400
+
+        row = supabase.table("outing_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "session not found"}), 404
+
+        messages = row.get("messages") or []
+        destination = row.get("destination", "")
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        context = "\n".join([
+            f"{'你' if m['role'] == 'assistant' else you_name}：{m['content']}"
+            for m in messages
+        ])
+
+        summary_prompt = (
+            f"你是{name}，請把這次和{you_name}一起外出的經歷整理成記錄。\n"
+            f"目的地：{destination}\n\n"
+            f"格式如下（嚴格按此格式）：\n"
+            f"【去了哪裡】{destination}\n\n"
+            f"【重點記憶】\n"
+            f"・（條列3-5個重要的事、說的話、發生的事）\n\n"
+            f"【{name}的心得】\n"
+            f"（用{name}第一人稱，50字以內，帶他自己的語氣和感受）\n\n"
+            f"必須寫完整，不能截斷。"
+        )
+
+        summary = call_claude(summary_prompt, [{"role": "user", "content": f"請整理以下對話：\n{context}"}], max_tokens=600)
+        summary = summary.strip()
+
+        return jsonify({"summary": summary, "destination": destination})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/outing/confirm", methods=["POST"])
+def outing_confirm():
+    """確認摘要後存進資料庫"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        summary = data.get("summary", "")
+        if not session_id:
+            return jsonify({"error": "no session_id"}), 400
+
+        keywords = ""
+        try:
+            kw_raw = call_claude(
+                "請從以下記錄中抽出5-8個關鍵字，用逗號分隔，只回傳關鍵字，不要其他文字。",
+                [{"role": "user", "content": summary}],
+                max_tokens=80
+            )
+            keywords = kw_raw.strip().replace("、", ",").replace("，", ",")
+        except:
+            pass
+
+        now = datetime.now(timezone.utc).isoformat()
+        supabase.table("outing_sessions").update({
+            "summary": summary,
+            "keywords": keywords,
+            "status": "completed",
+            "updated_at": now
+        }).eq("id", session_id).execute()
+
+        supabase.table("space_settings").upsert({
+            "key": "outing",
+            "value": "false",
+            "updated_at": now
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 def space_end_day():
     try:
         now = datetime.now(timezone.utc).isoformat()

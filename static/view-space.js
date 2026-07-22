@@ -793,17 +793,26 @@
 
       const loading = addLoadingRow();
       try {
-        const spaceRes = await fetch('/space/reply/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recording: isRecordingIntimate }) });
-        const spaceData = await spaceRes.json();
+        let spaceData;
+        if (outingSessionId) {
+          // 外出中走獨立的 outing/chat
+          const outRes = await fetch('/outing/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: outingSessionId, message: text })
+          });
+          spaceData = await outRes.json();
+        } else {
+          // 在家走原本的 space/reply/claude
+          const spaceRes = await fetch('/space/reply/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recording: isRecordingIntimate }) });
+          spaceData = await spaceRes.json();
+        }
         loading.remove();
         if (spaceData.reply) {
           renderAI('claude', spaceData.reply, new Date().toISOString());
-          // 如果後端說有草稿，顯示封存按鈕
           if (spaceData.has_draft) {
             document.getElementById('spSealMemoryBtn').style.display = 'flex';
           }
         } else renderRetry();
-        const reply = spaceData.reply;
         try {
           const relRes = await fetch('/relationship_stats');
           const relData = await relRes.json();
@@ -848,8 +857,164 @@
       if (hint) hint.textContent = SCENE_HINTS[scene] || '';
     }
 
+    let outingSessionId = null;
+
+    // 過場動畫
+    function playTransition(dir, label, onDone) {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `position:fixed;inset:0;background:#04080f;z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;opacity:0;transition:opacity 0.6s ease;`;
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;';
+      const textEl = document.createElement('div');
+      textEl.style.cssText = 'position:relative;z-index:1;color:#5a7a9a;font-size:18px;letter-spacing:0.2em;opacity:0;transition:opacity 0.5s ease 0.4s;';
+      textEl.textContent = label;
+      const subEl = document.createElement('div');
+      subEl.style.cssText = 'position:relative;z-index:1;color:#2a3a5a;font-size:12px;letter-spacing:0.1em;opacity:0;transition:opacity 0.5s ease 0.7s;';
+      subEl.textContent = dir === 'out' ? '出門了。' : '到家了。';
+      overlay.appendChild(canvas);
+      overlay.appendChild(textEl);
+      overlay.appendChild(subEl);
+      document.body.appendChild(overlay);
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const ctx = canvas.getContext('2d');
+      const color = dir === 'out' ? '74,122,170' : '74,170,122';
+      const particles = Array.from({length: 20}, () => ({
+        x: Math.random() * canvas.width,
+        y: dir === 'out' ? (40 + Math.random() * 60) / 100 * canvas.height : Math.random() * 0.4 * canvas.height,
+        r: Math.random() * 1.5 + 0.5,
+        vy: dir === 'out' ? -(1 + Math.random()) : (1 + Math.random()),
+        alpha: 0.5,
+      }));
+      let animId;
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(${color},${p.alpha})`;
+          ctx.fill();
+          p.y += p.vy; p.alpha -= 0.008;
+        });
+        animId = requestAnimationFrame(draw);
+      }
+      draw();
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        textEl.style.opacity = '1';
+        subEl.style.opacity = '1';
+      });
+      setTimeout(() => {
+        cancelAnimationFrame(animId);
+        overlay.style.opacity = '0';
+        setTimeout(() => { overlay.remove(); onDone(); }, 600);
+      }, 2200);
+    }
+
+    // 外出設定視窗
+    function showOutingSetup() {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9997;display:flex;align-items:flex-end;';
+      modal.innerHTML = `
+        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;">
+          <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 20px;"></div>
+          <div style="color:#c8d8f0;font-size:14px;margin-bottom:12px;letter-spacing:0.05em;">這次出門去哪？</div>
+          <input id="outingDestInput" style="width:100%;background:#1a2840;border:0.5px solid #2a3f60;border-radius:10px;padding:10px 12px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;" placeholder="約會餐廳、逛夜市…" />
+          <button id="outingGoBtn" style="width:100%;margin-top:12px;padding:10px;background:#1e3a1e;border:0.5px solid #3a6a3a;border-radius:10px;color:#a0c8a0;font-size:13px;cursor:pointer;">出發 →</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('outingDestInput').focus();
+      document.getElementById('outingGoBtn').onclick = async () => {
+        const dest = document.getElementById('outingDestInput').value.trim();
+        if (!dest) return;
+        modal.remove();
+        playTransition('out', '走吧。', async () => {
+          // 切換 UI
+          document.getElementById('phoneFrame') && (document.getElementById('phoneFrame').style.background = '#0f1a10');
+          const h1 = document.querySelector('.sp-header h1');
+          if (h1) h1.textContent = '✦ 外出中';
+          updateSceneUI('outing');
+          // 呼叫後端
+          try {
+            const res = await fetch('/outing/start', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ destination: dest })
+            });
+            const data = await res.json();
+            outingSessionId = data.session_id;
+            if (data.reply) appendSpaceMessage('claude', data.reply, data.name);
+          } catch(e) {}
+        });
+      };
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    }
+
+    // 回家流程
+    async function goHome() {
+      if (!outingSessionId) {
+        updateSceneUI('home');
+        const h1 = document.querySelector('.sp-header h1');
+        if (h1) h1.textContent = '✦ 共同空間';
+        await fetch('/space/outing', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({outing: false}) });
+        return;
+      }
+      // 生成摘要
+      let summaryData = null;
+      try {
+        const res = await fetch('/outing/end', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: outingSessionId })
+        });
+        summaryData = await res.json();
+      } catch(e) {}
+
+      playTransition('home', '到家了。', () => {
+        const h1 = document.querySelector('.sp-header h1');
+        if (h1) h1.textContent = '✦ 共同空間';
+        updateSceneUI('home');
+        // 顯示摘要確認
+        if (summaryData && summaryData.summary) {
+          showSummaryConfirm(summaryData.summary, outingSessionId);
+        }
+        outingSessionId = null;
+      });
+    }
+
+    // 摘要確認視窗
+    function showSummaryConfirm(summary, sessionId) {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
+      const escaped = summary.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      modal.innerHTML = `
+        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
+          <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
+          <div style="color:#7a9ab8;font-size:13px;margin-bottom:12px;letter-spacing:0.05em;">今天的外出記錄</div>
+          <textarea id="summaryEditArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:12px;color:#c8d8f0;font-size:13px;line-height:1.7;outline:none;box-sizing:border-box;min-height:180px;resize:none;">${summary}</textarea>
+          <div style="display:flex;gap:10px;margin-top:12px;">
+            <button id="summaryDiscardBtn" style="flex:1;padding:10px;background:#1a1a2a;border:0.5px solid #2a3a5a;border-radius:10px;color:#4a5a7a;font-size:13px;cursor:pointer;">不儲存</button>
+            <button id="summaryConfirmBtn" style="flex:2;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById('summaryDiscardBtn').onclick = () => { modal.remove(); };
+      document.getElementById('summaryConfirmBtn').onclick = async () => {
+        const editedSummary = document.getElementById('summaryEditArea').value;
+        modal.remove();
+        try {
+          await fetch('/outing/confirm', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: sessionId, summary: editedSummary })
+          });
+        } catch(e) {}
+      };
+    }
+
     async function switchScene(scene) {
       if (scene === currentScene) return;
+      if (scene === 'outing') { showOutingSetup(); return; }
+      if (scene === 'home' && currentScene === 'outing') { goHome(); return; }
       updateSceneUI(scene);
       try {
         await fetch('/space/scene', {
