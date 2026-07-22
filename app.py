@@ -2610,40 +2610,104 @@ def collection_movies_delete(movie_id):
 
 @app.route("/friends", methods=["GET"])
 def friends_get():
-    """取得所有朋友及其記憶"""
+    """取得所有朋友檔案及其記憶"""
     try:
-        rows = supabase.table("guest_memories").select("*").order("guest_name").order("id").execute().data
-        friends = {}
-        for r in rows:
+        # 從 friends 表取人物檔案
+        friend_profiles = supabase.table("friends").select("*").order("belong_to").order("name").execute().data
+        # 從 guest_memories 取記憶碎片
+        memory_rows = supabase.table("guest_memories").select("*").eq("status", "confirmed").order("guest_name").order("id").execute().data
+
+        memory_map = {}
+        for r in memory_rows:
             name = r["guest_name"]
-            if name not in friends:
-                friends[name] = {"name": name, "keywords": r.get("keywords", ""), "memories": []}
-            friends[name]["memories"].append({
+            if name not in memory_map:
+                memory_map[name] = []
+            memory_map[name].append({
                 "id": r["id"], "content": r["content"],
-                "status": r.get("status", "confirmed"),
+                "keywords": r.get("keywords", ""),
                 "source": r.get("source", ""),
                 "created_at": r.get("created_at", "")
             })
-        return jsonify({"friends": list(friends.values())})
+
+        result = []
+        for p in friend_profiles:
+            result.append({
+                "id": p["id"],
+                "name": p["name"],
+                "belong_to": p.get("belong_to", "shared"),
+                "relation_type": p.get("relation_type", ""),
+                "personality": p.get("personality", ""),
+                "birthday": p.get("birthday", ""),
+                "partner_note": p.get("partner_note", ""),
+                "mode_weights": p.get("mode_weights", {"solo_user": 1, "solo_partner": 2, "together": 1}),
+                "memories": memory_map.get(p["name"], []),
+                "created_at": p.get("created_at", "")
+            })
+
+        # 也把只有 guest_memories 沒有 friends 檔案的人列出來（舊資料相容）
+        profiled_names = {p["name"] for p in friend_profiles}
+        for name, mems in memory_map.items():
+            if name not in profiled_names:
+                result.append({
+                    "id": None, "name": name,
+                    "belong_to": "shared", "relation_type": "",
+                    "personality": "", "birthday": "", "partner_note": "",
+                    "mode_weights": {"solo_user": 1, "solo_partner": 2, "together": 1},
+                    "memories": mems, "created_at": ""
+                })
+
+        return jsonify({"friends": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/friends/<friend_name>", methods=["PUT"])
-def friend_update(friend_name):
-    """更新朋友的關鍵字"""
+@app.route("/friends", methods=["POST"])
+def friend_create():
+    """新增朋友人物檔案"""
     try:
         data = request.json
-        keywords = data.get("keywords", "")
-        supabase.table("guest_memories").update({"keywords": keywords}).eq("guest_name", friend_name).execute()
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "no name"}), 400
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("friends").insert({
+            "name": name,
+            "belong_to": data.get("belong_to", "shared"),
+            "relation_type": data.get("relation_type", ""),
+            "personality": data.get("personality", ""),
+            "birthday": data.get("birthday", ""),
+            "partner_note": data.get("partner_note", ""),
+            "mode_weights": data.get("mode_weights", {"solo_user": 1, "solo_partner": 2, "together": 1}),
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        return jsonify({"status": "ok", "id": result.data[0]["id"] if result.data else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/friends/<int:friend_id>", methods=["PUT"])
+def friend_update(friend_id):
+    """更新朋友人物檔案"""
+    try:
+        data = request.json
+        update_data = {}
+        for field in ["name", "belong_to", "relation_type", "personality", "birthday", "partner_note", "mode_weights"]:
+            if field in data:
+                update_data[field] = data[field]
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        supabase.table("friends").update(update_data).eq("id", friend_id).execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/friends/<friend_name>", methods=["DELETE"])
-def friend_delete(friend_name):
-    """刪除朋友的所有記憶"""
+@app.route("/friends/<int:friend_id>", methods=["DELETE"])
+def friend_delete(friend_id):
+    """刪除朋友檔案及其記憶"""
     try:
-        supabase.table("guest_memories").delete().eq("guest_name", friend_name).execute()
+        # 先取名字
+        row = supabase.table("friends").select("name").eq("id", friend_id).single().execute().data
+        if row:
+            supabase.table("guest_memories").delete().eq("guest_name", row["name"]).execute()
+        supabase.table("friends").delete().eq("id", friend_id).execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
