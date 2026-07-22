@@ -27,9 +27,16 @@
   .gst-link-url { font-size: 12px; color: var(--text-3); font-family: monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gst-copy-btn { padding: 4px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: 12px; cursor: pointer; flex-shrink: 0; }
   .gst-empty { text-align: center; color: var(--text-3); font-size: 14px; padding: 2rem 0; }
-  .gst-result { background: var(--surface2); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-  .gst-result-label { font-size: 12px; color: var(--text-3); }
-  .gst-result-url { font-size: 14px; color: var(--accent); word-break: break-all; }
+  .gst-live-section { background: var(--surface); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .gst-live-title { padding: 14px 16px 10px; font-size: 11px; color: var(--text-3); letter-spacing: 2px; }
+  .gst-live-card { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .gst-live-avatar { width: 36px; height: 36px; border-radius: 50%; background: rgba(160,100,200,0.2); display: flex; align-items: center; justify-content: center; color: rgba(160,100,200,0.9); font-size: 15px; flex-shrink: 0; }
+  .gst-live-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .gst-live-name { font-size: 14px; color: var(--text); }
+  .gst-live-meta { font-size: 12px; color: var(--text-3); }
+  .gst-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #50a060; flex-shrink: 0; animation: gst-pulse 1.5s infinite; }
+  @keyframes gst-pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .gst-live-empty { padding: 14px 16px; font-size: 13px; color: var(--text-3); }
   `;
 
   function ensureStyle() {
@@ -53,6 +60,11 @@
 
     el.innerHTML = `
       <div class="gst-main">
+        <div class="gst-live-section">
+          <div class="gst-live-title">晏的訪客動態</div>
+          <div id="gstLiveList"><div class="gst-live-empty">目前沒有進行中的訪客</div></div>
+        </div>
+
         <div class="gst-create">
           <div class="gst-create-title">產生訪客連結</div>
           <div>
@@ -197,7 +209,38 @@
       btn.disabled = false; btn.textContent = '產生連結';
     };
 
-    await loadSessions();
+    // 載入晏的訪客動態
+    async function loadLiveSessions() {
+      const list = document.getElementById('gstLiveList');
+      try {
+        const res = await fetch('/visitor/sessions');
+        const data = await res.json();
+        const active = (data.sessions || []).filter(s => s.status === 'active');
+        if (active.length === 0) {
+          list.innerHTML = '<div class="gst-live-empty">目前沒有進行中的訪客</div>';
+          return;
+        }
+        list.innerHTML = '';
+        active.forEach(s => {
+          const modeLabel = s.mode === 'together' ? '三人一起' : '單獨聊';
+          const item = document.createElement('div');
+          item.className = 'gst-live-card';
+          item.innerHTML = `
+            <div class="gst-live-avatar">${s.visitor_name?.charAt(0) || '訪'}</div>
+            <div class="gst-live-info">
+              <div class="gst-live-name">${s.visitor_name}</div>
+              <div class="gst-live-meta">${modeLabel} · ${formatDate(s.created_at)}</div>
+            </div>
+            <div class="gst-live-dot"></div>
+          `;
+          list.appendChild(item);
+        });
+      } catch(e) {
+        list.innerHTML = '<div class="gst-live-empty">載入失敗</div>';
+      }
+    }
+
+    await Promise.all([loadSessions(), loadLiveSessions()]);
     return function cleanup() {};
   }
 

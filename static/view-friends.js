@@ -59,6 +59,12 @@
   const BELONG_LABELS = { user: '然然的', partner: '晏的', shared: '共同的' };
   const BELONG_BADGE = { user: 'fr-badge-user', partner: 'fr-badge-partner', shared: 'fr-badge-shared' };
 
+  function formatVisitDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getMonth()+1}/${d.getDate()}`;
+  }
+
   function ensureStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const s = document.createElement('style');
@@ -168,6 +174,9 @@
       const badgeLabel = BELONG_LABELS[belong] || '';
       const subParts = [f.relation_type, f.personality].filter(Boolean);
       const sub = subParts.join('・') || '未設描述';
+      const visitInfo = f.visit_count > 0
+        ? `來訪 ${f.visit_count} 次 · 最近 ${formatVisitDate(f.last_visit)}`
+        : '';
       const safeId = f.id || f.name;
 
       card.innerHTML = `
@@ -179,6 +188,7 @@
               ${pendingCount > 0 ? `<span style="font-size:11px;background:rgba(200,160,50,0.2);color:rgba(200,160,50,0.9);padding:2px 8px;border-radius:10px;">${pendingCount} 待確認</span>` : ''}
             </div>
             <div class="fr-sub">${sub}</div>
+            ${visitInfo ? `<div style="font-size:11px;color:var(--text-3);">${visitInfo}</div>` : ''}
           </div>
           <div class="fr-chevron" id="frChevron-${safeId}">›</div>
         </div>

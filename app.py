@@ -2629,8 +2629,20 @@ def friends_get():
                 "created_at": r.get("created_at", "")
             })
 
+        # 從 visitor_sessions 統計來訪次數和最近日期
+        visit_rows = supabase.table("visitor_sessions").select("visitor_name, created_at").eq("status", "completed").execute().data
+        visit_stats = {}
+        for v in visit_rows:
+            n = v["visitor_name"]
+            if n not in visit_stats:
+                visit_stats[n] = {"count": 0, "last": ""}
+            visit_stats[n]["count"] += 1
+            if v["created_at"] > visit_stats[n]["last"]:
+                visit_stats[n]["last"] = v["created_at"]
+
         result = []
         for p in friend_profiles:
+            stats = visit_stats.get(p["name"], {"count": 0, "last": ""})
             result.append({
                 "id": p["id"],
                 "name": p["name"],
@@ -2641,6 +2653,8 @@ def friends_get():
                 "partner_note": p.get("partner_note", ""),
                 "mode_weights": p.get("mode_weights", {"solo_user": 1, "solo_partner": 2, "together": 1}),
                 "memories": memory_map.get(p["name"], []),
+                "visit_count": stats["count"],
+                "last_visit": stats["last"],
                 "created_at": p.get("created_at", "")
             })
 
@@ -2788,8 +2802,8 @@ def visitor_check():
         if roll <= 50:
             return jsonify({"visitor": None})
 
-        # 從 friends 表抽一個人
-        friends = supabase.table("friends").select("*").execute().data
+        # 只從晏的朋友裡抽（然然的朋友走訪客連結系統，不走隨機觸發）
+        friends = supabase.table("friends").select("*").eq("belong_to", "partner").execute().data
         if not friends:
             return jsonify({"visitor": None})
 
