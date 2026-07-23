@@ -327,7 +327,7 @@
         loadFriends();
       };
 
-      const afBtn = card.querySelector(`[data-afid]`);
+      const afBtn = card.querySelector('.fr-autofill-btn');
       if (afBtn) {
         afBtn.onclick = async () => {
           let fid = f.id;
