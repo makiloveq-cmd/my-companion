@@ -1374,7 +1374,7 @@
       const delay = ms => new Promise(r => setTimeout(r, ms));
 
       while (rounds < maxRounds) {
-        await delay(8000 + Math.random() * 4000); // 每輪間隔 8-12 秒
+        await delay(180000 + Math.random() * 120000); // 每輪間隔 3-5 分鐘
         try {
           const res = await fetch('/visitor/auto_chat', {
             method: 'POST', headers: {'Content-Type':'application/json'},
