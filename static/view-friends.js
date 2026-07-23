@@ -247,6 +247,7 @@
 
           <div class="fr-btns">
             <button class="fr-save-btn" data-fid="${f.id}" data-fname="${f.name}">儲存</button>
+            <button class="fr-autofill-btn" data-afid="${f.id || ''}" style="padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:10px;color:var(--text-3);font-size:13px;cursor:pointer;font-family:inherit;">✦ 讓晏填</button>
             <button class="fr-del-btn" data-delid="${f.id}" data-delname="${f.name}">刪除</button>
           </div>
         </div>
@@ -318,7 +319,6 @@
         if (f.id) {
           await fetch(`/friends/${f.id}`, { method: 'DELETE' });
         } else {
-          // 舊資料沒有 friends 表記錄，只刪 guest_memories
           await fetch('/friends/memories/by-name', {
             method: 'DELETE', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ guest_name: f.name })
@@ -326,6 +326,51 @@
         }
         loadFriends();
       };
+
+      const afBtn = card.querySelector(`[data-afid]`);
+      if (afBtn) {
+        afBtn.onclick = async () => {
+          let fid = f.id;
+          if (!fid) {
+            // 先儲存建立記錄
+            const res = await fetch('/friends', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ name: f.name, belong_to: card.querySelector(`#frBelong-${safeId}`)?.value || 'shared' })
+            });
+            const d = await res.json();
+            fid = d.id;
+            f.id = fid;
+          }
+          if (!fid) { afBtn.textContent = '儲存失敗'; return; }
+          afBtn.textContent = '分析中…';
+          afBtn.disabled = true;
+          try {
+            const res = await fetch(`/friends/${fid}/autofill`, { method: 'POST' });
+            const data = await res.json();
+            if (data.error === 'no_memories') {
+              afBtn.textContent = '沒有記憶可分析';
+              setTimeout(() => { afBtn.textContent = '✦ 讓晏填'; afBtn.disabled = false; }, 2000);
+              return;
+            }
+            if (data.filled) {
+              const relationInput = card.querySelector(`#frRelation-${safeId}`);
+              const personalityInput = card.querySelector(`#frPersonality-${safeId}`);
+              const noteArea = card.querySelector(`#frNote-${safeId}`);
+              if (relationInput && !relationInput.value && data.filled.relation_type)
+                relationInput.value = data.filled.relation_type;
+              if (personalityInput && !personalityInput.value && data.filled.personality)
+                personalityInput.value = data.filled.personality;
+              if (noteArea && !noteArea.value && data.filled.partner_note)
+                noteArea.value = data.filled.partner_note;
+              afBtn.textContent = '填好了 ✓';
+              setTimeout(() => { afBtn.textContent = '✦ 讓晏填'; afBtn.disabled = false; }, 2000);
+            }
+          } catch(e) {
+            afBtn.textContent = '✦ 讓晏填';
+            afBtn.disabled = false;
+          }
+        };
+      }
 
       list.appendChild(card);
     }
