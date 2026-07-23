@@ -6,7 +6,7 @@
     flex: 1; overflow-y: hidden;
     padding: 48px 24px 20px;
     display: flex; flex-direction: column; align-items: center; gap: 24px;
-    justify-content: flex-start;
+    justify-content: space-between;
   }
   .hm-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 36px; color: var(--text); letter-spacing: 2px; text-align: center; }
   .hm-days-card { text-align: center; }
