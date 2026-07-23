@@ -2698,6 +2698,60 @@ def friend_create():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/friends/<int:friend_id>/autofill", methods=["POST"])
+def friend_autofill(friend_id):
+    """根據記憶碎片自動填寫朋友資料"""
+    try:
+        # 取朋友基本資料
+        row = supabase.table("friends").select("*").eq("id", friend_id).single().execute().data
+        if not row:
+            return jsonify({"error": "not found"}), 404
+
+        name = row["name"]
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        bot_name = bot.get("name") or "晏"
+
+        # 取記憶碎片
+        memories = supabase.table("guest_memories").select("content").eq("guest_name", name).eq("status", "confirmed").execute().data
+        if not memories:
+            return jsonify({"error": "no_memories"}), 404
+
+        mem_context = "\n".join([f"・{m['content']}" for m in memories])
+
+        result_raw = call_claude(
+            f"你是{bot_name}。根據以下關於{name}的記憶碎片，推斷這個人的資料。只回傳JSON不要其他文字："
+            f"{{\"relation_type\": \"關係類型（如：大學同學、前同事、球友、閨蜜等，10字以內）\", "
+            f"\"personality\": \"個性描述（如：話多、溫柔、直接、愛開玩笑，20字以內）\", "
+            f"\"partner_note\": \"{bot_name}對{name}的印象（第一人稱，30字以內）\"}}",
+            [{"role": "user", "content": f"關於{name}的記憶：\n{mem_context}"}],
+            max_tokens=200
+        )
+
+        import json as _json
+        try:
+            cleaned = result_raw.strip().replace("```json", "").replace("```", "")
+            result = _json.loads(cleaned)
+        except:
+            return jsonify({"error": "parse_failed"}), 500
+
+        # 只填空白的欄位，不覆蓋已有的
+        update_data = {}
+        if not row.get("relation_type") and result.get("relation_type"):
+            update_data["relation_type"] = result["relation_type"]
+        if not row.get("personality") and result.get("personality"):
+            update_data["personality"] = result["personality"]
+        if not row.get("partner_note") and result.get("partner_note"):
+            update_data["partner_note"] = result["partner_note"]
+
+        if update_data:
+            update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            supabase.table("friends").update(update_data).eq("id", friend_id).execute()
+
+        return jsonify({"status": "ok", "filled": result, "updated_fields": list(update_data.keys())})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/friends/<int:friend_id>", methods=["PUT"])
 def friend_update(friend_id):
     """更新朋友人物檔案"""
@@ -2804,41 +2858,86 @@ def visitor_check():
 
         # 只從晏的朋友裡抽（然然的朋友走訪客連結系統，不走隨機觸發）
         friends = supabase.table("friends").select("*").eq("belong_to", "partner").execute().data
+
+        # 決定是現有朋友還是陌生來客（有朋友的話 70% 現有、30% 陌生）
+        is_stranger = False
         if not friends:
-            return jsonify({"visitor": None})
+            is_stranger = True
+        elif _random.randint(1, 100) <= 30:
+            is_stranger = True
 
-        chosen = _random.choice(friends)
-        belong = chosen.get("belong_to", "shared")
+        now = datetime.now(timezone.utc).isoformat()
 
-        # 根據關係類型決定模式（晏的朋友才自動決定）
-        mode = None
-        if belong == "partner":
+        if is_stranger:
+            # 生成陌生來客
+            personas = get_personas()
+            bot = personas.get("claude", {})
+            name = bot.get("name") or "晏"
+            you_name = personas.get("user", {}).get("name") or "然然"
+
+            stranger_raw = call_claude(
+                f"請為{name}生成一個來訪的陌生朋友。用JSON格式回覆，只回傳JSON不要其他文字：{{\"name\": \"名字（2字）\", \"relation_type\": \"關係（如：大學同學、前同事、球友等）\", \"personality\": \"個性描述（10字以內）\"}}",
+                [{"role": "user", "content": "生成一個自然的台灣男性或女性名字和關係"}],
+                max_tokens=100
+            )
+            try:
+                import json as _json
+                stranger = _json.loads(stranger_raw.strip().replace("```json", "").replace("```", ""))
+            except:
+                stranger = {"name": "陳浩", "relation_type": "大學同學", "personality": "隨和、話多"}
+
+            mode = _random.choice(["solo_partner", "solo_partner", "together"])  # 陌生人預設較少三人
+            result = supabase.table("visitor_sessions").insert({
+                "visitor_name": stranger["name"],
+                "visitor_friend_id": None,
+                "belong_to": "partner",
+                "mode": mode,
+                "messages": [],
+                "status": "active",
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            session_id = result.data[0]["id"] if result.data else None
+
+            return jsonify({"visitor": {
+                "id": session_id,
+                "visitor_name": stranger["name"],
+                "belong_to": "partner",
+                "mode": mode,
+                "personality": stranger.get("personality", ""),
+                "relation_type": stranger.get("relation_type", ""),
+                "is_stranger": True
+            }})
+
+        else:
+            chosen = _random.choice(friends)
+            belong = chosen.get("belong_to", "partner")
             weights = chosen.get("mode_weights") or {"solo_partner": 2, "together": 1}
             modes = list(weights.keys())
             w = [weights.get(m, 1) for m in modes]
             mode = _random.choices(modes, weights=w, k=1)[0]
 
-        now = datetime.now(timezone.utc).isoformat()
-        result = supabase.table("visitor_sessions").insert({
-            "visitor_name": chosen["name"],
-            "visitor_friend_id": chosen["id"],
-            "belong_to": belong,
-            "mode": mode or "pending",
-            "messages": [],
-            "status": "active",
-            "created_at": now,
-            "updated_at": now
-        }).execute()
-        session_id = result.data[0]["id"] if result.data else None
+            result = supabase.table("visitor_sessions").insert({
+                "visitor_name": chosen["name"],
+                "visitor_friend_id": chosen["id"],
+                "belong_to": belong,
+                "mode": mode,
+                "messages": [],
+                "status": "active",
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            session_id = result.data[0]["id"] if result.data else None
 
-        return jsonify({"visitor": {
-            "id": session_id,
-            "visitor_name": chosen["name"],
-            "belong_to": belong,
-            "mode": mode or "pending",
-            "personality": chosen.get("personality", ""),
-            "relation_type": chosen.get("relation_type", "")
-        }})
+            return jsonify({"visitor": {
+                "id": session_id,
+                "visitor_name": chosen["name"],
+                "belong_to": belong,
+                "mode": mode,
+                "personality": chosen.get("personality", ""),
+                "relation_type": chosen.get("relation_type", ""),
+                "is_stranger": False
+            }})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
