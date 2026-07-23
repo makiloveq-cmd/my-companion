@@ -2700,9 +2700,8 @@ def friend_create():
 
 @app.route("/friends/<int:friend_id>/autofill", methods=["POST"])
 def friend_autofill(friend_id):
-    """根據記憶碎片自動填寫朋友資料"""
+    """根據記憶碎片和對話記憶自動填寫朋友資料"""
     try:
-        # 取朋友基本資料
         row = supabase.table("friends").select("*").eq("id", friend_id).single().execute().data
         if not row:
             return jsonify({"error": "not found"}), 404
@@ -2712,19 +2711,41 @@ def friend_autofill(friend_id):
         bot = personas.get("claude", {})
         bot_name = bot.get("name") or "晏"
 
-        # 取記憶碎片
+        context_parts = []
+
+        # 1. 從 guest_memories 找
         memories = supabase.table("guest_memories").select("content").eq("guest_name", name).eq("status", "confirmed").execute().data
-        if not memories:
+        if memories:
+            context_parts.append("【訪客記憶】\n" + "\n".join([f"・{m['content']}" for m in memories]))
+
+        # 2. 從 memory_summaries 找有提到這個名字的摘要
+        all_summaries = supabase.table("memory_summaries").select("content, session_id").execute().data
+        matched = [s["content"] for s in all_summaries if s.get("content") and name in s["content"]]
+        if matched:
+            context_parts.append("【對話記憶中提到的】\n" + "\n\n".join(matched[:5]))
+
+        # 3. 從最近的 memories 裡找
+        recent_mems = supabase.table("memories").select("content, role").execute().data
+        matched_recent = [m["content"] for m in recent_mems if m.get("content") and name in m["content"]]
+        if matched_recent:
+            context_parts.append("【近期對話提到的】\n" + "\n".join([f"・{c}" for c in matched_recent[:10]]))
+
+        if not context_parts:
             return jsonify({"error": "no_memories"}), 404
 
-        mem_context = "\n".join([f"・{m['content']}" for m in memories])
+        mem_context = "\n\n".join(context_parts)
+
+        belong = row.get("belong_to", "shared")
+        is_partner = belong == "partner"
+        note_label = f"{bot_name}對{name}的印象" if is_partner else f"然然對{name}的描述"
+        perspective = f"你是{bot_name}，" if is_partner else f"你是{bot_name}，根據然然說過的話，"
 
         result_raw = call_claude(
-            f"你是{bot_name}。根據以下關於{name}的記憶碎片，推斷這個人的資料。只回傳JSON不要其他文字："
-            f"{{\"relation_type\": \"關係類型（如：大學同學、前同事、球友、閨蜜等，10字以內）\", "
-            f"\"personality\": \"個性描述（如：話多、溫柔、直接、愛開玩笑，20字以內）\", "
-            f"\"partner_note\": \"{bot_name}對{name}的印象（第一人稱，30字以內）\"}}",
-            [{"role": "user", "content": f"關於{name}的記憶：\n{mem_context}"}],
+            f"{perspective}根據以下關於{name}的記憶資料，推斷這個人的資料。只回傳JSON不要其他文字："
+            f"{{\"relation_type\": \"關係類型（如：大學同學、前同事、球友，10字以內）\", "
+            f"\"personality\": \"個性描述（如：話多、溫柔、直接，20字以內）\", "
+            f"\"partner_note\": \"{note_label}（第一人稱，30字以內）\"}}",
+            [{"role": "user", "content": f"關於{name}的資料：\n{mem_context}"}],
             max_tokens=200
         )
 
@@ -2735,7 +2756,6 @@ def friend_autofill(friend_id):
         except:
             return jsonify({"error": "parse_failed"}), 500
 
-        # 只填空白的欄位，不覆蓋已有的
         update_data = {}
         if not row.get("relation_type") and result.get("relation_type"):
             update_data["relation_type"] = result["relation_type"]
@@ -3135,6 +3155,31 @@ def visitor_end():
             "status": "completed",
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", session_id).execute()
+
+        # 如果是然然的朋友來訪，晏自動生成一筆待確認的印象記憶
+        if belong == "user":
+            try:
+                impression_system = (
+                    f"你是{name}，剛才和{you_name}的朋友{visitor_name}相處了一段時間。"
+                    f"請用第一人稱，簡短寫下你對{visitor_name}這個人的印象——個性、相處感覺、讓你印象深刻的事。"
+                    f"50字以內，自然真實，不要太正式。用繁體中文。"
+                )
+                impression = call_claude(
+                    impression_system,
+                    [{"role": "user", "content": f"根據這次相處：\n{context}"}],
+                    max_tokens=150
+                )
+                impression = impression.strip()
+                if impression:
+                    supabase.table("guest_memories").insert({
+                        "guest_name": visitor_name,
+                        "content": f"【{name}的印象】{impression}",
+                        "keywords": "",
+                        "status": "pending",
+                        "source": "訪客來訪後晏的印象"
+                    }).execute()
+            except:
+                pass
 
         return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name})
     except Exception as e:

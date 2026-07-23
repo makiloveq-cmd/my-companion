@@ -247,7 +247,7 @@
 
           <div class="fr-btns">
             <button class="fr-save-btn" data-fid="${f.id}" data-fname="${f.name}">儲存</button>
-            <button class="fr-autofill-btn" data-afid="${f.id || ''}" style="padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:10px;color:var(--text-3);font-size:13px;cursor:pointer;font-family:inherit;">✦ 讓晏填</button>
+            ${belong === 'partner' ? `<button class="fr-autofill-btn" data-afid="${f.id || ''}" style="padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:10px;color:var(--text-3);font-size:13px;cursor:pointer;font-family:inherit;">✦ 讓晏填</button>` : ''}
             <button class="fr-del-btn" data-delid="${f.id}" data-delname="${f.name}">刪除</button>
           </div>
         </div>
