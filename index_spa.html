@@ -42,6 +42,15 @@ html, body {
   display: flex;
   padding: 10px 0 max(16px, env(safe-area-inset-bottom));
   flex-shrink: 0;
+  position: relative;
+}
+.tab-bar::after {
+  content: '';
+  position: absolute;
+  bottom: calc(-1 * env(safe-area-inset-bottom));
+  left: 0; right: 0;
+  height: env(safe-area-inset-bottom);
+  background: var(--surface);
 }
 .tab {
   flex: 1;
