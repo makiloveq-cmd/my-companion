@@ -3055,6 +3055,76 @@ def visitor_start():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/visitor/auto_chat", methods=["POST"])
+def visitor_auto_chat():
+    """solo_partner 模式：後端自動跑一輪對話，8輪後隨機結束"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        row = supabase.table("visitor_sessions").select("*").eq("id", session_id).single().execute().data
+        if not row or row.get("status") != "active":
+            return jsonify({"status": "ended"})
+
+        messages = row.get("messages") or []
+        visitor_name = row["visitor_name"]
+        msg_count = len([m for m in messages if m["role"] == "assistant"])
+
+        personas = get_personas()
+        bot = personas.get("claude", {})
+        me = personas.get("user", {})
+        name = bot.get("name") or "晏"
+        you_name = me.get("name") or "然然"
+
+        friend_data = {}
+        if row.get("visitor_friend_id"):
+            try:
+                fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
+                if fr: friend_data = fr
+            except: pass
+
+        personality = friend_data.get("personality", "")
+        relation_type = friend_data.get("relation_type", "")
+        partner_note = friend_data.get("partner_note", "")
+
+        # 8 輪後每輪有 30% 機率結束，10 輪後必定結束
+        should_end = False
+        if msg_count >= 10:
+            should_end = True
+        elif msg_count >= 8:
+            should_end = _random.random() < 0.30
+
+        system = (
+            f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
+            f"{f'關係：{relation_type}。' if relation_type else ''}"
+            f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+            f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
+            f"{'現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。'}"
+            f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過六段。用繁體中文。"
+        )
+
+        # 自動生成訪客的回應再讓晏回覆
+        visitor_prompt = f"（{visitor_name}繼續說話）" if not should_end else f"（{visitor_name}說要走了）"
+        reply = call_claude(system, messages[-10:] + [{"role": "user", "content": visitor_prompt}], max_tokens=400)
+
+        messages.append({"role": "user", "content": visitor_prompt})
+        messages.append({"role": "assistant", "content": reply})
+
+        if should_end:
+            supabase.table("visitor_sessions").update({
+                "messages": messages,
+                "status": "ending",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", session_id).execute()
+            return jsonify({"status": "ending", "reply": reply})
+        else:
+            supabase.table("visitor_sessions").update({
+                "messages": messages,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", session_id).execute()
+            return jsonify({"status": "continue", "reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/visitor/chat", methods=["POST"])
 def visitor_chat():
     """訪客對話中"""

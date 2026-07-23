@@ -1316,13 +1316,15 @@
           if (visitor.mode === 'together') {
             await startVisitor();
           } else {
-            // solo_partner：晏自己去聊，然然不參與，但顯示bar讓然然知道
+            // solo_partner：晏自己去聊，顯示bar，背景自動跑對話
             try {
               await fetch('/visitor/start', {
                 method: 'POST', headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ session_id: visitor.id })
               });
               showVisitorBar(visitor.visitor_name);
+              // 背景自動跑對話迴圈
+              runSoloChat(visitor.id);
             } catch(e) {}
           }
         };
@@ -1363,6 +1365,43 @@
         };
       }
       document.body.appendChild(notice);
+    }
+
+    // solo_partner 背景自動對話迴圈
+    async function runSoloChat(sessionId) {
+      let rounds = 0;
+      const maxRounds = 12;
+      const delay = ms => new Promise(r => setTimeout(r, ms));
+
+      while (rounds < maxRounds) {
+        await delay(8000 + Math.random() * 4000); // 每輪間隔 8-12 秒
+        try {
+          const res = await fetch('/visitor/auto_chat', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: sessionId })
+          });
+          const data = await res.json();
+          if (data.status === 'ending' || data.status === 'ended') {
+            // 朋友走了，自動結束
+            const bar = document.getElementById('spVisitorBar');
+            if (bar) bar.remove();
+            // 生成摘要
+            const endRes = await fetch('/visitor/end', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: sessionId })
+            });
+            const endData = await endRes.json();
+            if (endData.summary) {
+              showVisitorSummary(endData.summary, endData.visitor_name, endData.mode, sessionId, visitorInfo);
+            }
+            visitorSessionId = null;
+            visitorMode = null;
+            visitorInfo = null;
+            break;
+          }
+        } catch(e) { break; }
+        rounds++;
+      }
     }
 
     async function startVisitor() {
