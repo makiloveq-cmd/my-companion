@@ -4,7 +4,7 @@
   const CSS = `
   .hm-main {
     flex: 1; overflow-y: hidden;
-    padding: max(60px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+    padding: 48px 24px 20px;
     display: flex; flex-direction: column; align-items: center; gap: 24px;
     justify-content: flex-start;
   }

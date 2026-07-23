@@ -11,24 +11,57 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
+
 html, body {
   font-family: -apple-system, 'Inter', sans-serif;
-  background: var(--surface);
   color: var(--text);
   height: 100%;
   width: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
+
+/* ── 電腦版：深色背景＋手機框 ── */
+body {
+  background: #080c14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 #app {
-  height: 100vh;
-  height: 100dvh;
-  min-height: -webkit-fill-available;
+  width: 430px;
+  height: 932px;
+  border-radius: 54px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   background: var(--bg);
+  position: relative;
+  box-shadow: 0 0 0 10px #1a1f2e, 0 0 0 11px #2a3040, 0 40px 80px rgba(0,0,0,0.6);
 }
+
+/* 手機框側邊按鈕裝飾 */
+#app::before {
+  content: '';
+  position: absolute;
+  left: -10px; top: 120px;
+  width: 3px; height: 28px;
+  background: #1a1f2e;
+  border-radius: 2px 0 0 2px;
+  box-shadow: 0 44px 0 #1a1f2e, 0 88px 0 #1a1f2e;
+  z-index: 999;
+}
+#app::after {
+  content: '';
+  position: absolute;
+  right: -10px; top: 156px;
+  width: 3px; height: 60px;
+  background: #1a1f2e;
+  border-radius: 0 2px 2px 0;
+  z-index: 999;
+}
+
 #view {
   flex: 1;
   min-height: 0;
@@ -37,22 +70,34 @@ html, body {
   flex-direction: column;
   position: relative;
 }
+
 .tab-bar {
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
-  padding: 10px 0 max(16px, env(safe-area-inset-bottom));
+  padding: 10px 0 16px;
   flex-shrink: 0;
-  position: relative;
 }
-.tab-bar::after {
-  content: '';
-  position: absolute;
-  bottom: calc(-1 * env(safe-area-inset-bottom));
-  left: 0; right: 0;
-  height: env(safe-area-inset-bottom);
-  background: var(--surface);
+
+/* ── 手機版（≤500px）：全版面，拿掉手機框 ── */
+@media (max-width: 500px) {
+  body {
+    background: var(--bg);
+    display: block;
+  }
+  #app {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #app::before, #app::after { display: none; }
+  .tab-bar {
+    padding: 10px 0 max(16px, env(safe-area-inset-bottom));
+  }
 }
+
 .tab {
   flex: 1;
   display: flex;
