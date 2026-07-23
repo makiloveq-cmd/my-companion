@@ -629,16 +629,39 @@
     };
 
     function renderUser(content, createdAt, imageUrl) {
+      // 有圖片：圖片獨立一個 row，文字（如果有）再獨立一個 row
+      if (imageUrl) {
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'sp-entry-user';
+        imgWrap.innerHTML = `
+          <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
+          <div class="sp-entry-time">${formatTime(createdAt)}</div>
+        `;
+        imgWrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
+        addLongPress(imgWrap, { speaker: 'user', content: content || '' }, true);
+        document.getElementById('spMessages').appendChild(imgWrap);
+
+        if (content) {
+          const textWrap = document.createElement('div');
+          textWrap.className = 'sp-entry-user';
+          textWrap.innerHTML = `
+            <div>${escHtml(content)}</div>
+            <div class="sp-entry-time">${formatTime(createdAt)}</div>
+          `;
+          addLongPress(textWrap, { speaker: 'user', content: content }, true);
+          document.getElementById('spMessages').appendChild(textWrap);
+        }
+        scrollBottom();
+        return;
+      }
+
+      // 沒圖片：正常渲染
       const wrap = document.createElement('div');
       wrap.className = 'sp-entry-user';
       let inner = '';
-      if (imageUrl) inner += `<img class="sp-img-in-bubble" src="${imageUrl}" alt="">`;
       if (content) inner += `<div>${escHtml(content)}</div>`;
       inner += `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
       wrap.innerHTML = inner;
-      if (imageUrl) {
-        wrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
-      }
       addLongPress(wrap, { speaker: 'user', content: content || '' }, true);
       document.getElementById('spMessages').appendChild(wrap);
       scrollBottom();
