@@ -4,9 +4,9 @@
   const CSS = `
   .hm-main {
     flex: 1; overflow-y: hidden;
-    padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; align-items: center; gap: 16px;
-    justify-content: space-evenly;
+    padding: max(60px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+    justify-content: flex-start;
   }
   .hm-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 36px; color: var(--text); letter-spacing: 2px; text-align: center; }
   .hm-days-card { text-align: center; }
