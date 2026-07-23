@@ -1250,6 +1250,7 @@
     // ── 訪客觸發系統 ──
     let visitorSessionId = null;
     let visitorMode = null;
+    let visitorInfo = null;
 
     function showVisitorNotice(visitor) {
       const belong = visitor.belong_to;
@@ -1276,6 +1277,7 @@
           notice.remove();
           visitorSessionId = visitor.id;
           visitorMode = visitor.mode;
+          visitorInfo = visitor;
           if (visitor.mode === 'together') {
             await startVisitor();
           } else {
@@ -1300,6 +1302,7 @@
           notice.remove();
           visitorSessionId = visitor.id;
           visitorMode = 'solo_partner';
+          visitorInfo = visitor;
           await fetch('/visitor/mode', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ session_id: visitor.id, mode: 'solo_partner' })
@@ -1313,6 +1316,7 @@
           notice.remove();
           visitorSessionId = visitor.id;
           visitorMode = 'together';
+          visitorInfo = visitor;
           await fetch('/visitor/mode', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ session_id: visitor.id, mode: 'together' })
@@ -1359,22 +1363,25 @@
       const bar = document.getElementById('spVisitorBar');
       if (bar) bar.remove();
       const endedSessionId = visitorSessionId;
+      const endedInfo = visitorInfo;
       visitorSessionId = null;
       visitorMode = null;
+      visitorInfo = null;
       try {
         const res = await fetch('/visitor/end', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ session_id: endedSessionId })
         });
         const data = await res.json();
-        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, endedSessionId);
+        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, endedSessionId, endedInfo);
       } catch(e) {}
     }
 
-    function showVisitorSummary(summary, visitorName, mode, sessionId) {
+    function showVisitorSummary(summary, visitorName, mode, sessionId, info) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
       const canAddNote = mode === 'together';
+      const isStranger = info && info.is_stranger;
       modal.innerHTML = `
         <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
           <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
@@ -1384,10 +1391,30 @@
           <div style="color:#4a6a88;font-size:12px;margin-bottom:6px;">加上你的心得（選填）</div>
           <textarea id="visitorNoteArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;min-height:80px;resize:none;" placeholder="今天相處的感覺…"></textarea>
           ` : ''}
-          <button id="visitorSummaryOk" style="width:100%;margin-top:12px;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            ${isStranger ? `<button id="visitorSaveStranger" style="flex:1;padding:10px;background:#1a2b1a;border:0.5px solid #3a6a3a;border-radius:10px;color:#7aaa7a;font-size:13px;cursor:pointer;">存進朋友庫</button>` : ''}
+            <button id="visitorSummaryOk" style="flex:2;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
+          </div>
         </div>
       `;
       document.body.appendChild(modal);
+
+      if (isStranger) {
+        modal.querySelector('#visitorSaveStranger').onclick = async () => {
+          await fetch('/friends', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+              name: visitorName,
+              belong_to: 'partner',
+              relation_type: info.relation_type || '',
+              personality: info.personality || '',
+            })
+          });
+          modal.querySelector('#visitorSaveStranger').textContent = '已存入 ✓';
+          modal.querySelector('#visitorSaveStranger').disabled = true;
+        };
+      }
+
       modal.querySelector('#visitorSummaryOk').onclick = async () => {
         const note = canAddNote ? modal.querySelector('#visitorNoteArea')?.value.trim() : '';
         if (note && sessionId) {
