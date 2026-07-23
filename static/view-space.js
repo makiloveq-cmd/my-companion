@@ -1316,11 +1316,14 @@
           if (visitor.mode === 'together') {
             await startVisitor();
           } else {
-            // solo_partner：晏自己去聊，然然不參與
-            await fetch('/visitor/start', {
-              method: 'POST', headers: {'Content-Type':'application/json'},
-              body: JSON.stringify({ session_id: visitor.id })
-            });
+            // solo_partner：晏自己去聊，然然不參與，但顯示bar讓然然知道
+            try {
+              await fetch('/visitor/start', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ session_id: visitor.id })
+              });
+              showVisitorBar(visitor.visitor_name);
+            } catch(e) {}
           }
         };
       } else {
@@ -1369,9 +1372,12 @@
           body: JSON.stringify({ session_id: visitorSessionId })
         });
         const data = await res.json();
-        if (data.reply) renderAI('claude', data.reply, data.name);
+        // 只有在空間頁面（spMessages存在）才渲染訊息
+        if (data.reply && document.getElementById('spMessages')) {
+          renderAI('claude', data.reply, data.name);
+        }
         showVisitorBar(data.visitor_name);
-      } catch(e) {}
+      } catch(e) { console.error('startVisitor error:', e); }
     }
 
     function showVisitorBar(visitorName) {

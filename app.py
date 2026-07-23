@@ -2651,7 +2651,7 @@ def friends_get():
                 "personality": p.get("personality", ""),
                 "birthday": p.get("birthday", ""),
                 "partner_note": p.get("partner_note", ""),
-                "mode_weights": p.get("mode_weights", {"solo_user": 1, "solo_partner": 2, "together": 1}),
+                "mode_weights": p.get("mode_weights", {"solo_partner": 2, "together": 1}),
                 "memories": memory_map.get(p["name"], []),
                 "visit_count": stats["count"],
                 "last_visit": stats["last"],
@@ -2666,7 +2666,7 @@ def friends_get():
                     "id": None, "name": name,
                     "belong_to": "shared", "relation_type": "",
                     "personality": "", "birthday": "", "partner_note": "",
-                    "mode_weights": {"solo_user": 1, "solo_partner": 2, "together": 1},
+                    "mode_weights": {"solo_partner": 2, "together": 1},
                     "memories": mems, "created_at": ""
                 })
 
@@ -2690,7 +2690,7 @@ def friend_create():
             "personality": data.get("personality", ""),
             "birthday": data.get("birthday", ""),
             "partner_note": data.get("partner_note", ""),
-            "mode_weights": data.get("mode_weights", {"solo_user": 1, "solo_partner": 2, "together": 1}),
+            "mode_weights": data.get("mode_weights", {"solo_partner": 2, "together": 1}),
             "created_at": now,
             "updated_at": now
         }).execute()
@@ -2933,7 +2933,11 @@ def visitor_check():
             chosen = _random.choice(friends)
             belong = chosen.get("belong_to", "partner")
             weights = chosen.get("mode_weights") or {"solo_partner": 2, "together": 1}
-            modes = list(weights.keys())
+            # 只允許有效的 mode
+            valid_modes = {"solo_partner", "together"}
+            modes = [m for m in weights.keys() if m in valid_modes]
+            if not modes:
+                modes = ["solo_partner"]
             w = [weights.get(m, 1) for m in modes]
             mode = _random.choices(modes, weights=w, k=1)[0]
 
