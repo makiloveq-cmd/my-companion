@@ -3831,6 +3831,107 @@ def cron_daily_message():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/cron/visitor_chat", methods=["POST"])
+def cron_visitor_chat():
+    """定時推進 solo_partner 訪客對話，每次呼叫跑一輪"""
+    try:
+        # 找所有 active 的 solo_partner session
+        rows = supabase.table("visitor_sessions").select("*").eq("status", "active").eq("mode", "solo_partner").execute().data
+        if not rows:
+            return jsonify({"status": "no_active_sessions"})
+
+        results = []
+        for row in rows:
+            session_id = row["id"]
+            messages = row.get("messages") or []
+            visitor_name = row["visitor_name"]
+            msg_count = len([m for m in messages if m["role"] == "assistant"])
+
+            personas = get_personas()
+            bot = personas.get("claude", {})
+            me = personas.get("user", {})
+            name = bot.get("name") or "晏"
+            you_name = me.get("name") or "然然"
+
+            friend_data = {}
+            if row.get("visitor_friend_id"):
+                try:
+                    fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
+                    if fr: friend_data = fr
+                except: pass
+
+            personality = friend_data.get("personality", "")
+            relation_type = friend_data.get("relation_type", "")
+            partner_note = friend_data.get("partner_note", "")
+
+            # 8 輪後 30% 機率結束，10 輪必定結束
+            should_end = False
+            if msg_count >= 10:
+                should_end = True
+            elif msg_count >= 8:
+                should_end = random.random() < 0.30
+
+            system = (
+                f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
+                f"{f'關係：{relation_type}。' if relation_type else ''}"
+                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+                f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
+                f"{'現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。'}"
+                f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過六段。用繁體中文。"
+            )
+
+            visitor_prompt = f"（{visitor_name}繼續說話）" if not should_end else f"（{visitor_name}說要走了）"
+            reply = call_claude(system, messages[-10:] + [{"role": "user", "content": visitor_prompt}], max_tokens=400)
+
+            messages.append({"role": "user", "content": visitor_prompt})
+            messages.append({"role": "assistant", "content": reply})
+
+            if should_end:
+                # 自動結束並生成摘要
+                belong = row.get("belong_to", "partner")
+                context = "\n".join([
+                    f"{'你' if m['role'] == 'assistant' else visitor_name}：{m['content']}"
+                    for m in messages
+                ])
+                summary_system = f"你是{name}，剛才和{visitor_name}單獨聊了一會兒，{you_name}不在場。請用晏的口吻，簡短告訴{you_name}今天聊了什麼。條列3-5個重點，加上一句晏自己的感受（50字以內）。"
+                summary = call_claude(summary_system, [{"role": "user", "content": f"請整理：\n{context}"}], max_tokens=400)
+                summary = summary.strip()
+
+                # 如果是然然的朋友，自動生成晏的印象pending記憶
+                if belong == "user":
+                    try:
+                        impression_system = f"你是{name}，剛才和{you_name}的朋友{visitor_name}相處了一段時間。請用第一人稱，簡短寫下你對{visitor_name}的印象——個性、相處感覺。50字以內。用繁體中文。"
+                        impression = call_claude(impression_system, [{"role": "user", "content": f"根據這次相處：\n{context}"}], max_tokens=150)
+                        impression = impression.strip()
+                        if impression:
+                            supabase.table("guest_memories").insert({
+                                "guest_name": visitor_name,
+                                "content": f"【{name}的印象】{impression}",
+                                "keywords": "",
+                                "status": "pending",
+                                "source": "訪客來訪後晏的印象"
+                            }).execute()
+                    except: pass
+
+                supabase.table("visitor_sessions").update({
+                    "messages": messages,
+                    "summary": summary,
+                    "status": "completed",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", session_id).execute()
+
+                results.append({"session_id": session_id, "visitor": visitor_name, "status": "completed"})
+            else:
+                supabase.table("visitor_sessions").update({
+                    "messages": messages,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", session_id).execute()
+                results.append({"session_id": session_id, "visitor": visitor_name, "status": "continue", "rounds": msg_count + 1})
+
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/chatlist_page")
 def chatlist_page():
