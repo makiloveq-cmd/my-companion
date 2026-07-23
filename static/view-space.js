@@ -1255,22 +1255,34 @@
       btn.onclick = () => switchScene(btn.dataset.scene);
     });
 
-    // 初始化場景狀態
+    // 初始化——全部並行發出，不串行等待
+    const [, , sceneResult] = await Promise.all([
+      loadPersonas(),
+      loadMessages(),
+      fetch('/space/scene').then(r => r.json()).catch(() => ({ scene: 'home' })),
+    ]);
+
+    // 場景初始化
     try {
-      const sceneRes = await fetch('/space/scene');
-      const sceneData = await sceneRes.json();
-      const initScene = sceneData.scene || 'home';
+      const initScene = sceneResult.scene || 'home';
       updateSceneUI(initScene);
       const h1 = document.querySelector('.sp-header h1');
       if (h1) {
         const labels = { home: '✦ 共同空間', outing: '✦ 外出' };
         h1.textContent = labels[initScene] || '✦ 共同空間';
       }
-    } catch (e) {}
+    } catch(e) {}
 
-    await Promise.all([loadPersonas(), loadMessages()]);
-
-    // ── 訪客觸發系統 ──
+    // 訪客check延後發，不阻塞頁面
+    setTimeout(async () => {
+      try {
+        const vRes = await fetch('/visitor/check');
+        const vData = await vRes.json();
+        if (vData.visitor) {
+          setTimeout(() => showVisitorNotice(vData.visitor), 2000);
+        }
+      } catch(e) {}
+    }, 500);
     let visitorSessionId = null;
     let visitorMode = null;
     let visitorInfo = null;
