@@ -907,9 +907,7 @@
       exitDiscussMode();
     };
 
-    await loadAvatars();
-    await loadNames();
-    await loadHistory();
+    await Promise.all([loadAvatars(), loadNames(), loadHistory()]);
 
     // 暫存輸入框內容
     const chatDraftKey = 'rifugio_chat_draft';
