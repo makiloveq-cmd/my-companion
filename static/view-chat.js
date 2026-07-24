@@ -688,6 +688,22 @@
     let isRecording = false;
     let soundEnabled = false; // 預設靜音
     let lastAudioUrl = null;
+    let chatAudioCtx = null;
+    let chatAudioUnlocked = false;
+
+    function unlockChatAudio() {
+      if (chatAudioUnlocked) return;
+      try {
+        chatAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const buf = chatAudioCtx.createBuffer(1, 1, 22050);
+        const src = chatAudioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(chatAudioCtx.destination);
+        src.start(0);
+        if (chatAudioCtx.state === 'suspended') chatAudioCtx.resume();
+        chatAudioUnlocked = true;
+      } catch(e) {}
+    }
 
     const micBtn = document.getElementById('chMicBtn');
     const voiceBar = document.getElementById('chVoiceBar');
@@ -738,6 +754,7 @@
     soundBtn.onclick = () => {
       closeMoreMenu();
       soundEnabled = !soundEnabled;
+      if (soundEnabled) unlockChatAudio(); // 使用者手勢解鎖音訊
       document.getElementById('chSoundIcon').textContent = soundEnabled ? '🔊' : '🔇';
       document.getElementById('chSoundLabel').textContent = soundEnabled ? '關閉聲音' : '開啟聲音';
     };
@@ -817,14 +834,27 @@
           body: JSON.stringify({ text })
         });
         if (!res.ok) return;
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        lastAudioUrl = url;
-        voiceAudio.src = url;
+        const arrayBuffer = await res.arrayBuffer();
+        lastAudioUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/mpeg' }));
         voiceBar.classList.add('show');
         voiceStatus.textContent = '晏說：';
         replayBtn.style.display = 'inline-block';
         closeBtn.style.display = 'inline-block';
+
+        // 優先用 AudioContext（iOS 不會被靜音）
+        if (chatAudioCtx) {
+          try {
+            if (chatAudioCtx.state === 'suspended') await chatAudioCtx.resume();
+            const decoded = await chatAudioCtx.decodeAudioData(arrayBuffer.slice(0));
+            const src = chatAudioCtx.createBufferSource();
+            src.buffer = decoded;
+            src.connect(chatAudioCtx.destination);
+            src.start(0);
+            return;
+          } catch(e) {}
+        }
+        // fallback
+        voiceAudio.src = lastAudioUrl;
         voiceAudio.play().catch(() => {});
       } catch (e) {}
     }
