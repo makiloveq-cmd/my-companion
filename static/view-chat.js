@@ -219,6 +219,7 @@
       <div class="ch-voice-bar" id="chVoiceBar">
         <span class="ch-voice-status" id="chVoiceStatus">點麥克風開始說話</span>
         <button id="chVoiceReplay" style="display:none; padding:4px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text-2); font-size:12px; cursor:pointer;">重播</button>
+        <button id="chVoiceGen" style="display:none; padding:4px 12px; border-radius:8px; border:1px solid var(--accent); background:transparent; color:var(--accent); font-size:12px; cursor:pointer;">生成聲音</button>
         <button id="chVoiceClose" style="display:none; padding:4px 10px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text-3); font-size:12px; cursor:pointer;">✕</button>
         <audio id="chVoiceAudio" style="display:none;"></audio>
       </div>
@@ -641,10 +642,17 @@
     document.getElementById('chImgBtn').onclick = () => document.getElementById('chImageInput').click();
     document.getElementById('chImageInput').onchange = handleImageSelect;
     document.getElementById('chRemoveImg').onclick = removeImage;
-    document.getElementById('chSendBtn').onclick = sendMessage;
+    document.getElementById('chSendBtn').onclick = () => {
+      if (chatAudioCtx && chatAudioCtx.state === 'suspended') chatAudioCtx.resume();
+      sendMessage();
+    };
     document.getElementById('chNewlineBtn').onclick = insertNewline;
     document.getElementById('chInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (chatAudioCtx && chatAudioCtx.state === 'suspended') chatAudioCtx.resume();
+        sendMessage();
+      }
     });
     document.getElementById('chInput').addEventListener('input', (e) => autoGrow(e.target));
     document.getElementById('chLightbox').onclick = () => document.getElementById('chLightbox').classList.remove('show');
@@ -710,7 +718,9 @@
     const voiceStatus = document.getElementById('chVoiceStatus');
     const voiceAudio = document.getElementById('chVoiceAudio');
     const replayBtn = document.getElementById('chVoiceReplay');
+    const genBtn = document.getElementById('chVoiceGen');
     const closeBtn = document.getElementById('chVoiceClose');
+    let lastReplyText = null;
 
     // ⋯ 選單開關
     let moreMenuOpen = false;
@@ -767,10 +777,22 @@
       }
     };
 
+    // 手動生成聲音
+    genBtn.onclick = async () => {
+      if (!lastReplyText) return;
+      if (chatAudioCtx && chatAudioCtx.state === 'suspended') await chatAudioCtx.resume();
+      genBtn.textContent = '生成中…';
+      genBtn.disabled = true;
+      await playReplyVoice(lastReplyText);
+      genBtn.textContent = '生成聲音';
+      genBtn.disabled = false;
+    };
+
     // 關閉語音列
     closeBtn.onclick = () => {
       voiceBar.classList.remove('show');
       replayBtn.style.display = 'none';
+      genBtn.style.display = 'none';
       closeBtn.style.display = 'none';
     };
 
@@ -826,19 +848,34 @@
 
     // 晏回覆後播放語音（需開啟聲音才播）
     async function playReplyVoice(text) {
-      if (!text || !soundEnabled) return;
+      if (!text || !soundEnabled) {
+        // 聲音關閉時，顯示「生成聲音」按鈕讓使用者手動觸發
+        if (text && soundEnabled === false) {
+          lastReplyText = text;
+          voiceBar.classList.add('show');
+          voiceStatus.textContent = '晏說：';
+          genBtn.style.display = 'inline-block';
+          closeBtn.style.display = 'inline-block';
+        }
+        return;
+      }
+      lastReplyText = text;
       try {
         const res = await fetch('/voice/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text })
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          genBtn.style.display = 'inline-block';
+          return;
+        }
         const arrayBuffer = await res.arrayBuffer();
         lastAudioUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/mpeg' }));
         voiceBar.classList.add('show');
         voiceStatus.textContent = '晏說：';
         replayBtn.style.display = 'inline-block';
+        genBtn.style.display = 'none';
         closeBtn.style.display = 'inline-block';
 
         // 優先用 AudioContext（iOS 不會被靜音）
@@ -851,12 +888,16 @@
             src.connect(chatAudioCtx.destination);
             src.start(0);
             return;
-          } catch(e) {}
+          } catch(e) {
+            genBtn.style.display = 'inline-block';
+          }
         }
         // fallback
         voiceAudio.src = lastAudioUrl;
-        voiceAudio.play().catch(() => {});
-      } catch (e) {}
+        voiceAudio.play().catch(() => { genBtn.style.display = 'inline-block'; });
+      } catch (e) {
+        genBtn.style.display = 'inline-block';
+      }
     }
 
     document.getElementById('chBookBtn').onclick = () => { closeMoreMenu(); openDiscuss('book'); };
