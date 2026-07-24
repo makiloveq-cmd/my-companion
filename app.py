@@ -1627,6 +1627,78 @@ def game_assign_book():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/game/split_chapters", methods=["POST"])
+def game_split_chapters():
+    """把一個舊 session 拆成多章，建立新書冊並寫入各章節"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_title = data.get("book_title", "無題故事")
+        book_setting = data.get("book_setting", "")
+        chapters = data.get("chapters", [])
+        now = datetime.now(timezone.utc).isoformat()
+
+        if not chapters:
+            return jsonify({"error": "no chapters provided"}), 400
+
+        # 取得原始 session 資料（用來繼承 setting 和 messages）
+        original = None
+        if session_id:
+            rows = supabase.table("game_sessions").select("*").eq("id", session_id).execute().data
+            if rows:
+                original = rows[0]
+
+        original_setting = book_setting or (original.get("setting", "") if original else "")
+
+        # 建立新書冊
+        book_result = supabase.table("game_books").insert({
+            "title": book_title,
+            "setting": original_setting,
+            "status": "completed",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        book_id = book_result.data[0]["id"] if book_result.data else None
+
+        if not book_id:
+            return jsonify({"error": "failed to create book"}), 500
+
+        # 建立各章節 session
+        created = []
+        for ch in chapters:
+            ch_num = ch.get("chapter_number", 1)
+            ch_title = ch.get("chapter_title", f"第{ch_num}章")
+            ch_summary = ch.get("summary", "")
+            result = supabase.table("game_sessions").insert({
+                "book_id": book_id,
+                "chapter_number": ch_num,
+                "chapter_title": ch_title,
+                "title": ch_title,
+                "summary": ch_summary,
+                "setting": original_setting,
+                "status": "archived",
+                "messages": [],
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            if result.data:
+                created.append(result.data[0]["id"])
+
+        # 把原始 session 標記為已拆分（歸入同一本書，chapter 0 代表原始）
+        if session_id and original:
+            supabase.table("game_sessions").update({
+                "book_id": book_id,
+                "chapter_number": 0,
+                "chapter_title": "（原始記錄）",
+                "status": "archived",
+                "updated_at": now
+            }).eq("id", session_id).execute()
+
+        return jsonify({"status": "ok", "book_id": book_id, "chapters_created": len(created)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 主題設定 =====
 
 @app.route("/theme/custom", methods=["GET"])
