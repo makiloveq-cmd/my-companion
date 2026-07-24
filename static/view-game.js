@@ -283,34 +283,20 @@
           const row = document.createElement('div');
           row.className = 'gm-books-row';
 
-          // 所有章節打散交錯排列
-          let allChapters = [];
+          // 每本書一根書脊
           data.books.forEach((book, bi) => {
-            (book.chapters || []).forEach((ch, ci) => {
-              allChapters.push({ book, chapter: ch, globalIndex: allChapters.length });
-            });
-          });
-
-          // 交錯：把各書章節穿插
-          let interleaved = [];
-          let queues = data.books.map(b => [...(b.chapters || []).map(ch => ({ book: b, chapter: ch }))]);
-          let gi = 0;
-          while (queues.some(q => q.length > 0)) {
-            queues.forEach(q => { if (q.length > 0) { interleaved.push({ ...q.shift(), gi: gi++ }); } });
-          }
-
-          interleaved.forEach(({ book, chapter, gi }) => {
-            const st = spineStyleFor(gi);
-            const h = HEIGHTS[gi % HEIGHTS.length];
-            const w = WIDTHS[gi % WIDTHS.length];
-            const isActive = chapter.status === 'playing' || chapter.status === 'paused';
-            const numLabel = chapter.chapter_title || (chapter.chapter_number ? `第${chapter.chapter_number}章` : '章節');
+            const st = spineStyleFor(bi);
+            const h = HEIGHTS[bi % HEIGHTS.length];
+            const w = WIDTHS[bi % WIDTHS.length];
+            const chapters = book.chapters || [];
+            const hasActive = chapters.some(ch => ch.status === 'playing' || ch.status === 'paused');
+            const statusLabel = hasActive ? '進行中' : `${chapters.length} 章`;
 
             const spine = document.createElement('div');
             spine.className = 'gm-spine';
             spine.style.cssText = `width:${w}px;height:${h}px;background:${st.bg};`;
             spine.innerHTML = `
-              <div class="gm-spine-num" style="color:${st.deco};">${isActive ? '進行中' : numLabel}</div>
+              <div class="gm-spine-num" style="color:${st.deco};">${statusLabel}</div>
               <div class="gm-spine-deco" style="background:${st.deco};"></div>
               <div class="gm-spine-title" style="color:${st.color};font-family:${st.font};font-style:${st.style};">${escHtml(book.title)}</div>
             `;
