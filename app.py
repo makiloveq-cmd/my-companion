@@ -3338,7 +3338,7 @@ def guest_visit(token):
 def guest_info(token):
     """訪客取得基本資訊"""
     try:
-        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count, max_messages").eq("token", token).execute().data
+        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count").eq("token", token).execute().data
         if not rows:
             return jsonify({"error": "invalid token"}), 403
         return jsonify(rows[0])
@@ -3509,31 +3509,49 @@ def guest_end(token):
             "summary": summary
         }).eq("token", token).execute()
 
-        # 存進 guest_memories（confirmed 是來訪記錄，pending 是 AI 觀察待確認）
-        memory_text = (
-            f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}] {guest_name}來訪。{summary[:150]}"
-        )
+        visit_date = datetime.now(timezone(timedelta(hours=8))).strftime("%m/%d")
+        now_iso = datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+        # 來訪紀錄——一條簡短 confirmed
         supabase.table("guest_memories").insert({
             "guest_name": guest_name,
-            "content": memory_text,
+            "content": f"[{visit_date}] {guest_name}透過訪客連結來訪，聊了 {session.get('message_count', 0)} 則訊息。",
             "status": "confirmed",
             "source": "訪客來訪"
         }).execute()
 
-        # AI 對這位朋友的觀察——存成 pending 等你確認
+        # 從對話萃取 3-5 條條列印象——各自存成 pending 等確認
         obs_prompt = (
-            f"根據這次與{guest_name}的對話，用一句話說出你對她最重要的觀察或印象（20字以內）。"
-            f"只說那一句話，不要其他文字。"
+            f"根據這次你與{guest_name}的對話，整理出 3 到 5 條對她的具體印象或觀察。"
+            f"每條 20 字以內，直接描述，像『說話很直接，不拐彎抹角』、『提到感情時明顯迴避』這樣。"
+            f"每條獨立一行，不要編號，不要其他文字。"
         )
-        observation = call_claude(obs_prompt, [{"role": "user", "content": summary}], max_tokens=50)
-        observation = observation.strip()
-        if observation:
+        observations = call_claude(obs_prompt, [{"role": "user", "content": context}], max_tokens=200)
+        lines = [l.strip() for l in observations.strip().splitlines() if l.strip()]
+        for line in lines[:5]:
             supabase.table("guest_memories").insert({
                 "guest_name": guest_name,
-                "content": observation,
+                "content": line,
                 "status": "pending",
-                "source": f"訪客來訪後 AI 觀察（{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}）"
+                "source": f"訪客來訪後 AI 觀察（{visit_date}）"
             }).execute()
+
+        # 同步寫入 visitor_sessions，讓來訪次數能統計到
+        try:
+            friend_rows = supabase.table("friends").select("id").eq("name", guest_name).execute().data
+            friend_id = friend_rows[0]["id"] if friend_rows else None
+            supabase.table("visitor_sessions").insert({
+                "visitor_name": guest_name,
+                "visitor_friend_id": friend_id,
+                "belong_to": "user",
+                "mode": "guest_link",
+                "messages": [],
+                "status": "completed",
+                "created_at": now_iso,
+                "updated_at": now_iso
+            }).execute()
+        except Exception:
+            pass
 
         return jsonify({"status": "ok", "summary": summary})
     except Exception as e:

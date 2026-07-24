@@ -11,19 +11,29 @@
   .gst-create-btn { padding: 10px; background: var(--accent); border: none; border-radius: 10px; color: #fff; font-size: 14px; cursor: pointer; font-family: inherit; }
   .gst-section-title { font-size: 11px; color: var(--text-3); letter-spacing: 2px; text-transform: uppercase; }
   .gst-card { background: var(--surface); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
-  .gst-card-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; }
-  .gst-card-left { display: flex; flex-direction: column; gap: 3px; }
-  .gst-card-name { font-size: 15px; color: var(--text); }
+
+  /* 摺疊列 */
+  .gst-card-row { padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; gap: 10px; }
+  .gst-card-row:active { opacity: 0.75; }
+  .gst-card-left { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .gst-card-name { font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gst-card-meta { font-size: 12px; color: var(--text-3); }
+  .gst-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .gst-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; }
   .gst-badge.active { background: rgba(50,160,80,0.15); color: #50a060; }
   .gst-badge.ended { background: var(--surface2); color: var(--text-3); }
-  .gst-card-btns { display: flex; gap: 8px; padding: 0 16px 14px; }
+  .gst-chevron { font-size: 11px; color: var(--text-3); transition: transform 0.2s; display: inline-block; }
+  .gst-chevron.open { transform: rotate(180deg); }
+
+  /* 展開內容 */
+  .gst-card-body { display: none; border-top: 1px solid var(--border); }
+  .gst-card-body.open { display: block; }
+  .gst-card-btns { display: flex; gap: 8px; padding: 12px 16px; }
   .gst-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; font-family: inherit; }
   .gst-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .gst-btn.danger { border-color: rgba(200,60,60,0.3); color: #e06060; }
-  .gst-summary { background: var(--surface2); padding: 14px 16px; font-size: 14px; color: var(--text-2); line-height: 1.7; border-top: 1px solid var(--border); white-space: pre-wrap; }
-  .gst-link-box { background: var(--surface2); padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .gst-summary { background: var(--surface2); padding: 14px 16px; font-size: 13px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; }
+  .gst-link-box { background: var(--surface2); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
   .gst-link-url { font-size: 12px; color: var(--text-3); font-family: monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gst-copy-btn { padding: 4px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: 12px; cursor: pointer; flex-shrink: 0; }
   .gst-empty { text-align: center; color: var(--text-3); font-size: 14px; padding: 2rem 0; }
@@ -50,7 +60,7 @@
   function formatDate(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
   }
 
   async function mount(el) {
@@ -121,28 +131,45 @@
           const hasPw = s.has_password ? ' 🔒' : '';
           const statusClass = s.status === 'active' ? 'active' : 'ended';
           const url = `${location.origin}/visit/${s.token}`;
+          const dateStr = formatDate(s.created_at);
+
           card.innerHTML = `
-            <div class="gst-card-header">
+            <div class="gst-card-row">
               <div class="gst-card-left">
                 <div class="gst-card-name">${s.guest_name || '訪客'}${hasPw}</div>
-                <div class="gst-card-meta">${formatDate(s.created_at)} ・ ${s.message_count || 0} 則訊息</div>
+                <div class="gst-card-meta">${dateStr}・${s.message_count || 0} 則訊息</div>
               </div>
-              <span class="gst-badge ${statusClass}">${statusLabel}</span>
+              <div class="gst-card-right">
+                <span class="gst-badge ${statusClass}">${statusLabel}</span>
+                <span class="gst-chevron">▼</span>
+              </div>
             </div>
-            ${s.status === 'active' ? `
-            <div class="gst-link-box">
-              <div class="gst-link-url">${url}</div>
-              <button class="gst-copy-btn" data-url="${url}">複製</button>
-            </div>` : ''}
-            ${s.summary ? `<div class="gst-summary">${s.summary}</div>` : ''}
-            <div class="gst-card-btns">
-              ${s.status === 'active' ? `<button class="gst-btn danger" data-end="${s.id}" data-token="${s.token}">結束會話</button>` : ''}
-              <button class="gst-btn danger" data-del="${s.id}">刪除</button>
+            <div class="gst-card-body">
+              ${s.status === 'active' ? `
+              <div class="gst-link-box">
+                <div class="gst-link-url">${url}</div>
+                <button class="gst-copy-btn" data-url="${url}">複製</button>
+              </div>` : ''}
+              ${s.summary ? `<div class="gst-summary">${s.summary}</div>` : ''}
+              <div class="gst-card-btns">
+                ${s.status === 'active' ? `<button class="gst-btn danger" data-end="${s.id}" data-token="${s.token}">結束會話</button>` : ''}
+                <button class="gst-btn danger" data-del="${s.id}">刪除</button>
+              </div>
             </div>
           `;
 
+          // 摺疊切換
+          const row = card.querySelector('.gst-card-row');
+          const body = card.querySelector('.gst-card-body');
+          const chevron = card.querySelector('.gst-chevron');
+          row.onclick = () => {
+            const isOpen = body.classList.toggle('open');
+            chevron.classList.toggle('open', isOpen);
+          };
+
           card.querySelectorAll('.gst-copy-btn').forEach(btn => {
-            btn.onclick = () => {
+            btn.onclick = (e) => {
+              e.stopPropagation();
               navigator.clipboard.writeText(btn.dataset.url).catch(() => {});
               btn.textContent = '已複製';
               setTimeout(() => btn.textContent = '複製', 1500);
@@ -151,7 +178,8 @@
 
           const endBtn = card.querySelector('[data-end]');
           if (endBtn) {
-            endBtn.onclick = async () => {
+            endBtn.onclick = async (e) => {
+              e.stopPropagation();
               endBtn.disabled = true;
               endBtn.textContent = '結束中…';
               try {
@@ -163,7 +191,8 @@
 
           const delBtn = card.querySelector('[data-del]');
           if (delBtn) {
-            delBtn.onclick = async () => {
+            delBtn.onclick = async (e) => {
+              e.stopPropagation();
               if (!confirm('確定要刪除這筆記錄？')) return;
               await fetch(`/guest/sessions/${delBtn.dataset.del}`, { method: 'DELETE' });
               loadSessions();
@@ -209,7 +238,6 @@
       btn.disabled = false; btn.textContent = '產生連結';
     };
 
-    // 載入晏的訪客動態
     async function loadLiveSessions() {
       const list = document.getElementById('gstLiveList');
       try {
