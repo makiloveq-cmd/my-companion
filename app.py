@@ -1440,6 +1440,193 @@ def game_seal():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/game/books", methods=["GET"])
+def game_books_get():
+    """取得所有故事書，附帶章節清單"""
+    try:
+        books = supabase.table("game_books").select("*").order("created_at", desc=False).execute().data
+        sessions = supabase.table("game_sessions").select("id, book_id, chapter_number, chapter_title, title, summary, status, created_at, updated_at").order("chapter_number", desc=False).execute().data
+        # 把 sessions 按 book_id 分組
+        import collections
+        book_map = collections.defaultdict(list)
+        orphans = []
+        for s in sessions:
+            if s.get("book_id"):
+                book_map[s["book_id"]].append(s)
+            else:
+                orphans.append(s)
+        result = []
+        for b in books:
+            b["chapters"] = sorted(book_map.get(b["id"], []), key=lambda x: x.get("chapter_number") or 0)
+            result.append(b)
+        return jsonify({"books": result, "orphans": orphans})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/books", methods=["POST"])
+def game_books_create():
+    """建立新故事書"""
+    try:
+        data = request.json
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("game_books").insert({
+            "title": data.get("title", "無題故事"),
+            "setting": data.get("setting", ""),
+            "status": "active",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        return jsonify({"book": result.data[0] if result.data else {}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/books/<int:book_id>", methods=["PUT"])
+def game_books_update(book_id):
+    """更新故事書（標題、狀態）"""
+    try:
+        data = request.json
+        update = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        if "title" in data: update["title"] = data["title"]
+        if "status" in data: update["status"] = data["status"]
+        if "setting" in data: update["setting"] = data["setting"]
+        supabase.table("game_books").update(update).eq("id", book_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/seal_chapter", methods=["POST"])
+def game_seal_chapter():
+    """封存這一章，故事繼續（不結束）"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        summary = data.get("summary", "")
+        messages = data.get("messages", [])
+        setting = data.get("setting", "")
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 封存目前這個 session
+        if session_id:
+            supabase.table("game_sessions").update({
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "status": "archived",
+                "messages": messages,
+                "updated_at": now
+            }).eq("id", session_id).execute()
+        else:
+            result = supabase.table("game_sessions").insert({
+                "setting": setting,
+                "title": chapter_title or f"第{chapter_number}章",
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "status": "archived",
+                "messages": messages,
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+
+        # 更新 book updated_at
+        if book_id:
+            supabase.table("game_books").update({"updated_at": now}).eq("id", book_id).execute()
+
+        # 開新 session 繼續同一本書（下一章）
+        new_result = supabase.table("game_sessions").insert({
+            "setting": setting,
+            "title": f"第{chapter_number + 1}章",
+            "book_id": book_id,
+            "chapter_number": chapter_number + 1,
+            "chapter_title": "",
+            "summary": "",
+            "status": "playing",
+            "messages": [],
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        new_session_id = new_result.data[0]["id"] if new_result.data else None
+
+        return jsonify({"status": "ok", "new_session_id": new_session_id, "next_chapter": chapter_number + 1})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/end_story", methods=["POST"])
+def game_end_story():
+    """結束整個故事，最後一章封存，書標記完結"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        summary = data.get("summary", "")
+        messages = data.get("messages", [])
+        setting = data.get("setting", "")
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 封存最後一章
+        if session_id:
+            supabase.table("game_sessions").update({
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "status": "archived",
+                "messages": messages,
+                "updated_at": now
+            }).eq("id", session_id).execute()
+        else:
+            supabase.table("game_sessions").insert({
+                "setting": setting,
+                "title": chapter_title or f"第{chapter_number}章",
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "status": "archived",
+                "messages": messages,
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+
+        # 書標記完結
+        if book_id:
+            supabase.table("game_books").update({
+                "status": "completed",
+                "updated_at": now
+            }).eq("id", book_id).execute()
+
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/assign_book", methods=["POST"])
+def game_assign_book():
+    """把舊的 archived session 歸入書冊（補救用）"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        now = datetime.now(timezone.utc).isoformat()
+        supabase.table("game_sessions").update({
+            "book_id": book_id,
+            "chapter_number": chapter_number,
+            "chapter_title": chapter_title,
+            "updated_at": now
+        }).eq("id", session_id).execute()
+        supabase.table("game_books").update({"updated_at": now}).eq("id", book_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 主題設定 =====
 
 @app.route("/theme/custom", methods=["GET"])
@@ -3509,49 +3696,31 @@ def guest_end(token):
             "summary": summary
         }).eq("token", token).execute()
 
-        visit_date = datetime.now(timezone(timedelta(hours=8))).strftime("%m/%d")
-        now_iso = datetime.now(timezone(timedelta(hours=8))).isoformat()
-
-        # 來訪紀錄——一條簡短 confirmed
+        # 存進 guest_memories（confirmed 是來訪記錄，pending 是 AI 觀察待確認）
+        memory_text = (
+            f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}] {guest_name}來訪。{summary[:150]}"
+        )
         supabase.table("guest_memories").insert({
             "guest_name": guest_name,
-            "content": f"[{visit_date}] {guest_name}透過訪客連結來訪，聊了 {session.get('message_count', 0)} 則訊息。",
+            "content": memory_text,
             "status": "confirmed",
             "source": "訪客來訪"
         }).execute()
 
-        # 從對話萃取 3-5 條條列印象——各自存成 pending 等確認
+        # AI 對這位朋友的觀察——存成 pending 等你確認
         obs_prompt = (
-            f"根據這次你與{guest_name}的對話，整理出 3 到 5 條對她的具體印象或觀察。"
-            f"每條 20 字以內，直接描述，像『說話很直接，不拐彎抹角』、『提到感情時明顯迴避』這樣。"
-            f"每條獨立一行，不要編號，不要其他文字。"
+            f"根據這次與{guest_name}的對話，用一句話說出你對她最重要的觀察或印象（20字以內）。"
+            f"只說那一句話，不要其他文字。"
         )
-        observations = call_claude(obs_prompt, [{"role": "user", "content": context}], max_tokens=200)
-        lines = [l.strip() for l in observations.strip().splitlines() if l.strip()]
-        for line in lines[:5]:
+        observation = call_claude(obs_prompt, [{"role": "user", "content": summary}], max_tokens=50)
+        observation = observation.strip()
+        if observation:
             supabase.table("guest_memories").insert({
                 "guest_name": guest_name,
-                "content": line,
+                "content": observation,
                 "status": "pending",
-                "source": f"訪客來訪後 AI 觀察（{visit_date}）"
+                "source": f"訪客來訪後 AI 觀察（{datetime.now(timezone(timedelta(hours=8))).strftime('%m/%d')}）"
             }).execute()
-
-        # 同步寫入 visitor_sessions，讓來訪次數能統計到
-        try:
-            friend_rows = supabase.table("friends").select("id").eq("name", guest_name).execute().data
-            friend_id = friend_rows[0]["id"] if friend_rows else None
-            supabase.table("visitor_sessions").insert({
-                "visitor_name": guest_name,
-                "visitor_friend_id": friend_id,
-                "belong_to": "user",
-                "mode": "guest_link",
-                "messages": [],
-                "status": "completed",
-                "created_at": now_iso,
-                "updated_at": now_iso
-            }).execute()
-        except Exception:
-            pass
 
         return jsonify({"status": "ok", "summary": summary})
     except Exception as e:
