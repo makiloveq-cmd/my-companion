@@ -3338,7 +3338,7 @@ def guest_visit(token):
 def guest_info(token):
     """訪客取得基本資訊"""
     try:
-        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count").eq("token", token).execute().data
+        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count, max_messages").eq("token", token).execute().data
         if not rows:
             return jsonify({"error": "invalid token"}), 403
         return jsonify(rows[0])
