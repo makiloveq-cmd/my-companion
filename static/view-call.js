@@ -143,7 +143,6 @@
   let audioCtx = null;
   let audioUnlocked = false;
 
-  // iOS 需要在使用者手勢中解鎖 AudioContext
   function unlockAudio() {
     if (audioUnlocked) return;
     try {
@@ -157,7 +156,6 @@
       audioUnlocked = true;
     } catch(e) {}
   }
-
   function formatTime(sec) {
     const m = String(Math.floor(sec / 60)).padStart(2, '0');
     const s = String(sec % 60).padStart(2, '0');
@@ -214,6 +212,26 @@
       callTimerInterval = setInterval(() => {
         document.getElementById('callTimer').textContent = formatTime(getCallDuration());
       }, 1000);
+
+      // 接通後自動打招呼
+      setTimeout(async () => {
+        try {
+          document.getElementById('callStatus').textContent = '接通中…';
+          const res = await fetch('/chat/claude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: '【通話接通，請用簡短一句話打招呼】' })
+          });
+          const data = await res.json();
+          if (data.reply) {
+            callMessages.push({ role: 'assistant', content: data.reply });
+            document.getElementById('callStatus').textContent = '通話中';
+            await playTTS(data.reply, (document.getElementById('callName').textContent || '晏') + '說');
+          }
+        } catch (e) {
+          document.getElementById('callStatus').textContent = '通話中';
+        }
+      }, 800);
     },
 
     close: async function () {
