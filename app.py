@@ -1440,265 +1440,6 @@ def game_seal():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/game/books", methods=["GET"])
-def game_books_get():
-    """取得所有故事書，附帶章節清單"""
-    try:
-        books = supabase.table("game_books").select("*").order("created_at", desc=False).execute().data
-        sessions = supabase.table("game_sessions").select("id, book_id, chapter_number, chapter_title, title, summary, status, created_at, updated_at").order("chapter_number", desc=False).execute().data
-        # 把 sessions 按 book_id 分組
-        import collections
-        book_map = collections.defaultdict(list)
-        orphans = []
-        for s in sessions:
-            if s.get("book_id"):
-                book_map[s["book_id"]].append(s)
-            else:
-                orphans.append(s)
-        result = []
-        for b in books:
-            b["chapters"] = sorted(book_map.get(b["id"], []), key=lambda x: x.get("chapter_number") or 0)
-            result.append(b)
-        return jsonify({"books": result, "orphans": orphans})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/game/books", methods=["POST"])
-def game_books_create():
-    """建立新故事書"""
-    try:
-        data = request.json
-        now = datetime.now(timezone.utc).isoformat()
-        result = supabase.table("game_books").insert({
-            "title": data.get("title", "無題故事"),
-            "setting": data.get("setting", ""),
-            "status": "active",
-            "created_at": now,
-            "updated_at": now
-        }).execute()
-        return jsonify({"book": result.data[0] if result.data else {}})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/game/books/<int:book_id>", methods=["PUT"])
-def game_books_update(book_id):
-    """更新故事書（標題、狀態）"""
-    try:
-        data = request.json
-        update = {"updated_at": datetime.now(timezone.utc).isoformat()}
-        if "title" in data: update["title"] = data["title"]
-        if "status" in data: update["status"] = data["status"]
-        if "setting" in data: update["setting"] = data["setting"]
-        supabase.table("game_books").update(update).eq("id", book_id).execute()
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/game/seal_chapter", methods=["POST"])
-def game_seal_chapter():
-    """封存這一章，故事繼續（不結束）"""
-    try:
-        data = request.json
-        session_id = data.get("session_id")
-        book_id = data.get("book_id")
-        chapter_number = data.get("chapter_number", 1)
-        chapter_title = data.get("chapter_title", "")
-        summary = data.get("summary", "")
-        messages = data.get("messages", [])
-        setting = data.get("setting", "")
-        now = datetime.now(timezone.utc).isoformat()
-
-        # 封存目前這個 session
-        if session_id:
-            supabase.table("game_sessions").update({
-                "book_id": book_id,
-                "chapter_number": chapter_number,
-                "chapter_title": chapter_title,
-                "summary": summary,
-                "status": "archived",
-                "messages": messages,
-                "updated_at": now
-            }).eq("id", session_id).execute()
-        else:
-            result = supabase.table("game_sessions").insert({
-                "setting": setting,
-                "title": chapter_title or f"第{chapter_number}章",
-                "book_id": book_id,
-                "chapter_number": chapter_number,
-                "chapter_title": chapter_title,
-                "summary": summary,
-                "status": "archived",
-                "messages": messages,
-                "created_at": now,
-                "updated_at": now
-            }).execute()
-
-        # 更新 book updated_at
-        if book_id:
-            supabase.table("game_books").update({"updated_at": now}).eq("id", book_id).execute()
-
-        # 開新 session 繼續同一本書（下一章）
-        new_result = supabase.table("game_sessions").insert({
-            "setting": setting,
-            "title": f"第{chapter_number + 1}章",
-            "book_id": book_id,
-            "chapter_number": chapter_number + 1,
-            "chapter_title": "",
-            "summary": "",
-            "status": "playing",
-            "messages": [],
-            "created_at": now,
-            "updated_at": now
-        }).execute()
-        new_session_id = new_result.data[0]["id"] if new_result.data else None
-
-        return jsonify({"status": "ok", "new_session_id": new_session_id, "next_chapter": chapter_number + 1})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/game/end_story", methods=["POST"])
-def game_end_story():
-    """結束整個故事，最後一章封存，書標記完結"""
-    try:
-        data = request.json
-        session_id = data.get("session_id")
-        book_id = data.get("book_id")
-        chapter_number = data.get("chapter_number", 1)
-        chapter_title = data.get("chapter_title", "")
-        summary = data.get("summary", "")
-        messages = data.get("messages", [])
-        setting = data.get("setting", "")
-        now = datetime.now(timezone.utc).isoformat()
-
-        # 封存最後一章
-        if session_id:
-            supabase.table("game_sessions").update({
-                "book_id": book_id,
-                "chapter_number": chapter_number,
-                "chapter_title": chapter_title,
-                "summary": summary,
-                "status": "archived",
-                "messages": messages,
-                "updated_at": now
-            }).eq("id", session_id).execute()
-        else:
-            supabase.table("game_sessions").insert({
-                "setting": setting,
-                "title": chapter_title or f"第{chapter_number}章",
-                "book_id": book_id,
-                "chapter_number": chapter_number,
-                "chapter_title": chapter_title,
-                "summary": summary,
-                "status": "archived",
-                "messages": messages,
-                "created_at": now,
-                "updated_at": now
-            }).execute()
-
-        # 書標記完結
-        if book_id:
-            supabase.table("game_books").update({
-                "status": "completed",
-                "updated_at": now
-            }).eq("id", book_id).execute()
-
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/game/assign_book", methods=["POST"])
-def game_assign_book():
-    """把舊的 archived session 歸入書冊（補救用）"""
-    try:
-        data = request.json
-        session_id = data.get("session_id")
-        book_id = data.get("book_id")
-        chapter_number = data.get("chapter_number", 1)
-        chapter_title = data.get("chapter_title", "")
-        now = datetime.now(timezone.utc).isoformat()
-        supabase.table("game_sessions").update({
-            "book_id": book_id,
-            "chapter_number": chapter_number,
-            "chapter_title": chapter_title,
-            "updated_at": now
-        }).eq("id", session_id).execute()
-        supabase.table("game_books").update({"updated_at": now}).eq("id", book_id).execute()
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/game/split_chapters", methods=["POST"])
-def game_split_chapters():
-    """把一個舊 session 拆成多章，建立新書冊並寫入各章節"""
-    try:
-        data = request.json
-        session_id = data.get("session_id")
-        book_title = data.get("book_title", "無題故事")
-        book_setting = data.get("book_setting", "")
-        chapters = data.get("chapters", [])
-        now = datetime.now(timezone.utc).isoformat()
-
-        if not chapters:
-            return jsonify({"error": "no chapters provided"}), 400
-
-        # 取得原始 session 資料（用來繼承 setting 和 messages）
-        original = None
-        if session_id:
-            rows = supabase.table("game_sessions").select("*").eq("id", session_id).execute().data
-            if rows:
-                original = rows[0]
-
-        original_setting = book_setting or (original.get("setting", "") if original else "")
-
-        # 建立新書冊
-        book_result = supabase.table("game_books").insert({
-            "title": book_title,
-            "setting": original_setting,
-            "status": "completed",
-            "created_at": now,
-            "updated_at": now
-        }).execute()
-        book_id = book_result.data[0]["id"] if book_result.data else None
-
-        if not book_id:
-            return jsonify({"error": "failed to create book"}), 500
-
-        # 建立各章節 session
-        created = []
-        for ch in chapters:
-            ch_num = ch.get("chapter_number", 1)
-            ch_title = ch.get("chapter_title", f"第{ch_num}章")
-            ch_summary = ch.get("summary", "")
-            result = supabase.table("game_sessions").insert({
-                "book_id": book_id,
-                "chapter_number": ch_num,
-                "chapter_title": ch_title,
-                "title": ch_title,
-                "summary": ch_summary,
-                "setting": original_setting,
-                "status": "archived",
-                "messages": [],
-                "created_at": now,
-                "updated_at": now
-            }).execute()
-            if result.data:
-                created.append(result.data[0]["id"])
-
-        # 把原始 session 標記為已拆分（歸入同一本書，chapter 0 代表原始）
-        if session_id and original:
-            supabase.table("game_sessions").update({
-                "book_id": book_id,
-                "chapter_number": 0,
-                "chapter_title": "（原始記錄）",
-                "status": "archived",
-                "updated_at": now
-            }).eq("id", session_id).execute()
-
-        return jsonify({"status": "ok", "book_id": book_id, "chapters_created": len(created)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 # ===== 主題設定 =====
 
 @app.route("/theme/custom", methods=["GET"])
@@ -3899,7 +3640,7 @@ def call_logs_get():
 
 @app.route("/voice/tts", methods=["POST"])
 def voice_tts():
-    """把文字轉成晏的聲音，回傳 mp3"""
+    """把文字轉成晏的聲音，用 streaming 回傳 mp3"""
     try:
         data = request.json
         text = data.get("text", "").strip()
@@ -3909,11 +3650,14 @@ def voice_tts():
             return jsonify({"error": "ElevenLabs not configured"}), 500
 
         import requests as req
+        from flask import Response, stream_with_context
+
         res = req.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
+            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream",
             headers={
                 "xi-api-key": ELEVENLABS_API_KEY,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg"
             },
             json={
                 "text": text,
@@ -3925,13 +3669,25 @@ def voice_tts():
                     "use_speaker_boost": True
                 }
             },
+            stream=True,
             timeout=30
         )
         if res.status_code != 200:
             return jsonify({"error": f"ElevenLabs error: {res.status_code}"}), 500
 
-        from flask import Response
-        return Response(res.content, mimetype="audio/mpeg")
+        def generate():
+            for chunk in res.iter_content(chunk_size=2048):
+                if chunk:
+                    yield chunk
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="audio/mpeg",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no"
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
