@@ -140,6 +140,23 @@
   let mediaRecorder = null;
   let audioChunks = [];
   let lastAudioUrl = null;
+  let audioCtx = null;
+  let audioUnlocked = false;
+
+  // iOS 需要在使用者手勢中解鎖 AudioContext
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const buf = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+      src.start(0);
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      audioUnlocked = true;
+    } catch(e) {}
+  }
 
   function formatTime(sec) {
     const m = String(Math.floor(sec / 60)).padStart(2, '0');
@@ -155,6 +172,7 @@
   window.RifugioCall = {
     open: async function (botName, botAvatar) {
       ensureStyle();
+      unlockAudio(); // 在使用者手勢中解鎖音訊
       const overlay = document.getElementById('callOverlay');
       if (!overlay) return;
 
@@ -229,13 +247,30 @@
         body: JSON.stringify({ text })
       });
       if (!res.ok) return;
-      const blob = await res.blob();
+      const arrayBuffer = await res.arrayBuffer();
+
+      document.getElementById('callSubtitleSpeaker').textContent = speakerLabel;
+      document.getElementById('callSubtitleText').textContent = text;
+
+      // 優先用 AudioContext（iOS WebView 不會被靜音）
+      if (audioCtx) {
+        try {
+          if (audioCtx.state === 'suspended') await audioCtx.resume();
+          const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+          const src = audioCtx.createBufferSource();
+          src.buffer = decoded;
+          src.connect(audioCtx.destination);
+          src.start(0);
+          return;
+        } catch(e) {}
+      }
+      // fallback: 用 Audio 元素
+      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(blob);
       lastAudioUrl = url;
       const audio = new Audio(url);
-      document.getElementById('callSubtitleSpeaker').textContent = speakerLabel;
-      document.getElementById('callSubtitleText').textContent = text;
-      audio.play().catch(() => {});
+      audio.playsInline = true;
+      await audio.play().catch(() => {});
     } catch (e) {}
   }
 
@@ -334,6 +369,7 @@
 
       // 麥克風按鈕
       document.getElementById('callMicBtn').onclick = async () => {
+        unlockAudio(); // 確保音訊已解鎖
         if (isMicRecording) {
           mediaRecorder.stop();
           return;
