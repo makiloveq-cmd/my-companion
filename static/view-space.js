@@ -1288,6 +1288,10 @@
     let visitorInfo = null;
 
     function showVisitorNotice(visitor) {
+      // 同一個 session 已經確認過就不重複彈出
+      const ackKey = 'visitor_ack_' + visitor.id;
+      if (sessionStorage.getItem(ackKey)) return;
+
       const belong = visitor.belong_to;
       const name = visitor.visitor_name;
       const isPartner = belong === 'partner';
@@ -1310,6 +1314,7 @@
         `;
         notice.querySelector('#visitorOkBtn').onclick = async () => {
           notice.remove();
+          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = visitor.mode;
           visitorInfo = visitor;
@@ -1340,6 +1345,7 @@
         `;
         notice.querySelector('#visitorSoloBtn').onclick = async () => {
           notice.remove();
+          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = 'solo_partner';
           visitorInfo = visitor;
@@ -1347,13 +1353,18 @@
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ session_id: visitor.id, mode: 'solo_partner' })
           });
-          await fetch('/visitor/start', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ session_id: visitor.id })
-          });
+          try {
+            await fetch('/visitor/start', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ session_id: visitor.id })
+            });
+            showVisitorBar(visitor.visitor_name);
+            runSoloChat(visitor.id);
+          } catch(e) {}
         };
         notice.querySelector('#visitorTogetherBtn').onclick = async () => {
           notice.remove();
+          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = 'together';
           visitorInfo = visitor;

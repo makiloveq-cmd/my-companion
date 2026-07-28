@@ -1182,6 +1182,8 @@ def outing_confirm():
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/space/end_day", methods=["POST"])
 def space_end_day():
     try:
         now = datetime.now(timezone.utc).isoformat()
@@ -1377,6 +1379,149 @@ def game_autosave():
             "status": "playing",
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ===== 遊戲廳書冊系統 =====
+
+@app.route("/game/books", methods=["GET"])
+def game_books_get():
+    """取得所有書冊（含章節）以及未歸檔的 archived sessions"""
+    try:
+        books_raw = supabase.table("game_books").select("*").order("id").execute().data
+        result = []
+        for book in books_raw:
+            chapters = supabase.table("game_sessions").select("id, chapter_number, chapter_title, title, status, summary, messages, updated_at").eq("book_id", book["id"]).order("chapter_number").execute().data
+            result.append({**book, "chapters": chapters})
+
+        # 沒有 book_id 的 archived sessions（孤兒）
+        orphans = supabase.table("game_sessions").select("id, title, chapter_title, status, summary, created_at").is_("book_id", "null").eq("status", "archived").order("updated_at", desc=True).execute().data
+
+        return jsonify({"books": result, "orphans": orphans})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/books", methods=["POST"])
+def game_books_post():
+    """新建書冊"""
+    try:
+        data = request.json
+        title = data.get("title", "").strip()
+        if not title:
+            return jsonify({"error": "no title"}), 400
+        now = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("game_books").insert({
+            "title": title,
+            "setting": data.get("setting", ""),
+            "status": "active",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        book = result.data[0] if result.data else None
+        return jsonify({"status": "ok", "book": book})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/assign_book", methods=["POST"])
+def game_assign_book():
+    """把孤兒 session 歸入書冊"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        if not session_id or not book_id:
+            return jsonify({"error": "missing params"}), 400
+        supabase.table("game_sessions").update({
+            "book_id": book_id,
+            "chapter_number": chapter_number,
+            "chapter_title": chapter_title,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", session_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/seal_chapter", methods=["POST"])
+def game_seal_chapter():
+    """封存這一章，建立新 session 繼續下一章"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        summary = data.get("summary", "")
+        messages = data.get("messages", [])
+        setting = data.get("setting", "")
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 封存現有 session
+        if session_id:
+            supabase.table("game_sessions").update({
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "messages": messages,
+                "status": "archived",
+                "updated_at": now
+            }).eq("id", session_id).execute()
+
+        # 新建下一章 session
+        next_num = chapter_number + 1
+        result = supabase.table("game_sessions").insert({
+            "book_id": book_id,
+            "setting": setting,
+            "title": f"第{next_num}章",
+            "chapter_number": next_num,
+            "chapter_title": "",
+            "status": "playing",
+            "summary": "",
+            "messages": [],
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        new_session_id = result.data[0]["id"] if result.data else None
+        return jsonify({"status": "ok", "new_session_id": new_session_id, "next_chapter": next_num})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/game/end_story", methods=["POST"])
+def game_end_story():
+    """結束故事——封存最後一章並把書冊標記 completed"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        book_id = data.get("book_id")
+        chapter_number = data.get("chapter_number", 1)
+        chapter_title = data.get("chapter_title", "")
+        summary = data.get("summary", "")
+        messages = data.get("messages", [])
+        setting = data.get("setting", "")
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 封存最後一章
+        if session_id:
+            supabase.table("game_sessions").update({
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "summary": summary,
+                "messages": messages,
+                "status": "archived",
+                "updated_at": now
+            }).eq("id", session_id).execute()
+
+        # 書冊標記完結
+        if book_id:
+            supabase.table("game_books").update({
+                "status": "completed",
+                "updated_at": now
+            }).eq("id", book_id).execute()
+
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2862,9 +3007,23 @@ def visitor_check():
 
         # 今天已經有 active visitor session 就不重複觸發
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        existing = supabase.table("visitor_sessions").select("id, visitor_name, mode, belong_to").eq("status", "active").execute().data
+        existing = supabase.table("visitor_sessions").select("id, visitor_name, mode, belong_to, visitor_friend_id").eq("status", "active").execute().data
         if existing:
-            return jsonify({"visitor": existing[0]})
+            row = existing[0]
+            # 補回前端需要的 is_stranger 欄位
+            row["is_stranger"] = row.get("visitor_friend_id") is None
+            # 補回 personality / relation_type（從 friends 表讀）
+            row["personality"] = ""
+            row["relation_type"] = ""
+            if row.get("visitor_friend_id"):
+                try:
+                    fr = supabase.table("friends").select("personality, relation_type").eq("id", row["visitor_friend_id"]).single().execute().data
+                    if fr:
+                        row["personality"] = fr.get("personality", "")
+                        row["relation_type"] = fr.get("relation_type", "")
+                except:
+                    pass
+            return jsonify({"visitor": row})
 
         # 今天已經觸發過就不再觸發
         today_sessions = supabase.table("visitor_sessions").select("id").gte("created_at", f"{today}T00:00:00+00:00").execute().data
@@ -3338,7 +3497,7 @@ def guest_visit(token):
 def guest_info(token):
     """訪客取得基本資訊"""
     try:
-        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count").eq("token", token).execute().data
+        rows = supabase.table("guest_sessions").select("guest_name, status, expires_at, message_count, max_messages").eq("token", token).execute().data
         if not rows:
             return jsonify({"error": "invalid token"}), 403
         return jsonify(rows[0])
