@@ -1293,9 +1293,16 @@
     let visitorInfo = null;
 
     function showVisitorNotice(visitor) {
-      // 同一個 session 已經確認過就不重複彈出
+      // 同一個 session 已經確認過就不重複彈出（localStorage 可跨 App 重啟）
       const ackKey = 'visitor_ack_' + visitor.id;
-      if (sessionStorage.getItem(ackKey)) return;
+      if (localStorage.getItem(ackKey) || sessionStorage.getItem(ackKey)) {
+        // 已確認過：靜默恢復狀態列，不彈通知
+        visitorSessionId = visitor.id;
+        visitorMode = visitor.mode || null;
+        visitorInfo = visitor;
+        showVisitorBar(visitor.visitor_name);
+        return;
+      }
 
       const belong = visitor.belong_to;
       const name = visitor.visitor_name;
@@ -1319,7 +1326,7 @@
         `;
         notice.querySelector('#visitorOkBtn').onclick = async () => {
           notice.remove();
-          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
+          localStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = visitor.mode;
           visitorInfo = visitor;
@@ -1350,7 +1357,7 @@
         `;
         notice.querySelector('#visitorSoloBtn').onclick = async () => {
           notice.remove();
-          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
+          localStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = 'solo_partner';
           visitorInfo = visitor;
@@ -1369,7 +1376,7 @@
         };
         notice.querySelector('#visitorTogetherBtn').onclick = async () => {
           notice.remove();
-          sessionStorage.setItem('visitor_ack_' + visitor.id, '1');
+          localStorage.setItem('visitor_ack_' + visitor.id, '1');
           visitorSessionId = visitor.id;
           visitorMode = 'together';
           visitorInfo = visitor;
