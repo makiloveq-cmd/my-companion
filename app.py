@@ -3402,12 +3402,16 @@ def visitor_end():
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", session_id).execute()
 
-        # 如果是然然的朋友來訪，晏自動生成一筆待確認的印象記憶
-        if belong == "user":
+        # 訪客離開後，晏自動生成一筆待確認的印象記憶（不分誰的朋友）
+        if True:
             try:
+                if belong == "user":
+                    rel_desc = f"{you_name}的朋友"
+                else:
+                    rel_desc = "你自己的朋友"
                 impression_system = (
-                    f"你是{name}，剛才和{you_name}的朋友{visitor_name}相處了一段時間。"
-                    f"請用第一人稱，簡短寫下你對{visitor_name}這個人的印象——個性、相處感覺、讓你印象深刻的事。"
+                    f"你是{name}，剛才和{rel_desc}{visitor_name}相處了一段時間。"
+                    f"請用第一人稱，簡短寫下你對{visitor_name}這個人的印象或這次相處的重點——個性、相處感覺、聊到的重要事情。"
                     f"50字以內，自然真實，不要太正式。用繁體中文。"
                 )
                 impression = call_claude(
@@ -3428,6 +3432,42 @@ def visitor_end():
                 pass
 
         return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/confirm_memory", methods=["POST"])
+def visitor_confirm_memory():
+    """然然確認（可編輯後的）訪客總結，存進朋友記憶並立即生效"""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        content = (data.get("content") or "").strip()
+        note = (data.get("note") or "").strip()
+        if not content:
+            return jsonify({"error": "no content"}), 400
+
+        row = supabase.table("visitor_sessions").select("visitor_name").eq("id", session_id).single().execute().data
+        visitor_name = row["visitor_name"] if row else "訪客"
+
+        # 更新 session 的摘要（她編輯後的版本）與心得
+        update_fields = {
+            "summary": content,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        if note:
+            update_fields["user_note"] = note
+        supabase.table("visitor_sessions").update(update_fields).eq("id", session_id).execute()
+
+        # 存進朋友記憶，直接 confirmed，關鍵字預設訪客名字
+        supabase.table("guest_memories").insert({
+            "guest_name": visitor_name,
+            "content": f"【來訪記錄】{content}" + (f"\n【然然的心得】{note}" if note else ""),
+            "keywords": visitor_name,
+            "status": "confirmed",
+            "source": "訪客來訪總結"
+        }).execute()
+
+        return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

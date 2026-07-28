@@ -1483,17 +1483,15 @@
     function showVisitorSummary(summary, visitorName, mode, sessionId, info) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
-      const canAddNote = mode === 'together';
       const isStranger = info && info.is_stranger;
       modal.innerHTML = `
-        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
+        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:75vh;overflow-y:auto;">
           <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
           <div style="color:#7a9ab8;font-size:13px;margin-bottom:12px;">${visitorName} 離開了</div>
-          <div style="background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:12px;color:#c8d8f0;font-size:13px;line-height:1.7;white-space:pre-wrap;margin-bottom:12px;">${summary}</div>
-          ${canAddNote ? `
-          <div style="color:#4a6a88;font-size:12px;margin-bottom:6px;">加上你的心得（選填）</div>
-          <textarea id="visitorNoteArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;min-height:80px;resize:none;" placeholder="今天相處的感覺…"></textarea>
-          ` : ''}
+          <div style="color:#4a6a88;font-size:12px;margin-bottom:6px;">晏說的（可以編修）</div>
+          <textarea id="visitorSummaryArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:12px;color:#c8d8f0;font-size:13px;line-height:1.7;outline:none;box-sizing:border-box;min-height:140px;resize:vertical;font-family:inherit;"></textarea>
+          <div style="color:#4a6a88;font-size:12px;margin:10px 0 6px;">加上你的心得（選填）</div>
+          <textarea id="visitorNoteArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;min-height:60px;resize:none;font-family:inherit;" placeholder="今天的感覺…"></textarea>
           <div style="display:flex;gap:8px;margin-top:12px;">
             ${isStranger ? `<button id="visitorSaveStranger" style="flex:1;padding:10px;background:#1a2b1a;border:0.5px solid #3a6a3a;border-radius:10px;color:#7aaa7a;font-size:13px;cursor:pointer;">存進朋友庫</button>` : ''}
             <button id="visitorSummaryOk" style="flex:2;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
@@ -1501,32 +1499,48 @@
         </div>
       `;
       document.body.appendChild(modal);
+      modal.querySelector('#visitorSummaryArea').value = summary;
 
       if (isStranger) {
         modal.querySelector('#visitorSaveStranger').onclick = async () => {
-          await fetch('/friends', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({
-              name: visitorName,
-              belong_to: 'partner',
-              relation_type: info.relation_type || '',
-              personality: info.personality || '',
-            })
-          });
-          modal.querySelector('#visitorSaveStranger').textContent = '已存入 ✓';
-          modal.querySelector('#visitorSaveStranger').disabled = true;
+          try {
+            const r = await fetch('/friends', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({
+                name: visitorName,
+                belong_to: 'partner',
+                relation_type: info.relation_type || '',
+                personality: info.personality || '',
+              })
+            });
+            if (!r.ok) throw new Error(r.status);
+            modal.querySelector('#visitorSaveStranger').textContent = '已存入 ✓';
+            modal.querySelector('#visitorSaveStranger').disabled = true;
+          } catch (e) {
+            alert('存進朋友庫失敗：' + e.message);
+          }
         };
       }
 
       modal.querySelector('#visitorSummaryOk').onclick = async () => {
-        const note = canAddNote ? modal.querySelector('#visitorNoteArea')?.value.trim() : '';
-        if (note && sessionId) {
-          await fetch('/visitor/note', {
+        const content = modal.querySelector('#visitorSummaryArea').value.trim();
+        const note = modal.querySelector('#visitorNoteArea').value.trim();
+        if (!content) { alert('內容是空的'); return; }
+        const okBtn = modal.querySelector('#visitorSummaryOk');
+        okBtn.disabled = true;
+        okBtn.textContent = '保存中…';
+        try {
+          const r = await fetch('/visitor/confirm_memory', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ session_id: sessionId, note })
+            body: JSON.stringify({ session_id: sessionId, content, note })
           });
+          if (!r.ok) throw new Error('save failed ' + r.status);
+          modal.remove();
+        } catch (e) {
+          alert('保存失敗：' + e.message + '\n內容還在，請再按一次。');
+          okBtn.disabled = false;
+          okBtn.textContent = '✦ 存進記憶';
         }
-        modal.remove();
       };
     }
 
