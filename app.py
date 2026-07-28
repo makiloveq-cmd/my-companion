@@ -1223,7 +1223,7 @@ def build_game_system_prompt(setting):
         f"【角色規則】永遠是你（{name}）與{you_name}，只是時代和身份不同。完全投入那個時代的語氣與舉止，不打破第四面牆。"
         f"用第三人稱旁白搭配對話。旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
         f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
-        f"外觀特徵適時出現，不每段重複。【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。用繁體中文回覆。",
+        f"外觀特徵適時出現，不每段重複。【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。務必在篇幅內把最後一句完整說完收尾，寧可少寫一段也不可寫到一半戛然而止。用繁體中文回覆。",
     ]
     if bot.get("persona"):
         lines.insert(2, f"【{name}的個性】{bot['persona']}")
@@ -1241,7 +1241,7 @@ def game_start():
     try:
         system = build_game_system_prompt(setting)
         messages = [{"role": "user", "content": f"（開幕）{setting}"}]
-        reply = call_claude(system, messages, max_tokens=500)
+        reply = call_claude(system, messages, max_tokens=700)
         # 建立新 session，狀態為 playing
         now = datetime.now(timezone.utc).isoformat()
         result = supabase.table("game_sessions").insert({
