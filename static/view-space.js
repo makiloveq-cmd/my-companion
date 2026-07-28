@@ -614,15 +614,20 @@
       btn.textContent = '整理中…';
       btn.disabled = true;
       try {
-        await fetch('/intimate_memories/selected_draft', {
+        const dr = await fetch('/intimate_memories/selected_draft', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages: selectedMessages })
         });
+        if (!dr.ok) throw new Error('draft failed ' + dr.status);
         const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        if (!res.ok) throw new Error('summary failed ' + res.status);
         const data = await res.json();
         if (data.has_draft && data.content) showIntimateModal(data.content);
-      } catch (e) {}
+        else alert('整理結果是空的，請再試一次。');
+      } catch (e) {
+        alert('封存失敗：' + e.message + '\n草稿可能已存下，可回空間按「✦ 封存這段記憶」重試。');
+      }
       btn.textContent = '封存選取';
       btn.disabled = false;
       exitSelectMode();
@@ -1550,15 +1555,23 @@
       const content = document.getElementById('spIntimateContent').value.trim();
       if (!content) return;
       const keywords = document.getElementById('spIntimateKeywords').value.trim();
+      const cbtn = document.getElementById('spIntimateConfirm');
+      cbtn.disabled = true;
+      cbtn.textContent = '保存中…';
       try {
-        await fetch('/intimate_memories/confirm', {
+        const r = await fetch('/intimate_memories/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content, keywords })
         });
+        if (!r.ok) throw new Error('confirm failed ' + r.status);
         resetRecordingMode();
-      } catch (e) {}
-      hideIntimateModal();
+        hideIntimateModal();
+      } catch (e) {
+        alert('保存失敗：' + e.message + '\n內容還在視窗裡，請再按一次。');
+      }
+      cbtn.disabled = false;
+      cbtn.textContent = '✦ 記住這個';
     };
 
     document.getElementById('spIntimateDiscard').onclick = async () => {
@@ -1617,20 +1630,22 @@
         btn.textContent = '⏳';
         try {
           const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+          if (!res.ok) throw new Error('summary failed ' + res.status);
           const data = await res.json();
           if (data.has_draft && data.content) {
             showIntimateModal(data.content);
           } else {
-            // 沒有草稿，直接結束記錄
+            // 沒有草稿：這段期間沒有記錄到內容
+            alert('這段期間沒有記錄到對話。\n要先按🍎開始記錄，之後的對話才會被收進去。');
             isRecordingIntimate = false;
             btn.textContent = '🍎';
             btn.title = '開始記錄';
             bar.classList.remove('show');
           }
         } catch (e) {
-          isRecordingIntimate = false;
-          btn.textContent = '🍎';
-          bar.classList.remove('show');
+          // 失敗：保留記錄狀態，草稿還在，可以再按一次重試
+          alert('整理逾時或失敗，請再點一次重試。\n（草稿還在，不會不見）');
+          btn.textContent = '🔴';
         }
         btn.disabled = false;
       }
