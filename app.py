@@ -1241,7 +1241,7 @@ def game_start():
     try:
         system = build_game_system_prompt(setting)
         messages = [{"role": "user", "content": f"（開幕）{setting}"}]
-        reply = call_claude(system, messages, max_tokens=800)
+        reply = call_claude(system, messages, max_tokens=500)
         # 建立新 session，狀態為 playing
         now = datetime.now(timezone.utc).isoformat()
         result = supabase.table("game_sessions").insert({
@@ -1280,7 +1280,7 @@ def game_reply():
             merged.pop(0)
         if not merged:
             merged = [{"role": "user", "content": "（繼續）"}]
-        reply = call_claude(system, merged, max_tokens=800)
+        reply = call_claude(system, merged, max_tokens=500)
         return jsonify({"reply": reply, "name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1703,12 +1703,25 @@ def chat_claude():
     user_message = data.get("message", "")
     message_id = data.get("message_id")
     image_url = data.get("image_url")
+    mode = data.get("mode", "chat")
 
     save_message("claude", "user", user_message, message_id, image_url)
     history = build_history("claude", user_message)
 
     try:
-        reply = call_claude(build_system_prompt("claude"), history, max_tokens=400)
+        system = build_system_prompt("claude")
+        max_tk = 400
+        if mode == "call":
+            max_tk = 300
+            system += """
+
+【通話模式】你正在與然然語音通話，你說的每個字都會被轉成語音唸出來。只輸出「說出口的話」：
+- 絕對禁止括號動作、星號動作、旁白、場景描述——那些唸出來會很奇怪
+- 情緒全靠語氣和措辭直接表達：停頓「……」、語氣詞「嗯」「欸」「哦」「是嗎」、猶豫、重複、句子中途轉折「不對，我是說——」
+- 想笑就讓笑意進到字裡（「幹嘛啦」「你哦」），想關心就直接問
+- 像真人講電話：句子短、自然、口語，一次回覆二到四句就好，電話裡沒有人一口氣講十句
+- 不用列點、不用編號，就是自然的說話"""
+        reply = call_claude(system, history, max_tokens=max_tk)
         save_message("claude", "assistant", reply)
         # 背景評估對話深度並加信任度
         def bg_trust():
