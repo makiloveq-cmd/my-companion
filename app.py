@@ -2575,7 +2575,7 @@ def intimate_draft_summary():
             f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
             f"兩段合計不超過 800 字。"
         )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=1200, timeout=100)
+        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=110)
         return jsonify({"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
