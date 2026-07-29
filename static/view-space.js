@@ -1182,6 +1182,12 @@
             padding: 11px 32px; cursor: pointer; letter-spacing: 0.08em;
             margin-top: 16px; font-family: var(--font-sans);
           ">睡不著</button>
+          <button id="spGoHomeBtn" style="
+            background: none; border: none;
+            color: #2a3a52; font-size: 12px;
+            padding: 8px 24px; cursor: pointer; letter-spacing: 0.06em;
+            font-family: var(--font-sans); margin-top: 4px;
+          ">回首頁</button>
         </div>
       `;
 
@@ -1242,15 +1248,35 @@
         overlay.style.opacity = '0';
         setTimeout(() => overlay.remove(), 800);
       };
+
+      // 回首頁按鈕
+      document.getElementById('spGoHomeBtn').onclick = () => {
+        cancelAnimationFrame(animId);
+        window.removeEventListener('resize', resizeCanvas);
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.remove();
+          if (window.spaNavigate) window.spaNavigate('home');
+          else window.location.hash = '#home';
+        }, 600);
+      };
     }
 
     // 結束今天按鈕
     document.getElementById('spEndDayBtn').onclick = async () => {
       const btn = document.getElementById('spEndDayBtn');
       btn.disabled = true;
-      // 後台生成日記，不等待
-      fetch('/space/end_day', { method: 'POST' }).catch(() => {});
-      // 直接進入陪睡畫面
+      btn.innerHTML = '寫日記中…';
+      try {
+        const res = await fetch('/space/end_day', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.warn('end_day error:', data.error || res.status);
+        }
+      } catch(e) {
+        console.warn('end_day failed:', e);
+      }
+      // 進入陪睡畫面
       showSleepScreen();
       btn.innerHTML = '✦ 晚安';
     };
