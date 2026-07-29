@@ -2520,33 +2520,75 @@ def get_intimate_memories_for_prompt(user_message):
 
 @app.route("/intimate_memories/draft_summary", methods=["POST"])
 def intimate_draft_summary():
-    """讀取 intimate_drafts 整理成摘要，回傳給前端顯示確認視窗"""
+    """讀取 intimate_drafts 整理成摘要，回傳給前端顯示確認視窗。
+    可選參數 from_id/to_id 指定範圍；內容太長時自動分段濃縮再合併。"""
     try:
-        drafts = supabase.table("intimate_drafts").select("content").order("id").execute().data
+        data = request.json or {}
+        from_id = data.get("from_id")
+        to_id = data.get("to_id")
+
+        q = supabase.table("intimate_drafts").select("id, content")
+        if from_id is not None:
+            q = q.gte("id", from_id)
+        if to_id is not None:
+            q = q.lte("id", to_id)
+        drafts = q.order("id").execute().data
         if not drafts:
             return jsonify({"has_draft": False})
+
         personas = get_personas()
         name = personas.get("claude", {}).get("name") or "晏"
         you_name = personas.get("user", {}).get("name") or "然然"
-        combined = "\n\n---\n\n".join([d["content"] for d in drafts])
+
+        pieces = [d["content"] for d in drafts]
+        combined = "\n\n---\n\n".join(pieces)
+
+        # 太長就分段先濃縮（map），再合併統整（reduce）
+        CHUNK_LIMIT = 6000
+        if len(combined) > 8000:
+            chunks = []
+            cur = ""
+            for p in pieces:
+                if len(cur) + len(p) > CHUNK_LIMIT and cur:
+                    chunks.append(cur)
+                    cur = p
+                else:
+                    cur = (cur + "\n\n---\n\n" + p) if cur else p
+            if cur:
+                chunks.append(cur)
+
+            condensed = []
+            condense_prompt = (
+                f"以下是{name}與{you_name}親密互動記錄的其中一段。"
+                f"請用第三人稱濃縮成過程紀要：保留重要的動作、說過的話、身體與情緒的關鍵細節，"
+                f"刪去重複與冗詞。300 字以內。用繁體中文。"
+            )
+            for c in chunks:
+                part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=100)
+                condensed.append(part.strip())
+            combined = "\n\n---\n\n".join(condensed)
+
         summary_prompt = (
-            f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段）。"
+            f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段、或已初步濃縮）。"
             f"請整理成兩段：\n\n"
             f"【過程】\n用第三人稱描述兩個人之間發生了什麼，保留完整的細節、動作、說過的話、身體感受，文字細膩真實。\n\n"
             f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
             f"兩段合計不超過 800 字。"
         )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=1200)
-        return jsonify({"has_draft": True, "content": summary.strip()})
+        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=1200, timeout=100)
+        return jsonify({"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/intimate_memories/confirm", methods=["POST"])
 def intimate_confirm():
-    """用戶確認（可附上編修後的內容）存入資料庫，清掉草稿"""
+    """用戶確認（可附上編修後的內容）存入資料庫，清掉草稿。
+    可選 from_id/to_id 只清該範圍。"""
     data = request.json
     content = (data.get("content") or "").strip()
     keywords = (data.get("keywords") or "").strip()
+    from_id = data.get("from_id")
+    to_id = data.get("to_id")
     if not content:
         return jsonify({"error": "no content"}), 400
     try:
@@ -2554,8 +2596,15 @@ def intimate_confirm():
             "content": content,
             "keywords": keywords if keywords else None
         }).execute()
-        # 清掉所有草稿
-        supabase.table("intimate_drafts").delete().neq("id", 0).execute()
+        # 清草稿：有指定範圍就只清範圍，否則全清
+        dq = supabase.table("intimate_drafts").delete()
+        if from_id is not None:
+            dq = dq.gte("id", from_id)
+        if to_id is not None:
+            dq = dq.lte("id", to_id)
+        if from_id is None and to_id is None:
+            dq = dq.neq("id", 0)
+        dq.execute()
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
