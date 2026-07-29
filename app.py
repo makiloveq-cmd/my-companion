@@ -4107,6 +4107,61 @@ def cron_daily_message():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/cron/auto_end_day", methods=["POST"])
+def cron_auto_end_day():
+    """跨日自動寫日記：凌晨 5 點後 + 閒置超過 1 小時，兩條件都滿足才執行。
+    cron-job.org 設每小時整點打一次即可。"""
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        now_tw = datetime.now(tw_tz)
+
+        # 條件一：台灣時間凌晨 5 點後
+        if now_tw.hour < 5:
+            return jsonify({"status": "skip", "reason": "not_after_5am", "tw_hour": now_tw.hour})
+
+        # 條件二：今天（台灣日期）是否已經自動或手動結束過
+        today_str = now_tw.strftime("%Y-%m-%d")
+        space = get_space_settings()
+        last_ended = space.get("last_ended")
+        if last_ended:
+            ended_dt = datetime.fromisoformat(last_ended.replace("Z", "+00:00"))
+            ended_tw = ended_dt.astimezone(tw_tz)
+            if ended_tw.strftime("%Y-%m-%d") == today_str:
+                return jsonify({"status": "skip", "reason": "already_ended_today"})
+
+        # 條件三：閒置超過 1 小時（私聊 + 空間都算）
+        idle_hours = 999.0
+        # 查私聊最後一筆
+        last_chat = supabase.table("memories").select("created_at").eq("session_id", "claude").order("id", desc=True).limit(1).execute().data
+        if last_chat:
+            idle_hours = min(idle_hours, hours_since_utc(last_chat[0]["created_at"]))
+        # 查空間最後一筆
+        last_space = supabase.table("space_messages").select("created_at").neq("message_type", "background").order("id", desc=True).limit(1).execute().data
+        if last_space:
+            idle_hours = min(idle_hours, hours_since_utc(last_space[0]["created_at"]))
+
+        if idle_hours < 1.0:
+            return jsonify({"status": "skip", "reason": "not_idle_enough", "idle_hours": round(idle_hours, 2)})
+
+        # 兩條件都滿足：記錄結束時間 + 寫日記
+        now_utc = datetime.now(timezone.utc).isoformat()
+        supabase.table("space_settings").upsert({
+            "key": "last_ended",
+            "value": now_utc,
+            "updated_at": now_utc
+        }, on_conflict="key").execute()
+        invalidate_cache("space_settings")
+
+        threading.Thread(target=write_ai_diary_entry, daemon=True).start()
+
+        return jsonify({
+            "status": "ok",
+            "tw_time": now_tw.strftime("%Y-%m-%d %H:%M"),
+            "idle_hours": round(idle_hours, 2)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/cron/visitor_chat", methods=["POST"])
 def cron_visitor_chat():
     """定時推進 solo_partner 訪客對話，每次呼叫跑一輪"""
