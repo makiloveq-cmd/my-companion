@@ -18,12 +18,14 @@
 
   .sp-entry-user {
     align-self: flex-end; max-width: 75%;
+  }
+  .sp-user-bubble {
     background: var(--bubble-user); color: #fff;
     padding: 12px 16px;
     border-radius: 16px 16px 4px 16px;
     font-size: 15px; line-height: 1.7; white-space: pre-wrap;
   }
-  .sp-entry-user .sp-entry-time { font-size: 11px; opacity: 0.7; margin-top: 4px; text-align: right; }
+  .sp-entry-user .sp-entry-time { font-size: 11px; opacity: 0.7; align-self: flex-end; white-space: nowrap; }
 
   .sp-entry-ai {
     align-self: flex-start; max-width: 88%;
@@ -232,7 +234,7 @@
   .sp-check-circle.checked::after { content: '✓'; font-size: 13px; color: #fff; }
 
   .sp-entry-ai, .sp-entry-user {
-    display: flex; align-items: flex-start; gap: 6px;
+    display: flex; align-items: flex-end; gap: 6px;
   }
   .sp-entry-user { flex-direction: row-reverse; }
 
@@ -639,8 +641,8 @@
         const imgWrap = document.createElement('div');
         imgWrap.className = 'sp-entry-user';
         imgWrap.innerHTML = `
-          <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
           <div class="sp-entry-time">${formatTime(createdAt)}</div>
+          <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
         `;
         imgWrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
         addLongPress(imgWrap, { speaker: 'user', content: content || '' }, true);
@@ -650,8 +652,8 @@
           const textWrap = document.createElement('div');
           textWrap.className = 'sp-entry-user';
           textWrap.innerHTML = `
-            <div>${escHtml(content)}</div>
             <div class="sp-entry-time">${formatTime(createdAt)}</div>
+            <div class="sp-user-bubble">${escHtml(content)}</div>
           `;
           addLongPress(textWrap, { speaker: 'user', content: content }, true);
           document.getElementById('spMessages').appendChild(textWrap);
@@ -663,9 +665,8 @@
       // 沒圖片：正常渲染
       const wrap = document.createElement('div');
       wrap.className = 'sp-entry-user';
-      let inner = '';
-      if (content) inner += `<div>${escHtml(content)}</div>`;
-      inner += `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      let inner = `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      if (content) inner += `<div class="sp-user-bubble">${escHtml(content)}</div>`;
       wrap.innerHTML = inner;
       addLongPress(wrap, { speaker: 'user', content: content || '' }, true);
       document.getElementById('spMessages').appendChild(wrap);
