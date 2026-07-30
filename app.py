@@ -133,28 +133,17 @@ def record_usage(api, input_tokens, output_tokens):
 # ===== AI 呼叫 =====
 
 def call_claude(system_prompt, messages, max_tokens=400, timeout=60):
-    last_exc = None
-    for attempt in range(2):
-        try:
-            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=messages,
-                timeout=timeout
-            )
-            reply = response.content[0].text
-            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-            return reply
-        except Exception as e:
-            last_exc = e
-            err_str = str(e)
-            if attempt == 0 and any(k in err_str for k in ("ConnectionTerminated", "ReadError", "RemoteProtocolError")):
-                # HTTP/2 連線被回收，建新 client 重試一次
-                continue
-            raise
-    raise last_exc
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=messages,
+        timeout=timeout
+    )
+    reply = response.content[0].text
+    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+    return reply
 
 # ===== System Prompt =====
 
@@ -3492,6 +3481,23 @@ def visitor_end():
                 pass
 
         return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/status/<session_id>", methods=["GET"])
+def visitor_status(session_id):
+    """前端 polling 用：查詢 solo_partner session 目前狀態"""
+    try:
+        row = supabase.table("visitor_sessions").select("id, status, summary, visitor_name, mode, belong_to").eq("id", session_id).single().execute().data
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        return jsonify({
+            "status": row["status"],
+            "summary": row.get("summary") or "",
+            "visitor_name": row.get("visitor_name") or "",
+            "mode": row.get("mode") or "",
+            "belong_to": row.get("belong_to") or ""
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
