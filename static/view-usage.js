@@ -242,14 +242,6 @@
       return parseFloat(document.getElementById('ugRateInput').value) || 31.5;
     }
 
-    function showToast(msg) {
-      const t = document.getElementById('ugToast');
-      if (!t) return;
-      t.textContent = msg;
-      t.classList.add('show');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
-    }
 
     function fmtMoney(usdVal) {
       if (currency === 'twd') return 'NT$' + (usdVal * getRate()).toFixed(0);

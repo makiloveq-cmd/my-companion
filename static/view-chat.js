@@ -311,27 +311,6 @@
     let pendingImageUrl = null;
     let holdTimer = null;
 
-    function formatTime(isoStr) {
-      if (!isoStr) return '';
-      let s = isoStr;
-      // Supabase 存的是 UTC；若字串沒帶時區資訊，補上 Z 再解析，避免被當成本地時間
-      if (typeof s === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
-      const d = new Date(s);
-      const now = new Date();
-      const isToday = d.getFullYear() === now.getFullYear()
-                   && d.getMonth() === now.getMonth()
-                   && d.getDate() === now.getDate();
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      if (isToday) return `${hh}:${mm}`;
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const isYesterday = d.getFullYear() === yesterday.getFullYear()
-                       && d.getMonth() === yesterday.getMonth()
-                       && d.getDate() === yesterday.getDate();
-      if (isYesterday) return `昨天 ${hh}:${mm}`;
-      return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`;
-    }
 
     function makeAvatar(role) {
       const target = role === 'user' ? 'user' : 'claude';

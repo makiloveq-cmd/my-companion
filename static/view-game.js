@@ -187,13 +187,7 @@
   function escHtml(str) {
     return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
-  function formatTime(iso) {
-    if (!iso) return '';
-    let s = iso;
-    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
-    const d = new Date(s);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  }
+
   function formatDate(iso) {
     if (!iso) return '';
     let s = iso;
@@ -834,49 +828,12 @@
       const nameEl = document.createElement('div');
       nameEl.className = 'gm-speaker-name'; nameEl.textContent = botName;
       contentWrap.appendChild(nameEl);
-      // 分段邏輯：按換行切、ellipsis 合併、每泡最多 5 行、最多 3 泡（與私聊一致）
-      let lines = text.split('\n').map(l => l.trim());
-      let mergedLines = [];
-      for (let i = 0; i < lines.length; i++) {
-        const isEllipsisOnly = /^[\u2026\.]{2,}$/.test(lines[i]);
-        if (isEllipsisOnly && i + 1 < lines.length) {
-          mergedLines.push(lines[i] + lines[i + 1]);
-          i++;
-        } else if (lines[i] !== '') {
-          mergedLines.push(lines[i]);
-        }
-      }
-      let paragraphs = [];
-      let current = [];
-      for (let i = 0; i < mergedLines.length; i++) {
-        current.push(mergedLines[i]);
-        if (current.length === 5 && paragraphs.length < 2) {
-          paragraphs.push(current.join('\n'));
-          current = [];
-        }
-      }
-      if (current.length > 0) {
-        if (paragraphs.length < 2) {
-          paragraphs.push(current.join('\n'));
-        } else {
-          paragraphs[2] = (paragraphs[2] ? paragraphs[2] + '\n' : '') + current.join('\n');
-        }
-      }
-      if (paragraphs.length === 0) paragraphs = [text.trim()];
-      if (paragraphs.length <= 1) {
+      const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(p => p);
+      paragraphs.forEach(para => {
         const bubble = document.createElement('div');
-        bubble.className = 'gm-bubble'; bubble.textContent = text.trim();
+        bubble.className = 'gm-bubble'; bubble.textContent = para;
         contentWrap.appendChild(bubble);
-      } else {
-        paragraphs.forEach((para, idx) => {
-          const bubble = document.createElement('div');
-          bubble.className = 'gm-bubble'; bubble.textContent = para;
-          bubble.style.opacity = '0';
-          bubble.style.transition = 'opacity 0.2s ease';
-          contentWrap.appendChild(bubble);
-          setTimeout(() => { bubble.style.opacity = '1'; }, idx * 600);
-        });
-      }
+      });
       const timeEl = document.createElement('div');
       timeEl.className = 'gm-time'; timeEl.textContent = formatTime(new Date().toISOString());
       contentWrap.appendChild(timeEl);

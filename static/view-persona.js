@@ -406,14 +406,6 @@
     let selectedTags = [];
     let toastTimer;
 
-    function showToast(msg) {
-      const t = document.getElementById('pnToast');
-      if (!t) return;
-      t.textContent = msg;
-      t.classList.add('show');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
-    }
 
     function buildTags() {
       const g = document.getElementById('pnTagGroup');

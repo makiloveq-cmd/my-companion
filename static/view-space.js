@@ -482,26 +482,6 @@
       }
     });
 
-    function formatTime(isoStr) {
-      if (!isoStr) return '';
-      let s = isoStr;
-      if (typeof s === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
-      const d = new Date(s);
-      const now = new Date();
-      const isToday = d.getFullYear() === now.getFullYear()
-                   && d.getMonth() === now.getMonth()
-                   && d.getDate() === now.getDate();
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      if (isToday) return `${hh}:${mm}`;
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const isYesterday = d.getFullYear() === yesterday.getFullYear()
-                       && d.getMonth() === yesterday.getMonth()
-                       && d.getDate() === yesterday.getDate();
-      if (isYesterday) return `昨天 ${hh}:${mm}`;
-      return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`;
-    }
 
     async function loadPersonas() {
       try {
@@ -642,7 +622,7 @@
         imgWrap.className = 'sp-entry-user';
         imgWrap.innerHTML = `
           <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
-          <div class="sp-entry-time">${formatTime(createdAt)}</div>
+          <div class="sp-entry-time">${window.formatTime(createdAt)}</div>
         `;
         imgWrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
         addLongPress(imgWrap, { speaker: 'user', content: content || '' }, true);
@@ -653,7 +633,7 @@
           textWrap.className = 'sp-entry-user';
           textWrap.innerHTML = `
             <div class="sp-user-bubble">${escHtml(content)}</div>
-            <div class="sp-entry-time">${formatTime(createdAt)}</div>
+            <div class="sp-entry-time">${window.formatTime(createdAt)}</div>
           `;
           addLongPress(textWrap, { speaker: 'user', content: content }, true);
           document.getElementById('spMessages').appendChild(textWrap);
@@ -667,7 +647,7 @@
       wrap.className = 'sp-entry-user';
       let inner = '';
       if (content) inner += `<div class="sp-user-bubble">${escHtml(content)}</div>`;
-      inner += `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      inner += `<div class="sp-entry-time">${window.formatTime(createdAt)}</div>`;
       wrap.innerHTML = inner;
       addLongPress(wrap, { speaker: 'user', content: content || '' }, true);
       document.getElementById('spMessages').appendChild(wrap);
@@ -1332,22 +1312,15 @@
             stopSoloPolling();
             const bar = document.getElementById('spVisitorBar');
             if (bar) bar.remove();
-            if (data.summary) {
-              showVisitorSummary(data.summary, data.visitor_name, data.mode, sessionId, visitorInfo);
-            }
-            visitorSessionId = null;
-            visitorMode = null;
-            visitorInfo = null;
+            if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, sessionId, visitorInfo);
+            visitorSessionId = null; visitorMode = null; visitorInfo = null;
           }
         } catch(e) {}
-      }, 20000); // 每 20 秒查一次
+      }, 20000);
     }
 
     function stopSoloPolling() {
-      if (soloPollingTimer) {
-        clearInterval(soloPollingTimer);
-        soloPollingTimer = null;
-      }
+      if (soloPollingTimer) { clearInterval(soloPollingTimer); soloPollingTimer = null; }
     }
 
     function showVisitorNotice(visitor) {
@@ -1359,7 +1332,6 @@
         visitorMode = visitor.mode || null;
         visitorInfo = visitor;
         showVisitorBar(visitor.visitor_name);
-        // solo_partner 模式恢復 polling
         if (visitorMode === 'solo_partner') startSoloPolling(visitor.id);
         return;
       }
