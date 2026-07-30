@@ -109,11 +109,15 @@
           </div>
         </div>
 
-        <div class="gst-section-title">訪客記錄</div>
-        <div class="gst-section-title" style="font-size:10px;margin-top:8px;color:var(--text-3);">晏的訪客</div>
-        <div id="gstListPartner"></div>
-        <div class="gst-section-title" style="font-size:10px;margin-top:12px;color:var(--text-3);">我的訪客</div>
-        <div id="gstList"></div>
+        <div class="gst-section-title" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;" id="gstRecordToggle">
+          <span>訪客記錄</span><span id="gstRecordChevron" style="font-size:10px;transition:transform 0.2s;">▼</span>
+        </div>
+        <div id="gstRecordBody" style="display:none;">
+          <div class="gst-section-title" style="font-size:10px;margin-top:8px;color:var(--text-3);">晏的訪客</div>
+          <div id="gstListPartner"></div>
+          <div class="gst-section-title" style="font-size:10px;margin-top:12px;color:var(--text-3);">我的訪客</div>
+          <div id="gstList"></div>
+        </div>
       </div>
     `;
 
@@ -294,6 +298,19 @@
     }
 
     await Promise.all([loadSessions(), loadLiveSessions()]);
+
+    // 訪客記錄收合
+    const recordToggle = document.getElementById('gstRecordToggle');
+    const recordBody = document.getElementById('gstRecordBody');
+    const recordChevron = document.getElementById('gstRecordChevron');
+    if (recordToggle) {
+      recordToggle.onclick = () => {
+        const isOpen = recordBody.style.display !== 'none';
+        recordBody.style.display = isOpen ? 'none' : 'block';
+        recordChevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      };
+    }
+
     return function cleanup() {};
   }
 
