@@ -639,8 +639,8 @@
         const imgWrap = document.createElement('div');
         imgWrap.className = 'sp-entry-user';
         imgWrap.innerHTML = `
-          <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
           <div class="sp-entry-time">${formatTime(createdAt)}</div>
+          <img class="sp-img-in-bubble" src="${imageUrl}" alt="">
         `;
         imgWrap.querySelector('.sp-img-in-bubble').onclick = () => openSpaceLightbox(imageUrl);
         addLongPress(imgWrap, { speaker: 'user', content: content || '' }, true);
@@ -650,8 +650,8 @@
           const textWrap = document.createElement('div');
           textWrap.className = 'sp-entry-user';
           textWrap.innerHTML = `
-            <div>${escHtml(content)}</div>
             <div class="sp-entry-time">${formatTime(createdAt)}</div>
+            <div class="sp-user-bubble">${escHtml(content)}</div>
           `;
           addLongPress(textWrap, { speaker: 'user', content: content }, true);
           document.getElementById('spMessages').appendChild(textWrap);
@@ -663,9 +663,8 @@
       // 沒圖片：正常渲染
       const wrap = document.createElement('div');
       wrap.className = 'sp-entry-user';
-      let inner = '';
-      if (content) inner += `<div>${escHtml(content)}</div>`;
-      inner += `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      let inner = `<div class="sp-entry-time">${formatTime(createdAt)}</div>`;
+      if (content) inner += `<div class="sp-user-bubble">${escHtml(content)}</div>`;
       wrap.innerHTML = inner;
       addLongPress(wrap, { speaker: 'user', content: content || '' }, true);
       document.getElementById('spMessages').appendChild(wrap);
