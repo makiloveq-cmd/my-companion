@@ -1312,7 +1312,9 @@
             stopSoloPolling();
             const bar = document.getElementById('spVisitorBar');
             if (bar) bar.remove();
-            if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, sessionId, visitorInfo);
+            if (data.summary) {
+              showVisitorSummary(data.summary, data.visitor_name, data.mode, sessionId, visitorInfo, data.knows_you, data.friend_id);
+            }
             visitorSessionId = null; visitorMode = null; visitorInfo = null;
           }
         } catch(e) {}
@@ -1372,6 +1374,7 @@
                 body: JSON.stringify({ session_id: visitor.id })
               });
               showVisitorBar(visitor.visitor_name);
+              // 改成 polling 偵測結束
               startSoloPolling(visitor.id);
             } catch(e) {}
           }
@@ -1507,22 +1510,33 @@
           body: JSON.stringify({ session_id: endedSessionId })
         });
         const data = await res.json();
-        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, endedSessionId, endedInfo);
+        if (data.summary) showVisitorSummary(data.summary, data.visitor_name, data.mode, endedSessionId, endedInfo, data.knows_you, data.friend_id);
       } catch(e) {}
     }
 
-    function showVisitorSummary(summary, visitorName, mode, sessionId, info) {
+    function showVisitorSummary(summary, visitorName, mode, sessionId, info, knowsYou, friendId) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
       const isStranger = info && info.is_stranger;
+      const knowsYouOptions = ['認識我', '知道我存在', '不知道我', '聽說過我'];
+      const currentKnows = knowsYou || '不知道我';
+      const knowsYouSelect = knowsYouOptions.map(opt =>
+        `<option value="${opt}" ${opt === currentKnows ? 'selected' : ''}>${opt}</option>`
+      ).join('');
+
       modal.innerHTML = `
-        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:75vh;overflow-y:auto;">
+        <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:80vh;overflow-y:auto;">
           <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
           <div style="color:#7a9ab8;font-size:13px;margin-bottom:12px;">${visitorName} 離開了</div>
           <div style="color:#4a6a88;font-size:12px;margin-bottom:6px;">晏說的（可以編修）</div>
           <textarea id="visitorSummaryArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:12px;color:#c8d8f0;font-size:13px;line-height:1.7;outline:none;box-sizing:border-box;min-height:140px;resize:vertical;font-family:inherit;"></textarea>
           <div style="color:#4a6a88;font-size:12px;margin:10px 0 6px;">加上你的心得（選填）</div>
           <textarea id="visitorNoteArea" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;min-height:60px;resize:none;font-family:inherit;" placeholder="今天的感覺…"></textarea>
+          ${friendId ? `
+          <div style="color:#4a6a88;font-size:12px;margin:10px 0 6px;">${visitorName} 對你的了解程度</div>
+          <select id="visitorKnowsYou" style="width:100%;background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:10px;color:#c8d8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            ${knowsYouSelect}
+          </select>` : ''}
           <div style="display:flex;gap:8px;margin-top:12px;">
             ${isStranger ? `<button id="visitorSaveStranger" style="flex:1;padding:10px;background:#1a2b1a;border:0.5px solid #3a6a3a;border-radius:10px;color:#7aaa7a;font-size:13px;cursor:pointer;">存進朋友庫</button>` : ''}
             <button id="visitorSummaryOk" style="flex:2;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 存進記憶</button>
@@ -1561,6 +1575,14 @@
         okBtn.disabled = true;
         okBtn.textContent = '保存中…';
         try {
+          // 更新 knows_you
+          const knowsEl = modal.querySelector('#visitorKnowsYou');
+          if (friendId && knowsEl) {
+            await fetch('/visitor/update_knows_you', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ friend_id: friendId, knows_you: knowsEl.value })
+            });
+          }
           const r = await fetch('/visitor/confirm_memory', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ session_id: sessionId, content, note })

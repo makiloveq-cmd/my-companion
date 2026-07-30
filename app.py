@@ -348,7 +348,8 @@ def maybe_summarize(bot):
             "content": summary_text,
             "keywords": keywords
         }).execute()
-        supabase.table("memories").delete().in_("id", ids_to_delete).execute()
+        for rid in ids_to_delete:
+            supabase.table("memories").delete().eq("id", rid).execute()
     except Exception as e:
         print(f"[maybe_summarize error] {e}")
 
@@ -405,7 +406,8 @@ def maybe_space_summarize():
             "content": summary_text,
             "keywords": keywords
         }).execute()
-        supabase.table("space_messages").delete().in_("id", ids_to_delete).execute()
+        for rid in ids_to_delete:
+            supabase.table("space_messages").delete().eq("id", rid).execute()
 
         # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
         try:
@@ -2983,7 +2985,7 @@ def friend_update(friend_id):
     try:
         data = request.json
         update_data = {}
-        for field in ["name", "belong_to", "relation_type", "personality", "birthday", "partner_note", "mode_weights"]:
+        for field in ["name", "belong_to", "relation_type", "personality", "birthday", "partner_note", "mode_weights", "knows_you"]:
             if field in data:
                 update_data[field] = data[field]
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -3478,7 +3480,14 @@ def visitor_end():
             except:
                 pass
 
-        return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name})
+        knows_you = "不知道我"
+        friend_id = row.get("visitor_friend_id")
+        if friend_id:
+            try:
+                fr = supabase.table("friends").select("knows_you").eq("id", friend_id).single().execute().data
+                if fr: knows_you = fr.get("knows_you") or "不知道我"
+            except: pass
+        return jsonify({"summary": summary, "mode": mode, "visitor_name": visitor_name, "knows_you": knows_you, "friend_id": friend_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3486,16 +3495,39 @@ def visitor_end():
 def visitor_status(session_id):
     """前端 polling 用：查詢 solo_partner session 目前狀態"""
     try:
-        row = supabase.table("visitor_sessions").select("id, status, summary, visitor_name, mode, belong_to").eq("id", session_id).single().execute().data
+        row = supabase.table("visitor_sessions").select("id, status, summary, visitor_name, mode, belong_to, visitor_friend_id").eq("id", session_id).single().execute().data
         if not row:
             return jsonify({"error": "not found"}), 404
+        knows_you = "不知道我"
+        friend_id = row.get("visitor_friend_id")
+        if friend_id:
+            try:
+                fr = supabase.table("friends").select("knows_you").eq("id", friend_id).single().execute().data
+                if fr: knows_you = fr.get("knows_you") or "不知道我"
+            except: pass
         return jsonify({
             "status": row["status"],
             "summary": row.get("summary") or "",
             "visitor_name": row.get("visitor_name") or "",
             "mode": row.get("mode") or "",
-            "belong_to": row.get("belong_to") or ""
+            "belong_to": row.get("belong_to") or "",
+            "knows_you": knows_you,
+            "friend_id": friend_id
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/visitor/update_knows_you", methods=["POST"])
+def visitor_update_knows_you():
+    """更新朋友的 knows_you 欄位"""
+    try:
+        data = request.json
+        friend_id = data.get("friend_id")
+        knows_you = data.get("knows_you")
+        if not friend_id or not knows_you:
+            return jsonify({"error": "missing params"}), 400
+        supabase.table("friends").update({"knows_you": knows_you}).eq("id", friend_id).execute()
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4041,8 +4073,6 @@ def send_push_notification(title, body):
 
 @app.route("/cron/daily_message", methods=["POST"])
 def cron_daily_message():
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
@@ -4128,8 +4158,6 @@ def cron_daily_message():
 def cron_auto_end_day():
     """跨日自動寫日記：凌晨 5 點後 + 閒置超過 1 小時，兩條件都滿足才執行。
     cron-job.org 設每小時整點打一次即可。"""
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
@@ -4184,8 +4212,6 @@ def cron_auto_end_day():
 @app.route("/cron/visitor_chat", methods=["POST"])
 def cron_visitor_chat():
     """定時推進 solo_partner 訪客對話，每次呼叫跑一輪"""
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         # 找所有 active 的 solo_partner session
         rows = supabase.table("visitor_sessions").select("*").eq("status", "active").eq("mode", "solo_partner").execute().data
@@ -4211,10 +4237,45 @@ def cron_visitor_chat():
                     fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
                     if fr: friend_data = fr
                 except: pass
+            elif row.get("belong_to") == "partner":
+                # 晏的朋友但沒有 friend_id，嘗試用名字找
+                try:
+                    fr = supabase.table("friends").select("*").eq("name", visitor_name).eq("belong_to", "partner").execute().data
+                    if fr:
+                        friend_data = fr[0]
+                        # 補上 visitor_friend_id
+                        supabase.table("visitor_sessions").update({"visitor_friend_id": fr[0]["id"]}).eq("id", session_id).execute()
+                    else:
+                        # 自動建一筆空的朋友記錄
+                        new_friend = supabase.table("friends").insert({
+                            "name": visitor_name,
+                            "belong_to": "partner",
+                            "relation_type": "朋友",
+                            "personality": "",
+                            "partner_note": "",
+                            "knows_you": "不知道我"
+                        }).execute().data
+                        if new_friend:
+                            friend_data = new_friend[0]
+                            supabase.table("visitor_sessions").update({"visitor_friend_id": new_friend[0]["id"]}).eq("id", session_id).execute()
+                except: pass
 
             personality = friend_data.get("personality", "")
             relation_type = friend_data.get("relation_type", "")
             partner_note = friend_data.get("partner_note", "")
+            knows_you = friend_data.get("knows_you", "不知道我")
+
+            me = personas.get("user", {})
+            you_job = me.get("job") or ""
+
+            # knows_you 決定訪客對然然的了解程度
+            knows_you_map = {
+                "認識我": f"你曾跟{visitor_name}提過{you_name}，{visitor_name}知道{you_name}的存在、名字{f'和職業（{you_job}）' if you_job else ''}等基本事情。",
+                "知道我存在": f"你曾跟{visitor_name}提過自己有女友，但沒說細節，{visitor_name}不知道{you_name}叫什麼、做什麼。",
+                "不知道我": f"你從未跟{visitor_name}提過{you_name}，{visitor_name}完全不知道你有女友。",
+                "聽說過我": f"{visitor_name}從其他人那裡隱約聽說你有女友，但不確定細節，可能會帶著好奇問起。",
+            }
+            you_context = knows_you_map.get(knows_you, knows_you_map["不知道我"])
 
             # 8 輪後 30% 機率結束，10 輪必定結束
             should_end = False
@@ -4228,6 +4289,8 @@ def cron_visitor_chat():
                 f"{f'關係：{relation_type}。' if relation_type else ''}"
                 f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
                 f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
+                f"{you_context}"
+                f"不要捏造你和{visitor_name}之間的共同回憶或經歷，只根據已知資料聊天。"
                 f"{'現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。'}"
                 f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過六段。用繁體中文。"
             )
@@ -4272,7 +4335,7 @@ def cron_visitor_chat():
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }).eq("id", session_id).execute()
 
-                results.append({"session_id": session_id, "visitor": visitor_name, "status": "completed"})
+                results.append({"session_id": session_id, "visitor": visitor_name, "status": "completed", "knows_you": knows_you, "friend_id": friend_data.get("id")})
             else:
                 supabase.table("visitor_sessions").update({
                     "messages": messages,

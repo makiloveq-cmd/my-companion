@@ -110,97 +110,122 @@
         </div>
 
         <div class="gst-section-title">訪客記錄</div>
+        <div class="gst-section-title" style="font-size:10px;margin-top:8px;color:var(--text-3);">晏的訪客</div>
+        <div id="gstListPartner"></div>
+        <div class="gst-section-title" style="font-size:10px;margin-top:12px;color:var(--text-3);">我的訪客</div>
         <div id="gstList"></div>
       </div>
     `;
 
+    function buildSessionCard(s, list, isVisitor = false) {
+      const card = document.createElement('div');
+      card.className = 'gst-card';
+      const statusLabel = s.status === 'active' ? '進行中' : '已結束';
+      const hasPw = s.has_password ? ' 🔒' : '';
+      const statusClass = s.status === 'active' ? 'active' : 'ended';
+      const dateStr = formatDate(s.created_at);
+      const name = isVisitor ? (s.visitor_name || '訪客') : (s.guest_name || '訪客');
+      const msgCount = isVisitor
+        ? (s.messages ? (Array.isArray(s.messages) ? s.messages.filter(m => m.role === 'assistant').length : 0) : 0)
+        : (s.message_count || 0);
+      const modeLabel = isVisitor ? (s.mode === 'together' ? '三人' : '單獨聊') : '';
+
+      let bodyContent = '';
+      if (!isVisitor && s.status === 'active') {
+        const url = `${location.origin}/visit/${s.token}`;
+        bodyContent += `<div class="gst-link-box"><div class="gst-link-url">${url}</div><button class="gst-copy-btn" data-url="${url}">複製</button></div>`;
+      }
+      if (s.summary) bodyContent += `<div class="gst-summary">${s.summary}</div>`;
+      bodyContent += `<div class="gst-card-btns">`;
+      if (!isVisitor && s.status === 'active') bodyContent += `<button class="gst-btn danger" data-end="${s.id}" data-token="${s.token}">結束會話</button>`;
+      bodyContent += `<button class="gst-btn danger" data-del="${s.id}" data-visitor="${isVisitor}">刪除</button></div>`;
+
+      card.innerHTML = `
+        <div class="gst-card-row">
+          <div class="gst-card-left">
+            <div class="gst-card-name">${name}${hasPw}</div>
+            <div class="gst-card-meta">${dateStr}${modeLabel ? '・' + modeLabel : ''}・${msgCount} 則訊息</div>
+          </div>
+          <div class="gst-card-right">
+            <span class="gst-badge ${statusClass}">${statusLabel}</span>
+            <span class="gst-chevron">▼</span>
+          </div>
+        </div>
+        <div class="gst-card-body">${bodyContent}</div>
+      `;
+
+      // 折疊切換（預設關閉）
+      const row = card.querySelector('.gst-card-row');
+      const body = card.querySelector('.gst-card-body');
+      const chevron = card.querySelector('.gst-chevron');
+      row.onclick = () => {
+        const isOpen = body.classList.toggle('open');
+        chevron.classList.toggle('open', isOpen);
+      };
+
+      card.querySelectorAll('.gst-copy-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(btn.dataset.url).catch(() => {});
+          btn.textContent = '已複製';
+          setTimeout(() => btn.textContent = '複製', 1500);
+        };
+      });
+
+      const endBtn = card.querySelector('[data-end]');
+      if (endBtn) {
+        endBtn.onclick = async (e) => {
+          e.stopPropagation();
+          endBtn.disabled = true; endBtn.textContent = '結束中…';
+          try {
+            await fetch(`/guest/${endBtn.dataset.token}/end`, { method: 'POST' });
+            loadSessions();
+          } catch (e) { endBtn.disabled = false; endBtn.textContent = '結束會話'; }
+        };
+      }
+
+      const delBtn = card.querySelector('[data-del]');
+      if (delBtn) {
+        delBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (!confirm('確定要刪除這筆記錄？')) return;
+          const isVis = delBtn.dataset.visitor === 'true';
+          if (isVis) {
+            await fetch(`/visitor/sessions/${delBtn.dataset.del}`, { method: 'DELETE' });
+          } else {
+            await fetch(`/guest/sessions/${delBtn.dataset.del}`, { method: 'DELETE' });
+          }
+          loadSessions();
+        };
+      }
+
+      list.appendChild(card);
+    }
+
     async function loadSessions() {
       const list = document.getElementById('gstList');
+      const listPartner = document.getElementById('gstListPartner');
       try {
-        const res = await fetch('/guest/sessions');
-        const data = await res.json();
+        // 你的訪客（guest_sessions）
+        const res1 = await fetch('/guest/sessions');
+        const data1 = await res1.json();
         list.innerHTML = '';
-        if (!data.sessions || data.sessions.length === 0) {
+        if (!data1.sessions || data1.sessions.length === 0) {
           list.innerHTML = '<div class="gst-empty">還沒有訪客記錄</div>';
-          return;
+        } else {
+          data1.sessions.forEach(s => buildSessionCard(s, list, false));
         }
-        data.sessions.forEach(s => {
-          const card = document.createElement('div');
-          card.className = 'gst-card';
-          const statusLabel = s.status === 'active' ? '進行中' : '已結束';
-          const hasPw = s.has_password ? ' 🔒' : '';
-          const statusClass = s.status === 'active' ? 'active' : 'ended';
-          const url = `${location.origin}/visit/${s.token}`;
-          const dateStr = formatDate(s.created_at);
 
-          card.innerHTML = `
-            <div class="gst-card-row">
-              <div class="gst-card-left">
-                <div class="gst-card-name">${s.guest_name || '訪客'}${hasPw}</div>
-                <div class="gst-card-meta">${dateStr}・${s.message_count || 0} 則訊息</div>
-              </div>
-              <div class="gst-card-right">
-                <span class="gst-badge ${statusClass}">${statusLabel}</span>
-                <span class="gst-chevron">▼</span>
-              </div>
-            </div>
-            <div class="gst-card-body">
-              ${s.status === 'active' ? `
-              <div class="gst-link-box">
-                <div class="gst-link-url">${url}</div>
-                <button class="gst-copy-btn" data-url="${url}">複製</button>
-              </div>` : ''}
-              ${s.summary ? `<div class="gst-summary">${s.summary}</div>` : ''}
-              <div class="gst-card-btns">
-                ${s.status === 'active' ? `<button class="gst-btn danger" data-end="${s.id}" data-token="${s.token}">結束會話</button>` : ''}
-                <button class="gst-btn danger" data-del="${s.id}">刪除</button>
-              </div>
-            </div>
-          `;
-
-          // 摺疊切換
-          const row = card.querySelector('.gst-card-row');
-          const body = card.querySelector('.gst-card-body');
-          const chevron = card.querySelector('.gst-chevron');
-          row.onclick = () => {
-            const isOpen = body.classList.toggle('open');
-            chevron.classList.toggle('open', isOpen);
-          };
-
-          card.querySelectorAll('.gst-copy-btn').forEach(btn => {
-            btn.onclick = (e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(btn.dataset.url).catch(() => {});
-              btn.textContent = '已複製';
-              setTimeout(() => btn.textContent = '複製', 1500);
-            };
-          });
-
-          const endBtn = card.querySelector('[data-end]');
-          if (endBtn) {
-            endBtn.onclick = async (e) => {
-              e.stopPropagation();
-              endBtn.disabled = true;
-              endBtn.textContent = '結束中…';
-              try {
-                await fetch(`/guest/${endBtn.dataset.token}/end`, { method: 'POST' });
-                loadSessions();
-              } catch (e) { endBtn.disabled = false; endBtn.textContent = '結束會話'; }
-            };
-          }
-
-          const delBtn = card.querySelector('[data-del]');
-          if (delBtn) {
-            delBtn.onclick = async (e) => {
-              e.stopPropagation();
-              if (!confirm('確定要刪除這筆記錄？')) return;
-              await fetch(`/guest/sessions/${delBtn.dataset.del}`, { method: 'DELETE' });
-              loadSessions();
-            };
-          }
-
-          list.appendChild(card);
-        });
+        // 晏的訪客（visitor_sessions，completed 的）
+        const res2 = await fetch('/visitor/sessions');
+        const data2 = await res2.json();
+        listPartner.innerHTML = '';
+        const partnerSessions = (data2.sessions || []).filter(s => s.belong_to === 'partner');
+        if (partnerSessions.length === 0) {
+          listPartner.innerHTML = '<div class="gst-empty">還沒有記錄</div>';
+        } else {
+          partnerSessions.forEach(s => buildSessionCard(s, listPartner, true));
+        }
       } catch (e) {
         list.innerHTML = '<div class="gst-empty">載入失敗</div>';
       }

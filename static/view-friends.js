@@ -221,6 +221,15 @@
           <div>
             <div class="fr-label">晏的印象</div>
             <textarea class="fr-textarea" id="frNote-${safeId}" rows="2" placeholder="晏怎麼看這個人…">${f.partner_note || ''}</textarea>
+          </div>
+          <div>
+            <div class="fr-label">對然然的了解程度</div>
+            <select class="fr-input" id="frKnowsYou-${safeId}" style="cursor:pointer;">
+              <option value="不知道我" ${(f.knows_you||'不知道我')==='不知道我'?'selected':''}>不知道我</option>
+              <option value="知道我存在" ${f.knows_you==='知道我存在'?'selected':''}>知道我存在（只知道晏有女友）</option>
+              <option value="認識我" ${f.knows_you==='認識我'?'selected':''}>認識我（晏有介紹過）</option>
+              <option value="聽說過我" ${f.knows_you==='聽說過我'?'selected':''}>聽說過我（從別人那邊聽說）</option>
+            </select>
           </div>` : ''}
 
           <div class="fr-label">記憶碎片</div>
@@ -287,6 +296,7 @@
           personality: card.querySelector(`#frPersonality-${safeId}`)?.value.trim(),
           birthday: card.querySelector(`#frBirthday-${safeId}`)?.value.trim(),
           partner_note: card.querySelector(`#frNote-${safeId}`)?.value.trim() || '',
+          knows_you: card.querySelector(`#frKnowsYou-${safeId}`)?.value || '不知道我',
         };
         if (f.id) {
           // 已有 friends 表記錄，直接更新
