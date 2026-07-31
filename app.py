@@ -3495,7 +3495,7 @@ def visitor_end():
 def visitor_status(session_id):
     """前端 polling 用：查詢 solo_partner session 目前狀態"""
     try:
-        row = supabase.table("visitor_sessions").select("id, status, summary, visitor_name, mode, belong_to, visitor_friend_id").eq("id", session_id).single().execute().data
+        row = supabase.table("visitor_sessions").select("id, status, summary, visitor_name, mode, belong_to, visitor_friend_id, messages").eq("id", session_id).single().execute().data
         if not row:
             return jsonify({"error": "not found"}), 404
         knows_you = "不知道我"
@@ -3512,7 +3512,8 @@ def visitor_status(session_id):
             "mode": row.get("mode") or "",
             "belong_to": row.get("belong_to") or "",
             "knows_you": knows_you,
-            "friend_id": friend_id
+            "friend_id": friend_id,
+            "messages": row.get("messages") or []
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

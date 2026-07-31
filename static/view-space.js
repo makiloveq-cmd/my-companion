@@ -1418,7 +1418,11 @@
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ session_id: visitor.id, mode: 'together' })
           });
-          await startVisitor();
+          // 跳到獨立訪客室
+          window.SpaRouter.navigate('visitor-room', {
+            session_id: visitor.id,
+            visitor_name: encodeURIComponent(visitor.visitor_name || '訪客')
+          });
         };
       }
       document.body.appendChild(notice);

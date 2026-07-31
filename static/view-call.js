@@ -281,6 +281,23 @@
   }
 
   // 播放 TTS，回傳 blob url（快取用，重播不再扣點）
+  // 把長文字切成不超過 150 字的段落（依句號、？、！切）
+  function splitTTSChunks(text, maxLen = 150) {
+    const segs = text.split(/(?<=[。！？\.\!\?])/);
+    const chunks = [];
+    let cur = '';
+    for (const seg of segs) {
+      if ((cur + seg).length > maxLen && cur) {
+        chunks.push(cur.trim());
+        cur = seg;
+      } else {
+        cur += seg;
+      }
+    }
+    if (cur.trim()) chunks.push(cur.trim());
+    return chunks.length ? chunks : [text];
+  }
+
   async function playTTS(text, speakerLabel, cachedUrl) {
     if (!text) return null;
     setSubtitle(speakerLabel, text);
@@ -354,9 +371,15 @@
       if (chatData.reply) {
         const msg = { role: 'assistant', content: chatData.reply };
         callMessages.push(msg);
+        const botLabel = (document.getElementById('callName').textContent || '晏') + '說';
         setStatus('通話中');
-        const url = await playTTS(chatData.reply, (document.getElementById('callName').textContent || '晏') + '說');
-        if (url) msg.audioUrl = url;
+        const chunks = splitTTSChunks(chatData.reply);
+        let firstUrl = null;
+        for (const chunk of chunks) {
+          const url = await playTTS(chunk, botLabel);
+          if (url && !firstUrl) firstUrl = url;
+        }
+        if (firstUrl) msg.audioUrl = firstUrl;
       } else {
         setStatus('通話中');
         setOrbState(null);
@@ -462,8 +485,14 @@
             const msg = { role: 'assistant', content: data.reply };
             callMessages.push(msg);
             setStatus('通話中');
-            const url = await playTTS(data.reply, (botName || '晏') + '說');
-            if (url) msg.audioUrl = url;
+            const botLabel2 = (botName || '晏') + '說';
+            const chunks2 = splitTTSChunks(data.reply);
+            let firstUrl2 = null;
+            for (const chunk of chunks2) {
+              const url = await playTTS(chunk, botLabel2);
+              if (url && !firstUrl2) firstUrl2 = url;
+            }
+            if (firstUrl2) msg.audioUrl = firstUrl2;
           } else {
             setStatus('通話中'); setOrbState(null);
           }
