@@ -3278,10 +3278,20 @@ def visitor_start():
         personality = friend_data.get("personality", "")
         relation_type = friend_data.get("relation_type", "")
         partner_note = friend_data.get("partner_note", "")
+        knows_you = friend_data.get("knows_you", "不知道我")
 
         # 取訪客的記憶碎片
         memories = supabase.table("guest_memories").select("content").eq("guest_name", visitor_name).eq("status", "confirmed").execute().data
         mem_context = "\n".join([m["content"] for m in memories]) if memories else ""
+
+        # 有過往記憶時，組成雙方都記得的描述
+        shared_memory_hint = ""
+        if mem_context:
+            shared_memory_hint = (
+                f"你們之前見過，雙方都記得上次的事情。"
+                f"關於{visitor_name}你記得：{mem_context}。"
+                f"{visitor_name}也記得這些，不需要重新介紹彼此，可以自然地延續話題。"
+            )
 
         if mode == "solo_partner":
             # 晏跟朋友單獨聊，然然不在場
@@ -3290,17 +3300,25 @@ def visitor_start():
                 f"{f'關係：{relation_type}。' if relation_type else ''}"
                 f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
                 f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
-                f"{f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
+                f"{shared_memory_hint if shared_memory_hint else f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
                 f"{you_name}不在場，你們兩個人自然地聊天。"
                 f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過八段。用繁體中文。"
             )
         elif mode == "together":
-            # 三人一起
+            # 根據 knows_you 決定你對然然的了解程度描述
+            knows_you_hint = {
+                "認識我": f"{visitor_name}知道{you_name}是誰、叫什麼，晏之前有提過，但他們不一定熟，可能只是點頭之交或第一次真正碰面。不需要特別介紹，但也不要假設{visitor_name}和{you_name}已經很熟。",
+                "知道我存在": f"{visitor_name}知道你有女友，但不知道{you_name}的細節，這是第一次見面。",
+                "不知道我": f"{visitor_name}不知道你有女友，也不認識{you_name}，這是他們第一次相遇。開場時你自然地把{you_name}介紹給{visitor_name}，一兩句話就好，不要刻意。",
+                "聽說過我": f"{visitor_name}隱約知道你有女友，但沒見過{you_name}，不確定細節，這是第一次見面，帶著自然的好奇看著她，不用特別提起是從哪裡聽說的。",
+            }.get(knows_you, f"{visitor_name}不認識{you_name}，開場時自然地把{you_name}介紹給他。")
+
             system = (
                 f"你是{name}，{visitor_name}來找你和{you_name}。"
                 f"{f'關係：{relation_type}。' if relation_type else ''}"
                 f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-                f"{f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
+                f"{shared_memory_hint if shared_memory_hint else f'關於{visitor_name}你記得：{mem_context}。' if mem_context else ''}"
+                f"{knows_you_hint}"
                 f"三個人一起，你、{you_name}、{visitor_name}都在場。"
                 f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過八段。用繁體中文。"
             )
