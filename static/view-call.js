@@ -282,7 +282,7 @@
 
   // 播放 TTS，回傳 blob url（快取用，重播不再扣點）
   // 把長文字切成不超過 150 字的段落（依句號、？、！切）
-  function splitTTSChunks(text, maxLen = 150) {
+  function splitTTSChunks(text, maxLen = 80) {
     const segs = text.split(/(?<=[。！？\.\!\?])/);
     const chunks = [];
     let cur = '';
@@ -308,14 +308,23 @@
         const r = await fetch(cachedUrl);
         arrayBuffer = await r.arrayBuffer();
       } else {
-        const res = await fetch('/voice/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-        if (!res.ok) return null;
-        arrayBuffer = await res.arrayBuffer();
-        blobUrl = URL.createObjectURL(new Blob([arrayBuffer.slice(0)], { type: 'audio/mpeg' }));
+        const controller = new AbortController();
+        const ttsTimeout = setTimeout(() => controller.abort(), 15000); // 15 秒 timeout
+        try {
+          const res = await fetch('/voice/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+            signal: controller.signal
+          });
+          clearTimeout(ttsTimeout);
+          if (!res.ok) return null;
+          arrayBuffer = await res.arrayBuffer();
+          blobUrl = URL.createObjectURL(new Blob([arrayBuffer.slice(0)], { type: 'audio/mpeg' }));
+        } catch(e) {
+          clearTimeout(ttsTimeout);
+          return null; // timeout 或其他錯誤，靜默放棄
+        }
       }
 
       setOrbState('speaking');
@@ -329,8 +338,9 @@
           src.buffer = decoded;
           src.connect(audioCtx.destination);
           currentSource = src;
-          await new Promise(resolve => {
-            src.onended = resolve;
+          await new Promise((resolve) => {
+            const safetyTimer = setTimeout(resolve, 30000); // 最多等 30 秒
+            src.onended = () => { clearTimeout(safetyTimer); resolve(); };
             src.start(0);
           });
           setOrbState(null);
