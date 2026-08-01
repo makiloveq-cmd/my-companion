@@ -132,6 +132,32 @@
         btn.appendChild(right);
         list.appendChild(btn);
       });
+
+      // 檢查有沒有 active together session，有的話顯示訪客室入口
+      try {
+        const vRes = await fetch('/visitor/sessions');
+        const vData = await vRes.json();
+        const activeTogather = (vData.sessions || []).find(
+          s => s.status === 'active' && s.mode === 'together'
+        );
+        if (activeTogather) {
+          const btn = document.createElement('button');
+          btn.className = 'cl-item';
+          btn.onclick = () => RifugioRouter.navigate('visitor-room', {
+            session_id: activeTogather.id,
+            visitor_name: encodeURIComponent(activeTogather.visitor_name || '訪客')
+          });
+          btn.innerHTML = `
+            <div class="cl-avatar space" style="background:rgba(80,120,180,0.15);color:#6a9ad0;font-size:20px;">🚪</div>
+            <div class="cl-info">
+              <div class="cl-name">${activeTogather.visitor_name || '訪客'} 在訪客室</div>
+              <div class="cl-preview">三人一起・進入對話中…</div>
+            </div>
+            <div class="cl-right"><div class="cl-time" style="color:#6a9ad0;font-size:11px;">進行中</div></div>
+          `;
+          list.appendChild(btn);
+        }
+      } catch(e) {}
     } catch (e) {}
 
     return function cleanup() {};
