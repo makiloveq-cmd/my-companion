@@ -282,16 +282,48 @@
 
   // 播放 TTS，回傳 blob url（快取用，重播不再扣點）
   // 把長文字切成不超過 150 字的段落（依句號、？、！切）
+  // 判斷字元屬於哪個語言群
+  function charLang(ch) {
+    const code = ch.codePointAt(0);
+    if (code >= 0x4E00 && code <= 0x9FFF) return 'cjk';      // 中文
+    if (code >= 0x3040 && code <= 0x30FF) return 'ja';        // 日文假名
+    if (code >= 0xAC00 && code <= 0xD7A3) return 'ko';        // 韓文
+    if (code >= 0x0041 && code <= 0x024F) return 'latin';     // 英文/歐洲語系
+    if (code >= 0x0400 && code <= 0x04FF) return 'cyrillic';  // 俄文等
+    return 'other';
+  }
+
   function splitTTSChunks(text, maxLen = 80) {
-    const segs = text.split(/(?<=[。！？\.\!\?])/);
+    if (!text) return [];
+
+    // 先按句子切（標點）
+    const segs = text.split(/(?<=[。！？…\.!\?])\s*/);
     const chunks = [];
     let cur = '';
+    let curLang = null;
+
     for (const seg of segs) {
-      if ((cur + seg).length > maxLen && cur) {
-        chunks.push(cur.trim());
+      if (!seg.trim()) continue;
+
+      // 找這段的主要語言（取第一個有意義的字元）
+      let segLang = null;
+      for (const ch of seg) {
+        const l = charLang(ch);
+        if (l !== 'other') { segLang = l; break; }
+      }
+
+      // 語言切換 → 強制斷開
+      const langChanged = segLang && curLang && segLang !== curLang;
+      // 超長 → 斷開
+      const tooLong = (cur + seg).length > maxLen && cur;
+
+      if (langChanged || tooLong) {
+        if (cur.trim()) chunks.push(cur.trim());
         cur = seg;
+        curLang = segLang;
       } else {
         cur += seg;
+        if (!curLang && segLang) curLang = segLang;
       }
     }
     if (cur.trim()) chunks.push(cur.trim());
