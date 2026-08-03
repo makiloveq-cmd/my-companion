@@ -216,6 +216,7 @@
     let gameMessages = [];
     let gameSetting = '';
     let isSending = false;
+    let prevChapterSummary = ''; // 上一章摘要，新章節開始時注入
 
     // ── 主頁 ──
     function renderHome() {
@@ -549,6 +550,7 @@
           currentSessionId = rd.new_session_id;
           currentBookId = bookId;
           currentChapterNumber = rd.next_chapter || (currentChapterNumber + 1);
+          prevChapterSummary = document.getElementById('gmSealSummary')?.value?.trim() || '';
           gameMessages = [];
           // 清空訊息區，繼續
           const msgArea = document.getElementById('gmMessages');
@@ -671,37 +673,85 @@
       `;
       document.getElementById('gmWorldsBack').onclick = renderHome;
       try {
-        const res = await fetch('/game/sessions?status=active');
-        const data = await res.json();
+        // 同時抓書冊和孤兒 session
+        const [booksRes, sessionsRes] = await Promise.all([
+          fetch('/game/books'),
+          fetch('/game/sessions?status=active')
+        ]);
+        const booksData = await booksRes.json();
+        const sessionsData = await sessionsRes.json();
+
         const list = document.getElementById('gmWorldsList');
-        if (!data.sessions || data.sessions.length === 0) {
+        list.innerHTML = '';
+
+        const items = [];
+
+        // 有書冊的：每本書只取最新 active chapter
+        (booksData.books || []).forEach(book => {
+          const activeChapters = (book.chapters || []).filter(ch => ch.status === 'playing' || ch.status === 'paused');
+          if (activeChapters.length === 0) return;
+          // 取章節號最大的
+          const latestCh = activeChapters.reduce((a, b) => (a.chapter_number > b.chapter_number ? a : b));
+          items.push({
+            id: latestCh.id,
+            displayTitle: book.title, // 用書冊標題
+            chapterLabel: latestCh.chapter_number > 1 ? `第 ${latestCh.chapter_number} 章` : '',
+            status: latestCh.status,
+            updated_at: latestCh.updated_at,
+            setting: latestCh.title || '',
+            book_id: book.id,
+            chapter_number: latestCh.chapter_number,
+            messages: latestCh.messages || []
+          });
+        });
+
+        // 沒有書冊的孤兒 active session
+        (sessionsData.sessions || []).filter(s => !s.book_id).forEach(s => {
+          items.push({
+            id: s.id,
+            displayTitle: s.chapter_title || s.title || s.setting?.slice(0, 30) || '無題',
+            chapterLabel: '',
+            status: s.status,
+            updated_at: s.updated_at,
+            setting: s.setting || '',
+            book_id: null,
+            chapter_number: s.chapter_number || 1,
+            messages: s.messages || []
+          });
+        });
+
+        if (items.length === 0) {
           list.innerHTML = '<div style="text-align:center;color:var(--text-3);padding:40px 0;font-size:14px;">還沒有進行中的世界</div>';
           return;
         }
-        list.innerHTML = '';
-        data.sessions.forEach(s => {
-          const statusLabel = s.status === 'playing' ? '進行中' : '暫停中';
-          const item = document.createElement('div');
-          item.className = 'gm-world-item';
-          item.innerHTML = `
+
+        // 按更新時間排序
+        items.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+        items.forEach(item => {
+          const statusLabel = item.status === 'playing' ? '進行中' : '暫停中';
+          const div = document.createElement('div');
+          div.className = 'gm-world-item';
+          div.innerHTML = `
             <div class="gm-world-item-header">
               <div class="gm-world-left">
-                <div class="gm-world-title">${escHtml(s.chapter_title || s.title || s.setting?.slice(0, 20) || '無題')}</div>
-                <div class="gm-world-meta">${s.updated_at ? new Date(s.updated_at).toLocaleDateString('zh-TW') : ''}</div>
+                <div class="gm-world-title">${escHtml(item.displayTitle)}</div>
+                ${item.chapterLabel ? `<div style="font-size:11px;color:var(--text-3);margin-top:2px;">${escHtml(item.chapterLabel)}</div>` : ''}
+                <div class="gm-world-meta">${item.updated_at ? new Date(item.updated_at).toLocaleDateString('zh-TW') : ''}</div>
               </div>
-              <span class="gm-world-status ${s.status}">${statusLabel}</span>
+              <span class="gm-world-status ${item.status}">${statusLabel}</span>
             </div>
             <div class="gm-world-btns">
-              <button class="gm-world-continue" data-id="${s.id}">繼續</button>
+              <button class="gm-world-continue" data-id="${item.id}">繼續</button>
             </div>
           `;
-          item.querySelector('.gm-world-continue').onclick = () => {
-            gameSetting = s.setting || '';
-            currentBookId = s.book_id || null;
-            currentChapterNumber = s.chapter_number || 1;
-            startGame(s.id, s.messages || []);
+          div.querySelector('.gm-world-continue').onclick = () => {
+            gameSetting = item.setting;
+            currentBookId = item.book_id;
+            currentChapterNumber = item.chapter_number;
+            startGame(item.id, item.messages);
           };
-          list.appendChild(item);
+          list.appendChild(div);
         });
       } catch (e) {
         document.getElementById('gmWorldsList').innerHTML = '<div style="text-align:center;color:var(--text-3);padding:40px 0;font-size:14px;">載入失敗</div>';
@@ -869,13 +919,20 @@
       try {
         const res = await fetch('/game/reply', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ setting: gameSetting, messages: gameMessages })
+          body: JSON.stringify({
+            setting: gameSetting,
+            messages: gameMessages,
+            prev_summary: prevChapterSummary,
+            chapter_number: currentChapterNumber
+          })
         });
         const data = await res.json();
         loading.remove();
         if (data.reply) {
           gameMessages.push({ role: 'assistant', content: data.reply });
           appendGameAI(data.reply);
+          // 第一次回覆後清掉 prevChapterSummary（只需要帶一次）
+          prevChapterSummary = '';
           if (currentSessionId) {
             fetch('/game/autosave', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },

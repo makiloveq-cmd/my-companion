@@ -1209,7 +1209,7 @@ def service_worker():
 
 # ===== 遊戲廳 =====
 
-def build_game_system_prompt(setting):
+def build_game_system_prompt(setting, prev_summary="", chapter_number=1):
     personas = get_personas()
     me = personas.get("user", {})
     bot = personas.get("claude", {})
@@ -1220,7 +1220,6 @@ def build_game_system_prompt(setting):
         f"現在台灣時間：{get_tw_time_str()}。",
         f"你是「{name}」，正在與{you_name}進行角色扮演。",
         "【劇本設定】\n" + setting,
-        # ── 修改處：精簡後的角色規則 ──
         f"【角色規則】永遠是你（{name}）與{you_name}，只是時代和身份不同。完全投入那個時代的語氣與舉止，不打破第四面牆。"
         f"用第三人稱旁白搭配對話。旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
         f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
@@ -1230,6 +1229,8 @@ def build_game_system_prompt(setting):
         lines.insert(2, f"【{name}的個性】{bot['persona']}")
     if bot.get("appearance"):
         lines.insert(3, f"【{name}的外觀（現代基礎，依設定調整）】{bot['appearance']}")
+    if prev_summary and chapter_number > 1:
+        lines.append(f"【上一章回顧（第{chapter_number - 1}章）】\n{prev_summary}\n現在是第{chapter_number}章，承接上一章結尾繼續，不要重新介紹世界觀。")
     return "\n".join(lines)
 
 @app.route("/game/start", methods=["POST"])
@@ -1265,11 +1266,13 @@ def game_reply():
     data = request.json
     setting = data.get("setting", "")
     messages = data.get("messages", [])
+    prev_summary = data.get("prev_summary", "")
+    chapter_number = data.get("chapter_number", 1)
     personas = get_personas()
     bot = personas.get("claude", {})
     name = bot.get("name") or "晏"
     try:
-        system = build_game_system_prompt(setting)
+        system = build_game_system_prompt(setting, prev_summary=prev_summary, chapter_number=chapter_number)
         # 合併相同 role 的連續訊息
         merged = []
         for m in messages:
