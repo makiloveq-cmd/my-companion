@@ -241,6 +241,26 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 注入最近外出記憶
+    try:
+        outing_rows = supabase.table("outing_sessions").select("summary, keywords, destination, created_at").eq("status", "completed").order("id", desc=True).limit(3).execute().data
+        if outing_rows:
+            tw_tz = timezone(timedelta(hours=8))
+            outing_lines = []
+            for r in outing_rows:
+                if not r.get("summary"):
+                    continue
+                dest = r.get("destination") or "外出"
+                ts = ""
+                if r.get("created_at"):
+                    dt = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
+                    ts = dt.strftime("%m/%d")
+                outing_lines.append(f"[{ts}] {dest}：{r['summary']}")
+            if outing_lines:
+                lines.append("【最近外出記憶】\n" + "\n\n".join(outing_lines))
+    except:
+        pass
+
     # 注入關係數值與稱號
     try:
         intimacy, bond, trust = calc_relationship_stats()
@@ -348,7 +368,8 @@ def maybe_summarize(bot):
             "content": summary_text,
             "keywords": keywords
         }).execute()
-        supabase.table("memories").delete().in_("id", ids_to_delete).execute()
+        for rid in ids_to_delete:
+            supabase.table("memories").delete().eq("id", rid).execute()
     except Exception as e:
         print(f"[maybe_summarize error] {e}")
 
@@ -405,7 +426,8 @@ def maybe_space_summarize():
             "content": summary_text,
             "keywords": keywords
         }).execute()
-        supabase.table("space_messages").delete().in_("id", ids_to_delete).execute()
+        for rid in ids_to_delete:
+            supabase.table("space_messages").delete().eq("id", rid).execute()
 
         # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
         try:
@@ -4135,8 +4157,6 @@ def send_push_notification(title, body):
 
 @app.route("/cron/daily_message", methods=["POST"])
 def cron_daily_message():
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
@@ -4222,8 +4242,6 @@ def cron_daily_message():
 def cron_auto_end_day():
     """跨日自動寫日記：凌晨 5 點後 + 閒置超過 1 小時，兩條件都滿足才執行。
     cron-job.org 設每小時整點打一次即可。"""
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
@@ -4280,8 +4298,6 @@ def cron_auto_end_day():
 @app.route("/cron/visitor_chat", methods=["POST"])
 def cron_visitor_chat():
     """定時推進 solo_partner 訪客對話，每次呼叫跑一輪"""
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
     try:
         # 找所有 active 的 solo_partner session
         rows = supabase.table("visitor_sessions").select("*").eq("status", "active").eq("mode", "solo_partner").execute().data
