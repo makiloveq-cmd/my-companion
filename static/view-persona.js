@@ -281,6 +281,10 @@
               <div class="pn-form-label">性格標籤 <span id="pnTagCount" style="font-size:11px;color:var(--text-3)">（最多5個）</span></div>
               <div class="pn-opt-group" id="pnTagGroup"></div>
             </div>
+            <div class="pn-form-row" id="pnPersonaSugRow" style="display:none">
+              <div class="pn-form-label" style="color:var(--text-3);font-size:11px;">晏的個性建議（待審核）</div>
+              <div id="pnPersonaSugList" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"></div>
+            </div>
             <div class="pn-form-row" id="pnObsRow" style="display:none">
               <div class="pn-form-label" style="display:flex;justify-content:space-between;align-items:center">
                 <span>晏的觀察</span>
@@ -300,6 +304,10 @@
             <div class="pn-form-row">
               <div class="pn-form-label">喜好與興趣</div>
               <textarea class="pn-form-input" id="pn-f-hobby" rows="2" placeholder="例：深夜騎車、黑膠唱片…"></textarea>
+            </div>
+            <div class="pn-form-row" id="pnHobbySugRow" style="display:none">
+              <div class="pn-form-label" style="color:var(--text-3);font-size:11px;">晏的喜好建議（待審核）</div>
+              <div id="pnHobbySugList" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"></div>
             </div>
             <div class="pn-form-row">
               <div class="pn-form-label">生日</div>
@@ -657,7 +665,12 @@
       if (tagRow) tagRow.style.display = isUser ? 'none' : 'block';
       if (obsRow) { obsRow.style.display = isUser ? 'block' : 'none'; if (isUser) loadObsInline(); }
 
-      // 然然的個性描述和喜好改唯讀
+      // 然然顯示待審核建議
+      const personaSugRow = document.getElementById('pnPersonaSugRow');
+      const hobbySugRow = document.getElementById('pnHobbySugRow');
+      if (personaSugRow) personaSugRow.style.display = isUser ? 'block' : 'none';
+      if (hobbySugRow) hobbySugRow.style.display = isUser ? 'block' : 'none';
+      if (isUser) { loadSuggestions('persona_suggestion', 'pnPersonaSugList', 'persona'); loadSuggestions('hobby_suggestion', 'pnHobbySugList', 'hobby'); }
       const personaField = document.getElementById('pn-f-persona');
       const hobbyField = document.getElementById('pn-f-hobby');
       if (isUser) {
@@ -879,6 +892,59 @@
     // 晏的觀察（內嵌在個性背景 tab）
     function escHtmlObs(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function loadSuggestions(category, listId, field) {
+      const list = document.getElementById(listId);
+      if (!list) return;
+      try {
+        const res = await fetch(`/user_observations?category=${category}`);
+        const data = await res.json();
+        const items = data.observations || [];
+        list.innerHTML = '';
+        if (items.length === 0) {
+          list.innerHTML = '<div style="font-size:11px;color:var(--text-3);">還沒有建議，說晚安後會自動生成。</div>';
+          return;
+        }
+        items.forEach(item => {
+          const div = document.createElement('div');
+          div.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:6px 8px;background:var(--surface2);border-radius:8px;border:0.5px solid var(--border);';
+          div.innerHTML = `
+            <div style="flex:1;font-size:12px;color:var(--text);line-height:1.6;">${escHtmlObs(item.content)}</div>
+            <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+              <button data-id="${item.id}" data-field="${field}" data-content="${item.content.replace(/"/g,'&quot;')}" class="sug-adopt-btn" style="font-size:10px;padding:3px 8px;background:rgba(80,160,120,0.15);border:0.5px solid rgba(80,160,120,0.4);border-radius:6px;color:#50c080;cursor:pointer;white-space:nowrap;">採用</button>
+              <button data-id="${item.id}" class="sug-del-btn" style="font-size:10px;padding:3px 8px;background:none;border:0.5px solid var(--border);border-radius:6px;color:var(--text-3);cursor:pointer;">略過</button>
+            </div>
+          `;
+          div.querySelector('.sug-adopt-btn').onclick = async (e) => {
+            const btn = e.currentTarget;
+            const f = btn.dataset.field;
+            const c = btn.dataset.content;
+            const id = btn.dataset.id;
+            // 採用：把內容 append 進對應欄位
+            const fieldEl = document.getElementById(`pn-f-${f}`);
+            if (fieldEl) {
+              const existing = fieldEl.value.trim();
+              fieldEl.value = existing ? existing + '\n' + c : c;
+            }
+            // 同步到後端
+            await fetch('/personas/user/field', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ field: f, value: fieldEl?.value || c })
+            });
+            // 刪掉這條建議
+            await fetch(`/user_observations/${id}`, { method: 'DELETE' });
+            loadSuggestions(category, listId, field);
+            if (window.showToast) showToast('已採用');
+          };
+          div.querySelector('.sug-del-btn').onclick = async (e) => {
+            const id = e.currentTarget.dataset.id;
+            await fetch(`/user_observations/${id}`, { method: 'DELETE' });
+            loadSuggestions(category, listId, field);
+          };
+          list.appendChild(div);
+        });
+      } catch(e) {}
     }
 
     async function loadObsInline() {
