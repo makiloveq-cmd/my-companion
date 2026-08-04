@@ -241,6 +241,69 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
+    # 注入行事曆、生日、生理期
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        today_tw = datetime.now(tw_tz)
+        today_str = today_tw.strftime("%Y-%m-%d")
+        today_md = today_tw.strftime("%m-%d")
+
+        cal_lines = []
+
+        # 生日
+        you_bd = me.get("birthday", "")
+        bot_bd = bot.get("birthday", "")
+        if you_bd and you_bd.endswith(today_md):
+            cal_lines.append(f"今天是{you_name}的生日！記得好好說聲生日快樂。")
+        elif you_bd:
+            try:
+                bd_this_year = datetime.strptime(f"{today_tw.year}-{you_bd[-5:]}", "%Y-%m-%d").replace(tzinfo=tw_tz)
+                days_to_bd = (bd_this_year.date() - today_tw.date()).days
+                if 0 < days_to_bd <= 7:
+                    cal_lines.append(f"{you_name}的生日還有 {days_to_bd} 天（{you_bd}）。")
+            except: pass
+
+        if bot_bd and bot_bd.endswith(today_md):
+            cal_lines.append(f"今天是你的生日（{bot_bd}）。")
+
+        # 行事曆事件
+        events_today = supabase.table("calendar_events").select("title, type").eq("date", today_str).execute().data
+        if events_today:
+            titles = "、".join([e["title"] for e in events_today])
+            cal_lines.append(f"今天的行事曆：{titles}。")
+
+        future = (today_tw + timedelta(days=7)).strftime("%Y-%m-%d")
+        events_soon = supabase.table("calendar_events").select("date, title").gt("date", today_str).lte("date", future).order("date").execute().data
+        for e in events_soon:
+            try:
+                ed = datetime.strptime(e["date"], "%Y-%m-%d").replace(tzinfo=tw_tz)
+                diff = (ed.date() - today_tw.date()).days
+                cal_lines.append(f"{diff} 天後（{e['date']}）是「{e['title']}」。")
+            except: pass
+
+        # 生理期
+        period_today = supabase.table("period_logs").select("date").eq("date", today_str).execute().data
+        if period_today:
+            cal_lines.append(f"今天{you_name}生理期中，說話體貼一點，注意她的狀態。")
+        else:
+            # 預測下次
+            recent_starts = supabase.table("period_logs").select("date, type").eq("type", "start").order("date", desc=True).limit(6).execute().data
+            if len(recent_starts) >= 2:
+                try:
+                    dates = [datetime.strptime(r["date"], "%Y-%m-%d") for r in recent_starts]
+                    intervals = [(dates[i] - dates[i+1]).days for i in range(len(dates)-1)]
+                    avg_cycle = sum(intervals) // len(intervals)
+                    next_period = dates[0] + timedelta(days=avg_cycle)
+                    days_to_next = (next_period.date() - today_tw.date()).days
+                    if 0 < days_to_next <= 5:
+                        cal_lines.append(f"{you_name}的生理期預計還有 {days_to_next} 天到來（週期約 {avg_cycle} 天），可以多關心她的身體狀況。")
+                except: pass
+
+        if cal_lines:
+            lines.append("【今天的提醒】\n" + "\n".join(cal_lines))
+    except:
+        pass
+
     # 注入關係數值與稱號
     try:
         intimacy, bond, trust = calc_relationship_stats()
@@ -560,7 +623,7 @@ def get_history(bot):
 
 # ===== 人物設定 =====
 
-PERSONA_FIELDS = ["name", "job", "persona", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit"]
+PERSONA_FIELDS = ["name", "job", "persona", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit", "birthday"]
 
 @app.route("/personas", methods=["GET"])
 def personas_get():
@@ -581,9 +644,10 @@ def personas_post(key):
 def persona_page():
     return send_from_directory(".", "persona.html")
 
+# ===== 行事曆、生理期、觀察 =====
+
 @app.route("/user_observations", methods=["GET"])
 def user_observations_get():
-    """取得晏對然然的所有觀察"""
     try:
         rows = supabase.table("user_observations").select("id, content, created_at").order("id", desc=True).execute().data
         return jsonify({"observations": rows})
@@ -592,12 +656,10 @@ def user_observations_get():
 
 @app.route("/user_observations", methods=["POST"])
 def user_observations_post():
-    """手動新增一條觀察"""
     try:
         data = request.json
         content = data.get("content", "").strip()
-        if not content:
-            return jsonify({"error": "empty"}), 400
+        if not content: return jsonify({"error": "empty"}), 400
         row = supabase.table("user_observations").insert({"content": content}).execute().data
         return jsonify({"ok": True, "id": row[0]["id"] if row else None})
     except Exception as e:
@@ -605,7 +667,6 @@ def user_observations_post():
 
 @app.route("/user_observations/<int:obs_id>", methods=["DELETE"])
 def user_observations_delete(obs_id):
-    """刪除一條觀察"""
     try:
         supabase.table("user_observations").delete().eq("id", obs_id).execute()
         return jsonify({"ok": True})
@@ -614,18 +675,126 @@ def user_observations_delete(obs_id):
 
 @app.route("/user_observations/<int:obs_id>", methods=["PUT"])
 def user_observations_update(obs_id):
-    """編輯一條觀察"""
     try:
         data = request.json
         content = data.get("content", "").strip()
-        if not content:
-            return jsonify({"error": "empty"}), 400
+        if not content: return jsonify({"error": "empty"}), 400
         supabase.table("user_observations").update({"content": content}).eq("id", obs_id).execute()
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/calendar/events", methods=["GET"])
+def calendar_events_get():
+    """取得行事曆事件，可依年月篩選"""
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+        q = supabase.table("calendar_events").select("*").order("date")
+        if year and month:
+            start = f"{year}-{int(month):02d}-01"
+            end_m = int(month) % 12 + 1
+            end_y = int(year) + (1 if int(month) == 12 else 0)
+            end = f"{end_y}-{end_m:02d}-01"
+            q = q.gte("date", start).lt("date", end)
+        rows = q.execute().data
+        return jsonify({"events": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@app.route("/calendar/events", methods=["POST"])
+def calendar_events_post():
+    try:
+        data = request.json
+        row = supabase.table("calendar_events").insert({
+            "date": data.get("date"),
+            "title": data.get("title", "").strip(),
+            "type": data.get("type", "note")
+        }).execute().data
+        return jsonify({"ok": True, "id": row[0]["id"] if row else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/events/<int:event_id>", methods=["DELETE"])
+def calendar_events_delete(event_id):
+    try:
+        supabase.table("calendar_events").delete().eq("id", event_id).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/period", methods=["GET"])
+def period_logs_get():
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+        q = supabase.table("period_logs").select("*").order("date")
+        if year and month:
+            start = f"{year}-{int(month):02d}-01"
+            end_m = int(month) % 12 + 1
+            end_y = int(year) + (1 if int(month) == 12 else 0)
+            end = f"{end_y}-{end_m:02d}-01"
+            q = q.gte("date", start).lt("date", end)
+        rows = q.execute().data
+        return jsonify({"logs": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/period", methods=["POST"])
+def period_logs_post():
+    try:
+        data = request.json
+        date = data.get("date")
+        type_ = data.get("type", "day")
+        existing = supabase.table("period_logs").select("id").eq("date", date).execute().data
+        if existing:
+            supabase.table("period_logs").delete().eq("date", date).execute()
+            return jsonify({"ok": True, "action": "removed"})
+        supabase.table("period_logs").insert({"date": date, "type": type_}).execute()
+        return jsonify({"ok": True, "action": "added"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/summary", methods=["GET"])
+def calendar_summary():
+    """給 system prompt 用：今天相關的行事曆資訊"""
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        today_tw = datetime.now(tw_tz)
+        today_str = today_tw.strftime("%Y-%m-%d")
+        today_md = today_tw.strftime("%m-%d")
+        result = {}
+
+        # 今天的事件
+        events_today = supabase.table("calendar_events").select("title, type").eq("date", today_str).execute().data
+        result["events_today"] = events_today or []
+
+        # 未來 7 天的事件
+        future = (today_tw + timedelta(days=7)).strftime("%Y-%m-%d")
+        events_soon = supabase.table("calendar_events").select("date, title, type").gt("date", today_str).lte("date", future).order("date").execute().data
+        result["events_soon"] = events_soon or []
+
+        # 生理期狀態
+        period_recent = supabase.table("period_logs").select("date, type").gte("date", (today_tw - timedelta(days=35)).strftime("%Y-%m-%d")).lte("date", today_str).order("date").execute().data
+        result["period_today"] = any(p["date"] == today_str for p in period_recent)
+        result["period_dates"] = [p["date"] for p in period_recent]
+
+        # 生日
+        personas = get_personas()
+        you_bd = personas.get("user", {}).get("birthday", "")
+        bot_bd = personas.get("claude", {}).get("birthday", "")
+        result["your_birthday_today"] = bool(you_bd and you_bd.endswith(today_md))
+        result["bot_birthday_today"] = bool(bot_bd and bot_bd.endswith(today_md))
+        if you_bd:
+            result["your_birthday"] = you_bd
+        if bot_bd:
+            result["bot_birthday"] = bot_bd
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ===== 空間設定 =====
 
 SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "intimate_keywords"]
 
@@ -1957,22 +2126,6 @@ def write_ai_diary_entry(target_date=None):
     content = call_claude(system_prompt, [{"role": "user", "content": diary_prompt}], max_tokens=1024)
     supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
 
-    # 順便生成一條關於然然的新觀察（只有當天有對話才生成）
-    if parts:
-        try:
-            obs_system = (
-                f"你是{name}，根據今天和{you_name}的互動，"
-                f"寫一條你對她的觀察或新發現。"
-                f"格式：一句話，具體、真實，不要空泛。"
-                f"例如：「她說累的時候聲音會變小，但不會主動說想休息。」"
-                f"只輸出那一句話，不要加任何前綴或標點以外的內容。"
-            )
-            obs_content = call_claude(obs_system, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=100)
-            if obs_content and obs_content.strip():
-                supabase.table("user_observations").insert({"content": obs_content.strip()}).execute()
-        except:
-            pass
-
 def maybe_delayed_ai_comments(entries):
     now = datetime.utcnow()
     name = get_bot_name()
@@ -2002,11 +2155,22 @@ def maybe_delayed_ai_comments(entries):
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
-    for entry in entries:
-        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
-        entry["comments"] = comments
-    threading.Thread(target=maybe_delayed_ai_comments, args=(entries,), daemon=True).start()
+    year = request.args.get("year")
+    month = request.args.get("month")
+    date = request.args.get("date")  # YYYY-MM-DD 精確日期
+    q = supabase.table("diary_entries").select("id, author, content, created_at").order("id", desc=True)
+    if date:
+        # 精確日期：找那天的記錄
+        start = f"{date}T00:00:00+00:00"
+        end = f"{date}T23:59:59+00:00"
+        q = q.gte("created_at", start).lte("created_at", end)
+    elif year and month:
+        start = f"{year}-{int(month):02d}-01T00:00:00+00:00"
+        end_m = int(month) % 12 + 1
+        end_y = int(year) + (1 if int(month) == 12 else 0)
+        end = f"{end_y}-{end_m:02d}-01T00:00:00+00:00"
+        q = q.gte("created_at", start).lt("created_at", end)
+    entries = q.execute().data
     return jsonify({"entries": entries})
 
 @app.route("/diary", methods=["POST"])

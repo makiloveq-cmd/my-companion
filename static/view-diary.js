@@ -1,468 +1,392 @@
-// ═══ View: 日記（真正 SPA 化）═══
+// ═══ View: 日記行事曆 ═══
 (function () {
-  const STYLE_ID = 'view-diary-style';
-  const CSS = `
-  .dy-header {
-    padding: max(20px, env(safe-area-inset-top)) 24px 12px;
-    display: flex; align-items: center; position: relative; flex-shrink: 0;
-    background: var(--bg);
-  }
-  .dy-header h1 {
-    flex: 1; text-align: center;
-    font-family: 'Playfair Display', serif;
-    font-style: italic; font-size: 28px;
-  }
-  .dy-main {
-    flex: 1; overflow-y: auto;
-    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; gap: 16px;
-  }
-  .dy-compose {
-    background: var(--surface); border-radius: 16px; padding: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .dy-compose textarea {
-    border: none; outline: none; resize: none;
-    font-family: inherit; font-size: 14px; line-height: 1.6;
-    color: var(--text); background: transparent; min-height: 60px; width: 100%;
-  }
-  .dy-compose-actions {
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  }
-  .dy-btn {
-    border: none; border-radius: 20px; padding: 8px 16px;
-    font-size: 13px; cursor: pointer;
-    background: var(--accent); color: #fff;
-  }
-  .dy-btn.secondary { background: var(--surface2); color: var(--text-2); }
-  .dy-btn:disabled { opacity: 0.5; cursor: default; }
-  .dy-entry-card {
-    background: var(--surface); border-radius: 16px; padding: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .dy-entry-header { display: flex; align-items: center; gap: 10px; }
-  .dy-avatar {
-    width: 32px; height: 32px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 500;
-    background: var(--surface3); color: var(--text); flex-shrink: 0;
-  }
-  .dy-avatar.user-av { background: var(--accent); color: #fff; }
-  .dy-entry-meta { display: flex; flex-direction: column; flex: 1; }
-  .dy-entry-author { font-size: 13px; font-weight: 500; }
-  .dy-entry-time { font-size: 11px; color: var(--text-3); }
-  .dy-entry-actions { display: flex; gap: 8px; }
-  .dy-action-btn {
-    font-size: 11px; color: var(--text-3);
-    background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 6px;
-  }
-  .dy-action-btn.del { color: var(--danger); }
-  .dy-entry-content { font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
-  .dy-edit-area { display: none; flex-direction: column; gap: 8px; }
-  .dy-edit-area textarea {
-    border: 1px solid var(--border); border-radius: 10px; padding: 10px;
-    font-family: inherit; font-size: 14px; line-height: 1.6;
-    resize: none; outline: none; min-height: 80px;
-    background: var(--bg); color: var(--text); width: 100%;
-  }
-  .dy-edit-btns { display: flex; gap: 8px; justify-content: flex-end; }
-  .dy-comments {
-    display: flex; flex-direction: column; gap: 8px;
-    border-top: 1px solid var(--border); padding-top: 10px;
-  }
-  .dy-comment { display: flex; gap: 8px; align-items: flex-start; }
-  .dy-comment .dy-avatar { width: 26px; height: 26px; font-size: 10px; }
-  .dy-comment-right { flex: 1; }
-  .dy-comment-bubble {
-    background: var(--surface2); border-radius: 12px;
-    padding: 8px 12px; font-size: 13px; line-height: 1.5;
-  }
-  .dy-comment-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-  .dy-comment-author { font-size: 11px; color: var(--text-3); font-weight: 500; }
-  .dy-comment-reply-tag { font-size: 11px; color: var(--accent); }
-  .dy-comment-reply-preview {
-    font-size: 11px; color: var(--text-3);
-    background: var(--surface3); border-radius: 6px;
-    padding: 4px 8px; margin-bottom: 4px;
-    border-left: 2px solid var(--accent);
-  }
-  .dy-comment-actions { display: flex; gap: 8px; margin-top: 4px; }
-  .dy-comment-action-btn {
-    font-size: 11px; color: var(--text-3);
-    background: none; border: none; cursor: pointer; padding: 2px 4px;
-  }
-  .dy-comment-action-btn.reply { color: var(--accent); }
-  .dy-comment-action-btn.del { color: var(--danger); }
-  .dy-comment-edit-area { display: none; gap: 6px; margin-top: 6px; flex-direction: row; }
-  .dy-comment-edit-area input {
-    flex: 1; border: 1px solid var(--border); border-radius: 10px;
-    padding: 6px 10px; font-size: 13px; outline: none;
-    background: var(--bg); color: var(--text);
-  }
-  .dy-reply-hint {
-    display: none; font-size: 12px; color: var(--accent);
-    background: var(--surface2); border-radius: 8px;
-    padding: 6px 10px; border-left: 2px solid var(--accent); cursor: pointer;
-  }
-  .dy-comment-input { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-  .dy-comment-input-row { display: flex; gap: 8px; }
-  .dy-comment-input input {
-    flex: 1; border: 1px solid var(--border); border-radius: 16px;
-    padding: 6px 12px; font-size: 13px; outline: none;
-    background: var(--bg); color: var(--text);
-  }
-  .dy-comment-input button {
-    border: none; background: var(--surface2); color: var(--text-2);
-    border-radius: 16px; padding: 6px 12px; font-size: 12px; cursor: pointer;
-  }
-  .dy-ai-comment-btns { display: flex; gap: 8px; }
-  .dy-ai-comment-btn {
-    font-size: 11px; color: var(--accent);
-    background: none; border: none; cursor: pointer; padding: 0;
-  }
-  .dy-ai-comment-btn:disabled { opacity: 0.4; cursor: default; }
-  .dy-empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 40px 0; }
-  `;
-
-  function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement('style');
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
-
-  async function mount(el) {
-    ensureStyle();
-    el.style.display = 'flex';
-    el.style.flexDirection = 'column';
-
-    el.innerHTML = `
-      <div class="dy-header"><h1>Diary</h1></div>
-      <div class="dy-main" id="dyMain">
-        <div class="dy-compose">
-          <textarea id="dyNewEntry" placeholder="寫點什麼…"></textarea>
-          <div class="dy-compose-actions">
-            <button class="dy-btn secondary" id="dyAiEntryBtn">邀晏寫日記</button>
-            <button class="dy-btn" id="dyPostBtn">發布</button>
+  async function mount(container) {
+    container.innerHTML = `<style>
+      .cal-wrap { display:flex; flex-direction:column; height:100%; background:var(--bg); }
+      .cal-header { display:flex; align-items:center; justify-content:space-between;
+        padding: max(16px,env(safe-area-inset-top)) 16px 12px;
+        background:var(--bg); flex-shrink:0; }
+      .cal-month { font-size:17px; font-weight:500; color:var(--text); }
+      .cal-nav { background:none; border:0.5px solid var(--border); border-radius:20px;
+        width:32px; height:32px; cursor:pointer; color:var(--text-2); font-size:18px;
+        display:flex; align-items:center; justify-content:center; }
+      .cal-nav:hover { background:var(--surface); }
+      .cal-body { flex:1; overflow-y:auto; padding:0 10px max(16px,env(safe-area-inset-bottom)); }
+      .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:4px; }
+      .cal-wd { text-align:center; font-size:10px; color:var(--text-3); padding:4px 0; }
+      .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:16px; }
+      .cal-day { min-height:56px; border-radius:10px; display:flex; flex-direction:column;
+        align-items:center; padding:6px 2px 4px; cursor:pointer; transition:background 0.15s; }
+      .cal-day:hover { background:var(--surface); }
+      .cal-day.today { background:rgba(180,140,230,0.12); }
+      .cal-day.selected { background:rgba(180,140,230,0.2); border:0.5px solid rgba(180,140,230,0.4); }
+      .cal-day.other { opacity:0.35; }
+      .cal-num { font-size:13px; color:var(--text); line-height:1; margin-bottom:3px; }
+      .cal-day.today .cal-num { background:var(--accent); color:#fff; border-radius:50%;
+        width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; }
+      .cal-num.period { color:#f090a8; }
+      .cal-icons { display:flex; align-items:center; justify-content:center; gap:1px; font-size:11px; min-height:14px; flex-wrap:wrap; }
+      .cal-legend { display:flex; gap:12px; justify-content:center; flex-wrap:wrap;
+        padding:10px 0; border-top:0.5px solid var(--border); margin-bottom:12px; }
+      .cal-leg { display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text-3); }
+      .cal-panel { background:var(--surface); border-radius:14px; padding:14px; margin-bottom:12px;
+        border:0.5px solid var(--border); display:none; }
+      .cal-panel.show { display:block; }
+      .cal-panel-date { font-size:11px; color:var(--text-3); margin-bottom:10px; letter-spacing:0.5px; }
+      .cal-section { margin-bottom:12px; }
+      .cal-section-label { font-size:11px; color:var(--text-3); margin-bottom:5px; display:flex; align-items:center; gap:4px; }
+      .cal-section-body { font-size:13px; color:var(--text); line-height:1.85; }
+      .cal-badge { display:inline-flex; align-items:center; gap:4px; border-radius:20px;
+        padding:3px 10px; font-size:11px; margin-bottom:8px; }
+      .cal-badge.period { background:rgba(240,144,168,0.12); color:#f090a8; border:0.5px solid rgba(240,144,168,0.3); }
+      .cal-badge.event { background:rgba(100,180,130,0.12); color:#6ab08a; border:0.5px solid rgba(100,180,130,0.3); }
+      .cal-badge.birthday { background:rgba(255,200,80,0.12); color:#e0b040; border:0.5px solid rgba(255,200,80,0.3); }
+      .cal-divider { border:none; border-top:0.5px solid var(--border); margin:10px 0; }
+      .cal-comments { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; max-height:200px; overflow-y:auto; }
+      .cal-comment { display:flex; gap:7px; align-items:flex-start; }
+      .cal-comment.me { flex-direction:row-reverse; }
+      .cal-av { width:24px; height:24px; border-radius:50%; background:var(--surface2);
+        display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; color:var(--text-2); }
+      .cal-bubble { background:var(--surface2); border-radius:10px; padding:6px 10px;
+        font-size:12px; color:var(--text); line-height:1.7; max-width:200px; }
+      .cal-comment.me .cal-bubble { background:rgba(176,140,214,0.18); color:var(--text); }
+      .cal-input-row { display:flex; gap:7px; align-items:center; }
+      .cal-input { flex:1; background:var(--surface2); border:0.5px solid var(--border);
+        border-radius:20px; padding:7px 12px; color:var(--text); font-size:12px; outline:none; font-family:inherit; }
+      .cal-send { background:rgba(176,140,214,0.2); border:none; border-radius:50%;
+        width:30px; height:30px; cursor:pointer; color:var(--accent); font-size:14px;
+        display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+      .cal-send:hover { background:rgba(176,140,214,0.35); }
+      .cal-add-event { margin-top:8px; }
+      .cal-add-row { display:flex; gap:6px; margin-top:6px; }
+      .cal-add-input { flex:1; background:var(--surface2); border:0.5px solid var(--border);
+        border-radius:10px; padding:7px 10px; color:var(--text); font-size:12px; outline:none; font-family:inherit; }
+      .cal-add-btn { padding:7px 12px; background:var(--surface2); border:0.5px solid var(--border);
+        border-radius:10px; color:var(--text-2); font-size:12px; cursor:pointer; white-space:nowrap; }
+      .cal-add-btn:hover { background:var(--surface3); }
+      .cal-event-list { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+      .cal-event-item { display:flex; align-items:center; justify-content:space-between;
+        font-size:12px; color:var(--text-2); padding:4px 8px; background:var(--surface2);
+        border-radius:8px; }
+      .cal-del-btn { background:none; border:none; color:var(--text-3); cursor:pointer; font-size:14px; padding:0 2px; }
+      .cal-period-toggle { margin-top:6px; }
+      .cal-period-btn { font-size:12px; padding:6px 12px; border-radius:10px; border:0.5px solid var(--border);
+        background:none; color:var(--text-3); cursor:pointer; }
+      .cal-period-btn.active { background:rgba(240,144,168,0.15); color:#f090a8; border-color:rgba(240,144,168,0.4); }
+      .cal-compose { background:var(--surface); border-radius:14px; padding:12px; margin-bottom:12px; border:0.5px solid var(--border); }
+      .cal-compose textarea { border:none; outline:none; resize:none; width:100%;
+        font-family:inherit; font-size:13px; line-height:1.7; color:var(--text);
+        background:transparent; min-height:80px; }
+      .cal-compose-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+      .cal-compose-btn { font-size:12px; padding:6px 14px; border-radius:10px; cursor:pointer;
+        border:0.5px solid var(--border); background:none; color:var(--text-2); }
+      .cal-compose-btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+      .no-entry { font-size:12px; color:var(--text-3); text-align:center; padding:14px 0; }
+    </style>
+    <div class="cal-wrap">
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrev">‹</button>
+        <div class="cal-month" id="calMonth"></div>
+        <button class="cal-nav" id="calNext">›</button>
+      </div>
+      <div class="cal-body">
+        <div class="cal-weekdays">
+          <div class="cal-wd">日</div><div class="cal-wd">一</div><div class="cal-wd">二</div>
+          <div class="cal-wd">三</div><div class="cal-wd">四</div><div class="cal-wd">五</div><div class="cal-wd">六</div>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-legend">
+          <div class="cal-leg"><span>⭐</span>晏的日記</div>
+          <div class="cal-leg"><span>🌙</span>我的日記</div>
+          <div class="cal-leg"><span style="color:#f090a8;font-weight:500">7</span>生理期</div>
+          <div class="cal-leg"><span>🎀</span>紀念日</div>
+          <div class="cal-leg"><span>🎂</span>生日</div>
+          <div class="cal-leg"><span>📌</span>備註</div>
+        </div>
+        <div class="cal-panel" id="calPanel">
+          <div class="cal-panel-date" id="calPanelDate"></div>
+          <div id="calPanelBadges"></div>
+          <div id="calPanelDiary"></div>
+          <hr class="cal-divider" id="calCommentDivider" style="display:none">
+          <div class="cal-comments" id="calComments" style="display:none"></div>
+          <div class="cal-input-row" id="calInputRow" style="display:none">
+            <input class="cal-input" id="calCommentInput" placeholder="跟晏說點什麼…">
+            <button class="cal-send" id="calSendBtn">➤</button>
+          </div>
+          <hr class="cal-divider">
+          <div class="cal-period-toggle">
+            <button class="cal-period-btn" id="calPeriodBtn">🌸 標記生理期</button>
+          </div>
+          <div class="cal-add-event">
+            <div class="cal-event-list" id="calEventList"></div>
+            <div class="cal-add-row">
+              <input class="cal-add-input" id="calEventInput" placeholder="新增事件（紀念日、備註…）">
+              <select class="cal-add-btn" id="calEventType" style="padding:7px 6px;">
+                <option value="note">📌 備註</option>
+                <option value="anniversary">🎀 紀念日</option>
+                <option value="special">💫 特別</option>
+              </select>
+              <button class="cal-add-btn" id="calEventAdd">新增</button>
+            </div>
           </div>
         </div>
-        <div id="dyEntries"></div>
+        <div class="cal-compose" id="calCompose" style="display:none">
+          <textarea id="calComposeText" placeholder="今天想寫點什麼…"></textarea>
+          <div class="cal-compose-actions">
+            <button class="cal-compose-btn" id="calComposeCancel">取消</button>
+            <button class="cal-compose-btn primary" id="calComposeSave">儲存日記</button>
+          </div>
+        </div>
       </div>
-    `;
+    </div>`;
 
-    let replyState = {};
-    let names = { user: '然然', bot: '晏' };
+    const today = new Date();
+    let cur = { y: today.getFullYear(), m: today.getMonth() };
+    let curDate = null;
+    let monthData = {};
+    let curComments = [];
+    let curPeriod = false;
 
-    // 載入人物名稱
-    try {
-      const res = await fetch('/personas');
-      const data = await res.json();
-      names.user = data.user?.name || names.user;
-      names.bot = data.claude?.name || names.bot;
-    } catch (e) {}
+    const typeIcon = { anniversary: '🎀', special: '💫', note: '📌', birthday: '🎂' };
 
+    function dKey(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
-
-    function escHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text || '';
-      return div.innerHTML;
-    }
-
-    function avatarInitial(author) {
-      if (author === names.user) return names.user.charAt(0);
-      if (author === names.bot) return names.bot.charAt(0);
-      return author.charAt(0);
-    }
-
-    function isUserAuthor(author) {
-      return author === names.user;
-    }
-
-    async function loadEntries() {
-      try {
-        const res = await fetch('/diary');
-        const data = await res.json();
-        const container = document.getElementById('dyEntries');
-        if (!container) return;
-        container.innerHTML = '';
-
-        if (data.entries.length === 0) {
-          container.innerHTML = '<div class="dy-empty">還沒有日記，寫下第一篇吧</div>';
-          return;
-        }
-
-        data.entries.forEach(entry => {
-          const card = document.createElement('div');
-          card.className = 'dy-entry-card';
-
-          const commentMap = {};
-          entry.comments.forEach(c => commentMap[c.id] = c);
-
-          const commentsEl = document.createElement('div');
-          commentsEl.className = 'dy-comments';
-
-          entry.comments.forEach(c => {
-            const replyTo = c.reply_to ? commentMap[c.reply_to] : null;
-            const commentEl = document.createElement('div');
-            commentEl.className = 'dy-comment';
-            commentEl.id = `dy-comment-${c.id}`;
-
-            const avEl = document.createElement('div');
-            avEl.className = `dy-avatar${isUserAuthor(c.author) ? ' user-av' : ''}`;
-            avEl.textContent = avatarInitial(c.author);
-
-            const rightEl = document.createElement('div');
-            rightEl.className = 'dy-comment-right';
-
-            let replyPreviewHtml = '';
-            let replyTagHtml = '';
-            if (replyTo) {
-              replyPreviewHtml = `<div class="dy-comment-reply-preview">${escHtml(replyTo.author)}：${escHtml(replyTo.content.substring(0, 30))}${replyTo.content.length > 30 ? '…' : ''}</div>`;
-              replyTagHtml = `<span class="dy-comment-reply-tag">回覆 ${escHtml(replyTo.author)}</span>`;
-            }
-
-            rightEl.innerHTML = `
-              <div class="dy-comment-bubble">
-                <div class="dy-comment-header">
-                  <span class="dy-comment-author">${escHtml(c.author)}</span>
-                  ${replyTagHtml}
-                </div>
-                ${replyPreviewHtml}
-                <div id="dy-comment-text-${c.id}">${escHtml(c.content)}</div>
-              </div>
-              <div class="dy-comment-actions">
-                <button class="dy-comment-action-btn reply">回覆</button>
-                ${isUserAuthor(c.author) ? `
-                  <button class="dy-comment-action-btn del">刪除</button>
-                  <button class="dy-comment-action-btn edit-c">編輯</button>
-                ` : ''}
-              </div>
-              <div class="dy-comment-edit-area" id="dy-edit-comment-${c.id}">
-                <input type="text" value="${escHtml(c.content)}" id="dy-edit-comment-input-${c.id}">
-                <button class="dy-btn secondary" style="padding:4px 10px;font-size:12px;">取消</button>
-                <button class="dy-btn" style="padding:4px 10px;font-size:12px;">儲存</button>
-              </div>
-            `;
-
-            // 綁定留言事件
-            rightEl.querySelector('.dy-comment-action-btn.reply').onclick = () => startReply(entry.id, c.id, c.author);
-            if (isUserAuthor(c.author)) {
-              rightEl.querySelector('.dy-comment-action-btn.del').onclick = () => deleteComment(c.id);
-              rightEl.querySelector('.dy-comment-action-btn.edit-c').onclick = () => {
-                document.getElementById(`dy-edit-comment-${c.id}`).style.display = 'flex';
-              };
-              const editArea = rightEl.querySelector(`#dy-edit-comment-${c.id}`);
-              const [cancelBtn, saveBtn] = editArea.querySelectorAll('button');
-              cancelBtn.onclick = () => { editArea.style.display = 'none'; };
-              saveBtn.onclick = () => saveEditComment(c.id);
-            }
-
-            commentEl.appendChild(avEl);
-            commentEl.appendChild(rightEl);
-            commentsEl.appendChild(commentEl);
-          });
-
-          const isUserEntry = isUserAuthor(entry.author);
-          const actionsHtml = isUserEntry ? `
-            <div class="dy-entry-actions">
-              <button class="dy-action-btn edit-entry">編輯</button>
-              <button class="dy-action-btn del">刪除</button>
-            </div>` : '';
-
-          card.innerHTML = `
-            <div class="dy-entry-header">
-              <div class="dy-avatar${isUserEntry ? ' user-av' : ''}">${avatarInitial(entry.author)}</div>
-              <div class="dy-entry-meta">
-                <div class="dy-entry-author">${escHtml(entry.author)}</div>
-                <div class="dy-entry-time">${formatTime(entry.created_at)}</div>
-              </div>
-              ${actionsHtml}
-            </div>
-            <div class="dy-entry-content" id="dy-content-${entry.id}">${escHtml(entry.content)}</div>
-            <div class="dy-edit-area" id="dy-edit-${entry.id}">
-              <textarea id="dy-edit-text-${entry.id}">${escHtml(entry.content)}</textarea>
-              <div class="dy-edit-btns">
-                <button class="dy-btn secondary cancel-edit">取消</button>
-                <button class="dy-btn save-edit">儲存</button>
-              </div>
-            </div>
-          `;
-
-          card.appendChild(commentsEl);
-
-          // 回覆提示
-          const replyHint = document.createElement('div');
-          replyHint.className = 'dy-reply-hint';
-          replyHint.id = `dy-reply-hint-${entry.id}`;
-          replyHint.onclick = () => cancelReply(entry.id);
-          card.appendChild(replyHint);
-
-          // AI 留言按鈕
-          const aiCommentBtns = document.createElement('div');
-          aiCommentBtns.className = 'dy-ai-comment-btns';
-          const aiBtn = document.createElement('button');
-          aiBtn.className = 'dy-ai-comment-btn';
-          aiBtn.id = `dy-ai-btn-${entry.id}`;
-          aiBtn.textContent = `邀${names.bot}留言`;
-          aiBtn.onclick = () => askAiComment(entry.id, aiBtn);
-          aiCommentBtns.appendChild(aiBtn);
-          card.appendChild(aiCommentBtns);
-
-          // 留言輸入
-          const commentInput = document.createElement('div');
-          commentInput.className = 'dy-comment-input';
-          commentInput.innerHTML = `
-            <div class="dy-comment-input-row">
-              <input type="text" id="dy-comment-input-${entry.id}" placeholder="留言…">
-              <button>送出</button>
-            </div>
-          `;
-          const commentInputEl = commentInput.querySelector('input');
-          commentInputEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') postComment(entry.id);
-          });
-          commentInput.querySelector('button').onclick = () => postComment(entry.id);
-          card.appendChild(commentInput);
-
-          // 綁定日記編輯/刪除
-          if (isUserEntry) {
-            card.querySelector('.edit-entry').onclick = () => startEdit(entry.id);
-            card.querySelector('.dy-action-btn.del').onclick = () => deleteEntry(entry.id);
-            card.querySelector('.cancel-edit').onclick = () => cancelEdit(entry.id);
-            card.querySelector('.save-edit').onclick = () => saveEdit(entry.id);
-          }
-
-          document.getElementById('dyEntries').appendChild(card);
+    async function loadMonth() {
+      const [diaryRes, periodRes, eventRes] = await Promise.all([
+        fetch(`/diary?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
+        fetch(`/calendar/period?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
+        fetch(`/calendar/events?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
+      ]);
+      monthData = {};
+      if (diaryRes) {
+        const d = await diaryRes.json().catch(()=>({}));
+        (d.entries || []).forEach(e => {
+          const dt = e.created_at ? e.created_at.slice(0,10) : null;
+          if (!dt) return;
+          if (!monthData[dt]) monthData[dt] = {};
+          if (e.author === '然然') monthData[dt].me = true;
+          else monthData[dt].yan = true;
         });
-      } catch (e) {}
-    }
-
-    function startReply(entryId, commentId, author) {
-      replyState[entryId] = { commentId, author };
-      const hint = document.getElementById(`dy-reply-hint-${entryId}`);
-      if (!hint) return;
-      hint.style.display = 'block';
-      hint.textContent = `回覆 ${author}　✕`;
-      const input = document.getElementById(`dy-comment-input-${entryId}`);
-      if (input) input.focus();
-    }
-
-    function cancelReply(entryId) {
-      replyState[entryId] = null;
-      const hint = document.getElementById(`dy-reply-hint-${entryId}`);
-      if (hint) hint.style.display = 'none';
-    }
-
-    async function saveEditComment(id) {
-      const content = document.getElementById(`dy-edit-comment-input-${id}`)?.value.trim();
-      if (!content) return;
-      await fetch(`/diary/comment/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
-      loadEntries();
-    }
-
-    async function deleteComment(id) {
-      if (!confirm('確定要刪除這則留言嗎？')) return;
-      await fetch(`/diary/comment/${id}`, { method: 'DELETE' });
-      loadEntries();
-    }
-
-    function startEdit(id) {
-      const content = document.getElementById(`dy-content-${id}`);
-      const edit = document.getElementById(`dy-edit-${id}`);
-      if (content) content.style.display = 'none';
-      if (edit) edit.style.display = 'flex';
-      document.getElementById(`dy-edit-text-${id}`)?.focus();
-    }
-
-    function cancelEdit(id) {
-      const content = document.getElementById(`dy-content-${id}`);
-      const edit = document.getElementById(`dy-edit-${id}`);
-      if (content) content.style.display = '';
-      if (edit) edit.style.display = 'none';
-    }
-
-    async function saveEdit(id) {
-      const content = document.getElementById(`dy-edit-text-${id}`)?.value.trim();
-      if (!content) return;
-      await fetch(`/diary/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
-      loadEntries();
-    }
-
-    async function deleteEntry(id) {
-      if (!confirm('確定要刪除這篇日記嗎？')) return;
-      await fetch(`/diary/${id}`, { method: 'DELETE' });
-      loadEntries();
-    }
-
-    async function postEntry() {
-      const textarea = document.getElementById('dyNewEntry');
-      const content = textarea?.value.trim();
-      if (!content) return;
-      await fetch('/diary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ author: names.user, content })
-      });
-      if (textarea) textarea.value = '';
-      loadEntries();
-    }
-
-    async function askAiEntry() {
-      const btn = document.getElementById('dyAiEntryBtn');
-      if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+      }
+      if (periodRes) {
+        const d = await periodRes.json().catch(()=>({}));
+        (d.logs || []).forEach(p => {
+          if (!monthData[p.date]) monthData[p.date] = {};
+          monthData[p.date].period = true;
+        });
+      }
+      if (eventRes) {
+        const d = await eventRes.json().catch(()=>({}));
+        (d.events || []).forEach(e => {
+          if (!monthData[e.date]) monthData[e.date] = {};
+          if (!monthData[e.date].events) monthData[e.date].events = [];
+          monthData[e.date].events.push(e);
+        });
+      }
+      // 生日從 personas
       try {
-        await fetch('/diary/ai_entry/claude', { method: 'POST' });
-        loadEntries();
-      } catch (e) {}
-      if (btn) { btn.disabled = false; btn.textContent = `邀${names.bot}寫日記`; }
+        const pr = await fetch('/personas');
+        const pd = await pr.json();
+        ['user','claude'].forEach(key => {
+          const bd = pd[key]?.birthday;
+          if (!bd) return;
+          const parts = bd.split('-');
+          if (parts.length >= 2) {
+            const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
+            if (!monthData[bdKey]) monthData[bdKey] = {};
+            if (!monthData[bdKey].events) monthData[bdKey].events = [];
+            monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
+          }
+        });
+      } catch(e) {}
+      render();
     }
 
-    async function postComment(entryId) {
-      const input = document.getElementById(`dy-comment-input-${entryId}`);
-      const content = input?.value.trim();
-      if (!content) return;
-      const reply = replyState[entryId];
-      await fetch(`/diary/${entryId}/comment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: names.user,
-          content,
-          reply_to: reply ? reply.commentId : null
-        })
-      });
-      if (input) input.value = '';
-      cancelReply(entryId);
-      loadEntries();
+    function render() {
+      const mnth = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+      document.getElementById('calMonth').textContent = `${cur.y} 年 ${mnth[cur.m]}`;
+      const grid = document.getElementById('calGrid');
+      grid.innerHTML = '';
+      const first = new Date(cur.y, cur.m, 1).getDay();
+      const dim = new Date(cur.y, cur.m+1, 0).getDate();
+      const prev = new Date(cur.y, cur.m, 0).getDate();
+      for (let i = 0; i < first; i++) {
+        const el = document.createElement('div');
+        el.className = 'cal-day other';
+        el.innerHTML = `<div class="cal-num">${prev-first+1+i}</div>`;
+        grid.appendChild(el);
+      }
+      for (let d = 1; d <= dim; d++) {
+        const key = dKey(cur.y, cur.m, d);
+        const info = monthData[key] || {};
+        const isToday = cur.y===today.getFullYear()&&cur.m===today.getMonth()&&d===today.getDate();
+        const el = document.createElement('div');
+        let cls = 'cal-day';
+        if (isToday) cls += ' today';
+        if (curDate === key) cls += ' selected';
+        el.className = cls;
+        const numCls = info.period ? 'cal-num period' : 'cal-num';
+        el.innerHTML = `<div class="${numCls}">${d}</div>`;
+        const icons = document.createElement('div');
+        icons.className = 'cal-icons';
+        if (info.yan) icons.innerHTML += '⭐';
+        if (info.me) icons.innerHTML += '🌙';
+        if (info.events) {
+          info.events.forEach(ev => {
+            icons.innerHTML += (typeIcon[ev.type] || '📌');
+          });
+        }
+        el.appendChild(icons);
+        el.onclick = () => selectDay(key, d, info);
+        grid.appendChild(el);
+      }
     }
 
-    async function askAiComment(entryId, btn) {
-      btn.disabled = true;
+    async function selectDay(key, d, info) {
+      curDate = key;
+      curPeriod = !!info.period;
+      render();
+      const panel = document.getElementById('calPanel');
+      const mn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+      document.getElementById('calPanelDate').textContent = `${cur.y} 年 ${mn[cur.m]} ${d} 日`;
+
+      // badges
+      const badges = document.getElementById('calPanelBadges');
+      badges.innerHTML = '';
+      if (info.period) badges.innerHTML += `<span class="cal-badge period">🌸 生理期</span> `;
+      if (info.events) {
+        info.events.forEach(ev => {
+          badges.innerHTML += `<span class="cal-badge event">${typeIcon[ev.type]||'📌'} ${ev.title}</span> `;
+        });
+      }
+
+      // 日記
+      const diaryEl = document.getElementById('calPanelDiary');
+      diaryEl.innerHTML = '';
       try {
-        await fetch(`/diary/${entryId}/ai_comment/claude`, { method: 'POST' });
-        loadEntries();
-      } catch (e) {}
-      btn.disabled = false;
+        const r = await fetch(`/diary?date=${key}`);
+        const d2 = await r.json();
+        const entries = d2.entries || [];
+        const yanEntry = entries.find(e => e.author !== '然然');
+        const meEntry = entries.find(e => e.author === '然然');
+        if (yanEntry) {
+          diaryEl.innerHTML += `<div class="cal-section"><div class="cal-section-label">⭐ 晏的日記</div><div class="cal-section-body">${escHtml(yanEntry.content)}</div></div>`;
+        }
+        if (meEntry) {
+          diaryEl.innerHTML += `<div class="cal-section"><div class="cal-section-label">🌙 我的日記</div><div class="cal-section-body">${escHtml(meEntry.content)}</div></div>`;
+        }
+        if (!yanEntry && !meEntry && !info.period && !info.events) {
+          diaryEl.innerHTML = '<div class="no-entry">這天還沒有記錄</div>';
+        }
+        const hasDiary = yanEntry || meEntry;
+        document.getElementById('calCommentDivider').style.display = hasDiary ? 'block' : 'none';
+        document.getElementById('calComments').style.display = hasDiary ? 'flex' : 'none';
+        document.getElementById('calInputRow').style.display = hasDiary ? 'flex' : 'none';
+        document.getElementById('calComments').innerHTML = '';
+        curComments = [];
+        if (yanEntry) {
+          curComments.push({ from: 'yan', text: yanEntry.content.slice(0, 60) + (yanEntry.content.length > 60 ? '…' : '') });
+        }
+      } catch(e) {}
+
+      // 生理期按鈕
+      const pbtn = document.getElementById('calPeriodBtn');
+      pbtn.className = 'cal-period-btn' + (curPeriod ? ' active' : '');
+      pbtn.textContent = curPeriod ? '🌸 已標記生理期（點擊取消）' : '🌸 標記生理期';
+
+      // 事件列表
+      const evList = document.getElementById('calEventList');
+      evList.innerHTML = '';
+      if (info.events) {
+        info.events.filter(ev => ev.type !== 'birthday').forEach(ev => {
+          const item = document.createElement('div');
+          item.className = 'cal-event-item';
+          item.innerHTML = `<span>${typeIcon[ev.type]||'📌'} ${escHtml(ev.title)}</span><button class="cal-del-btn" data-id="${ev.id}">×</button>`;
+          item.querySelector('.cal-del-btn').onclick = async () => {
+            await fetch(`/calendar/events/${ev.id}`, { method: 'DELETE' });
+            loadMonth();
+          };
+          evList.appendChild(item);
+        });
+      }
+
+      document.getElementById('calCompose').style.display = 'none';
+      panel.classList.add('show');
     }
 
-    // 綁定頂層事件
-    document.getElementById('dyPostBtn').onclick = postEntry;
-    document.getElementById('dyAiEntryBtn').onclick = askAiEntry;
+    // 留言
+    document.getElementById('calSendBtn').onclick = async () => {
+      const inp = document.getElementById('calCommentInput');
+      const val = inp.value.trim();
+      if (!val) return;
+      inp.value = '';
+      addComment('me', val);
+      curComments.push({ from: 'me', text: val });
+      setTimeout(async () => {
+        try {
+          const r = await fetch('/chat/claude', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ message: `（你在日記留言區看到然然的留言：${val}，請簡短回應）` })
+          });
+          const d = await r.json();
+          if (d.reply) addComment('yan', d.reply);
+        } catch(e) {}
+      }, 600);
+    };
 
-    await loadEntries();
+    function addComment(from, text) {
+      const list = document.getElementById('calComments');
+      list.style.display = 'flex';
+      const div = document.createElement('div');
+      div.className = 'cal-comment' + (from === 'me' ? ' me' : '');
+      div.innerHTML = `<div class="cal-av">${from==='me'?'然':'晏'}</div><div class="cal-bubble">${escHtml(text)}</div>`;
+      list.appendChild(div);
+      list.scrollTop = list.scrollHeight;
+    }
 
+    // 生理期標記
+    document.getElementById('calPeriodBtn').onclick = async () => {
+      if (!curDate) return;
+      await fetch('/calendar/period', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ date: curDate, type: curPeriod ? 'remove' : 'day' })
+      });
+      loadMonth();
+    };
+
+    // 新增事件
+    document.getElementById('calEventAdd').onclick = async () => {
+      if (!curDate) return;
+      const title = document.getElementById('calEventInput').value.trim();
+      const type = document.getElementById('calEventType').value;
+      if (!title) return;
+      await fetch('/calendar/events', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ date: curDate, title, type })
+      });
+      document.getElementById('calEventInput').value = '';
+      loadMonth();
+    };
+
+    // 月份切換
+    document.getElementById('calPrev').onclick = () => {
+      cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; }
+      curDate = null;
+      document.getElementById('calPanel').classList.remove('show');
+      loadMonth();
+    };
+    document.getElementById('calNext').onclick = () => {
+      cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; }
+      curDate = null;
+      document.getElementById('calPanel').classList.remove('show');
+      loadMonth();
+    };
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    loadMonth();
     return function cleanup() {};
   }
 
