@@ -241,26 +241,6 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    # 注入最近外出記憶
-    try:
-        outing_rows = supabase.table("outing_sessions").select("summary, keywords, destination, created_at").eq("status", "completed").order("id", desc=True).limit(3).execute().data
-        if outing_rows:
-            tw_tz = timezone(timedelta(hours=8))
-            outing_lines = []
-            for r in outing_rows:
-                if not r.get("summary"):
-                    continue
-                dest = r.get("destination") or "外出"
-                ts = ""
-                if r.get("created_at"):
-                    dt = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
-                    ts = dt.strftime("%m/%d")
-                outing_lines.append(f"[{ts}] {dest}：{r['summary']}")
-            if outing_lines:
-                lines.append("【最近外出記憶】\n" + "\n\n".join(outing_lines))
-    except:
-        pass
-
     # 注入關係數值與稱號
     try:
         intimacy, bond, trust = calc_relationship_stats()
@@ -601,7 +581,51 @@ def personas_post(key):
 def persona_page():
     return send_from_directory(".", "persona.html")
 
-# ===== 空間設定 =====
+@app.route("/user_observations", methods=["GET"])
+def user_observations_get():
+    """取得晏對然然的所有觀察"""
+    try:
+        rows = supabase.table("user_observations").select("id, content, created_at").order("id", desc=True).execute().data
+        return jsonify({"observations": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/user_observations", methods=["POST"])
+def user_observations_post():
+    """手動新增一條觀察"""
+    try:
+        data = request.json
+        content = data.get("content", "").strip()
+        if not content:
+            return jsonify({"error": "empty"}), 400
+        row = supabase.table("user_observations").insert({"content": content}).execute().data
+        return jsonify({"ok": True, "id": row[0]["id"] if row else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/user_observations/<int:obs_id>", methods=["DELETE"])
+def user_observations_delete(obs_id):
+    """刪除一條觀察"""
+    try:
+        supabase.table("user_observations").delete().eq("id", obs_id).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/user_observations/<int:obs_id>", methods=["PUT"])
+def user_observations_update(obs_id):
+    """編輯一條觀察"""
+    try:
+        data = request.json
+        content = data.get("content", "").strip()
+        if not content:
+            return jsonify({"error": "empty"}), 400
+        supabase.table("user_observations").update({"content": content}).eq("id", obs_id).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
 SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "intimate_keywords"]
 
@@ -1932,6 +1956,22 @@ def write_ai_diary_entry(target_date=None):
     )
     content = call_claude(system_prompt, [{"role": "user", "content": diary_prompt}], max_tokens=1024)
     supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
+
+    # 順便生成一條關於然然的新觀察（只有當天有對話才生成）
+    if parts:
+        try:
+            obs_system = (
+                f"你是{name}，根據今天和{you_name}的互動，"
+                f"寫一條你對她的觀察或新發現。"
+                f"格式：一句話，具體、真實，不要空泛。"
+                f"例如：「她說累的時候聲音會變小，但不會主動說想休息。」"
+                f"只輸出那一句話，不要加任何前綴或標點以外的內容。"
+            )
+            obs_content = call_claude(obs_system, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=100)
+            if obs_content and obs_content.strip():
+                supabase.table("user_observations").insert({"content": obs_content.strip()}).execute()
+        except:
+            pass
 
 def maybe_delayed_ai_comments(entries):
     now = datetime.utcnow()
@@ -4428,91 +4468,6 @@ def cron_visitor_chat():
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }).eq("id", session_id).execute()
                 results.append({"session_id": session_id, "visitor": visitor_name, "status": "continue", "rounds": msg_count + 1})
-
-        return jsonify({"status": "ok", "results": results})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-def auto_end_together_session(row):
-    """together 模式超時——讓晏自然帶過然然消失，寫摘要結束"""
-    session_id = row["id"]
-    visitor_name = row.get("visitor_name", "訪客")
-    messages = row.get("messages") or []
-
-    personas = get_personas()
-    bot = personas.get("claude", {})
-    name = bot.get("name") or "晏"
-    you_name = personas.get("user", {}).get("name") or "然然"
-
-    friend_data = {}
-    if row.get("visitor_friend_id"):
-        try:
-            fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
-            if fr: friend_data = fr
-        except: pass
-
-    personality = friend_data.get("personality", "")
-    relation_type = friend_data.get("relation_type", "")
-
-    # 讓晏自然帶過然然消失的原因，然後送客
-    farewell_system = (
-        f"你是{name}，你、{visitor_name}和{you_name}剛才在一起聊天。"
-        f"{f'你和{visitor_name}的關係：{relation_type}。' if relation_type else ''}"
-        f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-        f"{you_name}突然消失不見了——用一兩句話自然帶過她可能去做什麼（每次說法不同，自然隨機，比如去接電話、去倒水、去洗澡等），"
-        f"然後你和{visitor_name}自然地道別結束這次見面。"
-        f"用第三人稱旁白搭配對話，繁體中文，不超過五段。"
-    )
-    farewell_msgs = (messages[-6:] if len(messages) > 6 else messages)[:]
-    farewell_msgs = [m for m in farewell_msgs if m.get("role") in ("user", "assistant")]
-    farewell_msgs.append({"role": "user", "content": f"（{you_name}突然消失不見了）"})
-
-    try:
-        farewell_reply = call_claude(farewell_system, farewell_msgs, max_tokens=400)
-        messages.append({"role": "assistant", "content": farewell_reply})
-    except: pass
-
-    # 寫摘要
-    summary = ""
-    try:
-        summary_system = f"你是{name}，請用一段話總結這次{visitor_name}的來訪，包含聊了什麼、氣氛如何。繁體中文，100字以內。"
-        summary_msgs = [{"role": "user", "content": "\n".join([
-            f"{'晏' if m.get('role')=='assistant' else you_name}：{m.get('content','')}"
-            for m in messages[-10:]
-        ])}]
-        summary = call_claude(summary_system, summary_msgs, max_tokens=200)
-    except: pass
-
-    supabase.table("visitor_sessions").update({
-        "messages": messages,
-        "summary": summary,
-        "status": "completed",
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", session_id).execute()
-
-
-@app.route("/cron/together_timeout", methods=["POST"])
-def cron_together_timeout():
-    """定時檢查 together 模式是否超時（2小時無互動自動送客）"""
-    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
-    try:
-        rows = supabase.table("visitor_sessions").select("*").eq("status", "active").eq("mode", "together").execute().data
-        if not rows:
-            return jsonify({"status": "no_active_together"})
-
-        results = []
-        for row in rows:
-            updated_at = row.get("updated_at") or row.get("created_at")
-            if not updated_at:
-                continue
-            idle_hours = hours_since_utc(updated_at)
-            if idle_hours >= 2.0:
-                threading.Thread(target=auto_end_together_session, args=(row,), daemon=True).start()
-                results.append({"session_id": row["id"], "visitor": row.get("visitor_name"), "idle_hours": round(idle_hours, 1), "status": "auto_ended"})
-            else:
-                results.append({"session_id": row["id"], "visitor": row.get("visitor_name"), "idle_hours": round(idle_hours, 1), "status": "still_active"})
 
         return jsonify({"status": "ok", "results": results})
     except Exception as e:

@@ -396,6 +396,24 @@
             <div class="pn-perspective-body loading" id="pnPerspectiveBody">載入中…</div>
             <div class="pn-perspective-time" id="pnPerspectiveTime"></div>
           </div>
+
+          <div class="pn-sec-label" style="margin-top:20px;">
+            晏的觀察
+            <span style="font-size:11px;color:var(--text-3);font-weight:normal;margin-left:6px;">每次說晚安後自動新增</span>
+          </div>
+          <div style="background:var(--surface2);border-radius:12px;overflow:hidden;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;" id="pnObsToggle">
+              <span style="font-size:13px;color:var(--text-2);" id="pnObsCount">載入中…</span>
+              <span style="font-size:12px;color:var(--text-3);transition:transform 0.2s;" id="pnObsChevron">▼</span>
+            </div>
+            <div id="pnObsBody" style="display:none;padding:0 14px 14px;">
+              <div id="pnObsList"></div>
+              <div style="margin-top:10px;display:flex;gap:8px;">
+                <input id="pnObsInput" style="flex:1;background:var(--input-bg,#0d1624);border:0.5px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-1);font-size:13px;outline:none;" placeholder="手動新增觀察…">
+                <button id="pnObsAdd" style="padding:8px 14px;background:var(--accent-dim);border:none;border-radius:8px;color:var(--accent);font-size:13px;cursor:pointer;">新增</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="pn-toast" id="pnToast"></div>
@@ -622,7 +640,7 @@
       document.querySelectorAll('.pn-tab-item').forEach(t => t.classList.toggle('active', parseInt(t.dataset.tab) === n));
       document.querySelectorAll('.pn-tab-panel').forEach((p, i) => p.classList.toggle('active', i === n));
       curTab = n;
-      if (n === 4) loadPerspective();
+      if (n === 4) { loadPerspective(); loadObservations(); }
       if (n === 2) loadRelationStats();
     }
 
@@ -830,6 +848,92 @@
     // 儲存 & 重新分析
     document.getElementById('pnSaveBtn').onclick = savePersona;
     document.getElementById('pnRefreshBtn').onclick = refreshPerspective;
+
+    // 觀察列表
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function loadObservations() {
+      const countEl = document.getElementById('pnObsCount');
+      const listEl = document.getElementById('pnObsList');
+      if (!countEl || !listEl) return;
+      try {
+        const res = await fetch('/user_observations');
+        const data = await res.json();
+        const obs = data.observations || [];
+        countEl.textContent = obs.length ? `共 ${obs.length} 條觀察` : '還沒有觀察';
+        listEl.innerHTML = '';
+        obs.forEach(o => {
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border);';
+          item.innerHTML = `
+            <div style="flex:1;font-size:13px;color:var(--text-1);line-height:1.6;" class="obs-text">${escHtml(o.content)}</div>
+            <div style="display:flex;gap:6px;flex-shrink:0;margin-top:2px;">
+              <button data-id="${o.id}" class="obs-edit-btn" style="font-size:11px;color:var(--text-3);background:none;border:none;cursor:pointer;">編輯</button>
+              <button data-id="${o.id}" class="obs-del-btn" style="font-size:11px;color:#e06060;background:none;border:none;cursor:pointer;">刪</button>
+            </div>
+          `;
+          item.querySelector('.obs-del-btn').onclick = async () => {
+            if (!confirm('刪除這條觀察？')) return;
+            await fetch(`/user_observations/${o.id}`, { method: 'DELETE' });
+            loadObservations();
+          };
+          item.querySelector('.obs-edit-btn').onclick = () => {
+            const textEl = item.querySelector('.obs-text');
+            const current = textEl.textContent;
+            const inp = document.createElement('input');
+            inp.value = current;
+            inp.style.cssText = 'width:100%;background:var(--input-bg,#0d1624);border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-1);font-size:13px;outline:none;';
+            textEl.replaceWith(inp);
+            inp.focus();
+            inp.onblur = async () => {
+              const val = inp.value.trim();
+              if (val && val !== current) {
+                await fetch(`/user_observations/${o.id}`, {
+                  method: 'PUT', headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify({ content: val })
+                });
+                loadObservations();
+              } else {
+                inp.replaceWith(textEl);
+              }
+            };
+          };
+          listEl.appendChild(item);
+        });
+      } catch(e) {
+        if (countEl) countEl.textContent = '載入失敗';
+      }
+    }
+
+    // 折疊切換
+    const obsToggle = document.getElementById('pnObsToggle');
+    const obsBody = document.getElementById('pnObsBody');
+    const obsChevron = document.getElementById('pnObsChevron');
+    if (obsToggle) {
+      obsToggle.onclick = () => {
+        const isOpen = obsBody.style.display !== 'none';
+        obsBody.style.display = isOpen ? 'none' : 'block';
+        obsChevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      };
+    }
+
+    // 手動新增
+    const obsAddBtn = document.getElementById('pnObsAdd');
+    const obsInput = document.getElementById('pnObsInput');
+    if (obsAddBtn) {
+      obsAddBtn.onclick = async () => {
+        const val = obsInput.value.trim();
+        if (!val) return;
+        await fetch('/user_observations', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ content: val })
+        });
+        obsInput.value = '';
+        loadObservations();
+      };
+    }
 
     // 初始化
     buildTags();
