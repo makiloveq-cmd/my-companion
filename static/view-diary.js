@@ -35,7 +35,7 @@
       .cal-panel-date { font-size:11px; color:var(--text-3); margin-bottom:10px; letter-spacing:0.5px; }
       .cal-section { margin-bottom:12px; }
       .cal-section-label { font-size:11px; color:var(--text-3); margin-bottom:5px; display:flex; align-items:center; gap:4px; }
-      .cal-section-body { font-size:13px; color:var(--text); line-height:1.85; }
+      .cal-section-body { font-size:13px; color:var(--text); line-height:1.85; white-space:pre-wrap; }
       .cal-badge { display:inline-flex; align-items:center; gap:4px; border-radius:20px;
         padding:3px 10px; font-size:11px; margin-bottom:8px; }
       .cal-badge.period { background:rgba(240,144,168,0.12); color:#f090a8; border:0.5px solid rgba(240,144,168,0.3); }
