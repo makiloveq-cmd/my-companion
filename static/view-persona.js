@@ -657,6 +657,29 @@
       if (tagRow) tagRow.style.display = isUser ? 'none' : 'block';
       if (obsRow) { obsRow.style.display = isUser ? 'block' : 'none'; if (isUser) loadObsInline(); }
 
+      // 然然的個性描述和喜好改唯讀
+      const personaField = document.getElementById('pn-f-persona');
+      const hobbyField = document.getElementById('pn-f-hobby');
+      if (isUser) {
+        if (personaField) { personaField.readOnly = true; personaField.style.opacity = '0.7'; personaField.style.cursor = 'default'; }
+        if (hobbyField) { hobbyField.readOnly = true; hobbyField.style.opacity = '0.7'; hobbyField.style.cursor = 'default'; }
+        // 顯示待審核提示
+        let hint = document.getElementById('pnUserFieldHint');
+        if (!hint) {
+          hint = document.createElement('div');
+          hint.id = 'pnUserFieldHint';
+          hint.style.cssText = 'font-size:11px;color:var(--text-3);margin-top:4px;';
+          hint.textContent = '由晏觀察後填寫，你可以在此審核確認。';
+          personaField?.parentElement?.appendChild(hint);
+        }
+        hint.style.display = 'block';
+      } else {
+        if (personaField) { personaField.readOnly = false; personaField.style.opacity = ''; personaField.style.cursor = ''; }
+        if (hobbyField) { hobbyField.readOnly = false; hobbyField.style.opacity = ''; hobbyField.style.cursor = ''; }
+        const hint = document.getElementById('pnUserFieldHint');
+        if (hint) hint.style.display = 'none';
+      }
+
       const readonly = document.getElementById('pnRelBgReadonly');
       const editable = document.getElementById('pn-f-rel_bg');
       if (!isUser) {
