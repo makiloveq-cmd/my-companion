@@ -4434,6 +4434,91 @@ def cron_visitor_chat():
         return jsonify({"error": str(e)}), 500
 
 
+def auto_end_together_session(row):
+    """together 模式超時——讓晏自然帶過然然消失，寫摘要結束"""
+    session_id = row["id"]
+    visitor_name = row.get("visitor_name", "訪客")
+    messages = row.get("messages") or []
+
+    personas = get_personas()
+    bot = personas.get("claude", {})
+    name = bot.get("name") or "晏"
+    you_name = personas.get("user", {}).get("name") or "然然"
+
+    friend_data = {}
+    if row.get("visitor_friend_id"):
+        try:
+            fr = supabase.table("friends").select("*").eq("id", row["visitor_friend_id"]).single().execute().data
+            if fr: friend_data = fr
+        except: pass
+
+    personality = friend_data.get("personality", "")
+    relation_type = friend_data.get("relation_type", "")
+
+    # 讓晏自然帶過然然消失的原因，然後送客
+    farewell_system = (
+        f"你是{name}，你、{visitor_name}和{you_name}剛才在一起聊天。"
+        f"{f'你和{visitor_name}的關係：{relation_type}。' if relation_type else ''}"
+        f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
+        f"{you_name}突然消失不見了——用一兩句話自然帶過她可能去做什麼（每次說法不同，自然隨機，比如去接電話、去倒水、去洗澡等），"
+        f"然後你和{visitor_name}自然地道別結束這次見面。"
+        f"用第三人稱旁白搭配對話，繁體中文，不超過五段。"
+    )
+    farewell_msgs = (messages[-6:] if len(messages) > 6 else messages)[:]
+    farewell_msgs = [m for m in farewell_msgs if m.get("role") in ("user", "assistant")]
+    farewell_msgs.append({"role": "user", "content": f"（{you_name}突然消失不見了）"})
+
+    try:
+        farewell_reply = call_claude(farewell_system, farewell_msgs, max_tokens=400)
+        messages.append({"role": "assistant", "content": farewell_reply})
+    except: pass
+
+    # 寫摘要
+    summary = ""
+    try:
+        summary_system = f"你是{name}，請用一段話總結這次{visitor_name}的來訪，包含聊了什麼、氣氛如何。繁體中文，100字以內。"
+        summary_msgs = [{"role": "user", "content": "\n".join([
+            f"{'晏' if m.get('role')=='assistant' else you_name}：{m.get('content','')}"
+            for m in messages[-10:]
+        ])}]
+        summary = call_claude(summary_system, summary_msgs, max_tokens=200)
+    except: pass
+
+    supabase.table("visitor_sessions").update({
+        "messages": messages,
+        "summary": summary,
+        "status": "completed",
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", session_id).execute()
+
+
+@app.route("/cron/together_timeout", methods=["POST"])
+def cron_together_timeout():
+    """定時檢查 together 模式是否超時（2小時無互動自動送客）"""
+    if APP_SECRET and request.headers.get("X-Cron-Secret") != APP_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        rows = supabase.table("visitor_sessions").select("*").eq("status", "active").eq("mode", "together").execute().data
+        if not rows:
+            return jsonify({"status": "no_active_together"})
+
+        results = []
+        for row in rows:
+            updated_at = row.get("updated_at") or row.get("created_at")
+            if not updated_at:
+                continue
+            idle_hours = hours_since_utc(updated_at)
+            if idle_hours >= 2.0:
+                threading.Thread(target=auto_end_together_session, args=(row,), daemon=True).start()
+                results.append({"session_id": row["id"], "visitor": row.get("visitor_name"), "idle_hours": round(idle_hours, 1), "status": "auto_ended"})
+            else:
+                results.append({"session_id": row["id"], "visitor": row.get("visitor_name"), "idle_hours": round(idle_hours, 1), "status": "still_active"})
+
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/chatlist_page")
 def chatlist_page():
     return send_from_directory(".", "chatlist.html")
