@@ -277,9 +277,22 @@
               <div class="pn-form-label">個性描述 <span class="pn-badge">必填</span></div>
               <textarea class="pn-form-input" id="pn-f-persona" rows="5" placeholder="描述他的性格…"></textarea>
             </div>
-            <div class="pn-form-row">
+            <div class="pn-form-row" id="pnTagRow">
               <div class="pn-form-label">性格標籤 <span id="pnTagCount" style="font-size:11px;color:var(--text-3)">（最多5個）</span></div>
               <div class="pn-opt-group" id="pnTagGroup"></div>
+            </div>
+            <div class="pn-form-row" id="pnObsRow" style="display:none">
+              <div class="pn-form-label" style="display:flex;justify-content:space-between;align-items:center">
+                <span>晏的觀察</span>
+                <span style="font-size:10px;color:var(--text-3);font-weight:normal;">說晚安後自動累積</span>
+              </div>
+              <div style="margin-top:6px;">
+                <div id="pnObsInlineList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+                <div style="display:flex;gap:6px;">
+                  <input id="pnObsInlineInput" class="pn-form-input" style="font-size:12px;padding:6px 10px;" placeholder="手動新增觀察…">
+                  <button id="pnObsInlineAdd" style="padding:6px 12px;background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-2);cursor:pointer;white-space:nowrap;">新增</button>
+                </div>
+              </div>
             </div>
           </div>
           <div class="pn-sec-label">喜好</div>
@@ -638,6 +651,12 @@
       if (tabAdvanced) tabAdvanced.classList.toggle('hidden', isUser);
       if (tabPerspective) tabPerspective.classList.toggle('hidden', !isUser);
 
+      // 晏顯示性格標籤，然然顯示晏的觀察
+      const tagRow = document.getElementById('pnTagRow');
+      const obsRow = document.getElementById('pnObsRow');
+      if (tagRow) tagRow.style.display = isUser ? 'none' : 'block';
+      if (obsRow) { obsRow.style.display = isUser ? 'block' : 'none'; if (isUser) loadObsInline(); }
+
       const readonly = document.getElementById('pnRelBgReadonly');
       const editable = document.getElementById('pn-f-rel_bg');
       if (!isUser) {
@@ -833,6 +852,54 @@
 
     // 儲存 & 重新分析
     document.getElementById('pnSaveBtn').onclick = savePersona;
+
+    // 晏的觀察（內嵌在個性背景 tab）
+    function escHtmlObs(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function loadObsInline() {
+      const list = document.getElementById('pnObsInlineList');
+      if (!list) return;
+      try {
+        const res = await fetch('/user_observations');
+        const data = await res.json();
+        const obs = data.observations || [];
+        list.innerHTML = '';
+        if (obs.length === 0) {
+          list.innerHTML = '<div style="font-size:12px;color:var(--text-3);">還沒有觀察，說晚安後會自動累積。</div>';
+          return;
+        }
+        obs.forEach(o => {
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:0.5px solid var(--border);';
+          item.innerHTML = `
+            <div style="flex:1;font-size:12px;color:var(--text);line-height:1.7;" class="obs-t">${escHtmlObs(o.content)}</div>
+            <button data-id="${o.id}" style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;">×</button>
+          `;
+          item.querySelector('button').onclick = async () => {
+            await fetch(`/user_observations/${o.id}`, { method: 'DELETE' });
+            loadObsInline();
+          };
+          list.appendChild(item);
+        });
+      } catch(e) {}
+    }
+
+    const obsAddBtn = document.getElementById('pnObsInlineAdd');
+    const obsInput = document.getElementById('pnObsInlineInput');
+    if (obsAddBtn) {
+      obsAddBtn.onclick = async () => {
+        const val = obsInput?.value.trim();
+        if (!val) return;
+        await fetch('/user_observations', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ content: val })
+        });
+        obsInput.value = '';
+        loadObsInline();
+      };
+    }
     document.getElementById('pnRefreshBtn').onclick = refreshPerspective;
 
     // 初始化
