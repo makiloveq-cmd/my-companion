@@ -115,7 +115,10 @@
           </div>
           <hr class="cal-divider">
           <div class="cal-period-toggle">
-            <button class="cal-period-btn" id="calPeriodBtn">🌸 標記生理期</button>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button class="cal-period-btn" id="calPeriodBtn">🌸 標記生理期</button>
+              <button class="cal-period-btn" id="calWriteDiaryBtn">✏️ 寫日記</button>
+            </div>
           </div>
           <div class="cal-add-event">
             <div class="cal-event-list" id="calEventList"></div>
@@ -152,18 +155,19 @@
     function dKey(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
     async function loadMonth() {
-      const [diaryRes, periodRes, eventRes, personasRes] = await Promise.all([
+      const [diaryRes, periodRes, eventRes] = await Promise.all([
         fetch(`/diary?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/period?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/events?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
-        fetch('/personas').catch(()=>null),
       ]);
       monthData = {};
       if (diaryRes) {
         const d = await diaryRes.json().catch(()=>({}));
         (d.entries || []).forEach(e => {
-          const dt = e.created_at ? e.created_at.slice(0,10) : null;
-          if (!dt) return;
+          if (!e.created_at) return;
+          // 轉台灣時間（UTC+8）取日期
+          const twDate = new Date(new Date(e.created_at).getTime() + 8*60*60*1000);
+          const dt = twDate.toISOString().slice(0,10);
           if (!monthData[dt]) monthData[dt] = {};
           if (e.author === '然然') monthData[dt].me = true;
           else monthData[dt].yan = true;
@@ -184,22 +188,21 @@
           monthData[e.date].events.push(e);
         });
       }
-      // 生日從 personas（同時跑好了）
+      // 生日從 personas
       try {
-        if (personasRes) {
-          const pd = await personasRes.json();
-          ['user','claude'].forEach(key => {
-            const bd = pd[key]?.birthday;
-            if (!bd) return;
-            const parts = bd.split('-');
-            if (parts.length >= 2) {
-              const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
-              if (!monthData[bdKey]) monthData[bdKey] = {};
-              if (!monthData[bdKey].events) monthData[bdKey].events = [];
-              monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
-            }
-          });
-        }
+        const pr = await fetch('/personas');
+        const pd = await pr.json();
+        ['user','claude'].forEach(key => {
+          const bd = pd[key]?.birthday;
+          if (!bd) return;
+          const parts = bd.split('-');
+          if (parts.length >= 2) {
+            const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
+            if (!monthData[bdKey]) monthData[bdKey] = {};
+            if (!monthData[bdKey].events) monthData[bdKey].events = [];
+            monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
+          }
+        });
       } catch(e) {}
       render();
     }
@@ -354,6 +357,36 @@
         body: JSON.stringify({ date: curDate, type: curPeriod ? 'remove' : 'day' })
       });
       loadMonth();
+    };
+
+    // 寫日記按鈕
+    document.getElementById('calWriteDiaryBtn').onclick = () => {
+      const compose = document.getElementById('calCompose');
+      compose.style.display = compose.style.display === 'none' ? 'block' : 'none';
+      if (compose.style.display === 'block') {
+        document.getElementById('calComposeText').focus();
+      }
+    };
+    document.getElementById('calComposeCancel').onclick = () => {
+      document.getElementById('calCompose').style.display = 'none';
+      document.getElementById('calComposeText').value = '';
+    };
+    document.getElementById('calComposeSave').onclick = async () => {
+      const text = document.getElementById('calComposeText').value.trim();
+      if (!text) return;
+      const btn = document.getElementById('calComposeSave');
+      btn.disabled = true; btn.textContent = '儲存中…';
+      try {
+        await fetch('/diary', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ author: '然然', content: text, date: curDate })
+        });
+        document.getElementById('calComposeText').value = '';
+        document.getElementById('calCompose').style.display = 'none';
+        loadMonth();
+        if (curDate) selectDay(curDate, parseInt(curDate.split('-')[2]), monthData[curDate] || {});
+      } catch(e) { alert('儲存失敗'); }
+      btn.disabled = false; btn.textContent = '儲存日記';
     };
 
     // 新增事件

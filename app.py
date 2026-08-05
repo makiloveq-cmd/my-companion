@@ -2045,17 +2045,46 @@ def maybe_delayed_ai_comments(entries):
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
-    for entry in entries:
-        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
-        entry["comments"] = comments
-    threading.Thread(target=maybe_delayed_ai_comments, args=(entries,), daemon=True).start()
+    year = request.args.get("year")
+    month = request.args.get("month")
+    date = request.args.get("date")  # YYYY-MM-DD 台灣日期
+    q = supabase.table("diary_entries").select("id, author, content, created_at").order("id", desc=True)
+    if date:
+        # 台灣日期轉 UTC 範圍（+8h）
+        tw_tz = timezone(timedelta(hours=8))
+        day_start_tw = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tw_tz)
+        day_end_tw = day_start_tw + timedelta(days=1)
+        q = q.gte("created_at", day_start_tw.astimezone(timezone.utc).isoformat())
+        q = q.lt("created_at", day_end_tw.astimezone(timezone.utc).isoformat())
+    elif year and month:
+        tw_tz = timezone(timedelta(hours=8))
+        start_tw = datetime(int(year), int(month), 1, tzinfo=tw_tz)
+        end_m = int(month) % 12 + 1
+        end_y = int(year) + (1 if int(month) == 12 else 0)
+        end_tw = datetime(end_y, end_m, 1, tzinfo=tw_tz)
+        q = q.gte("created_at", start_tw.astimezone(timezone.utc).isoformat())
+        q = q.lt("created_at", end_tw.astimezone(timezone.utc).isoformat())
+    entries = q.execute().data
     return jsonify({"entries": entries})
 
 @app.route("/diary", methods=["POST"])
 def add_diary():
     data = request.json
-    supabase.table("diary_entries").insert({"author": data.get("author", "然然"), "content": data.get("content", "")}).execute()
+    tw_tz = timezone(timedelta(hours=8))
+    # 如果前端指定日期，用該日台灣正午時間存入
+    date_str = data.get("date")
+    if date_str:
+        try:
+            created_at = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12, tzinfo=tw_tz).astimezone(timezone.utc).isoformat()
+        except:
+            created_at = datetime.now(timezone.utc).isoformat()
+    else:
+        created_at = datetime.now(timezone.utc).isoformat()
+    supabase.table("diary_entries").insert({
+        "author": data.get("author", "然然"),
+        "content": data.get("content", ""),
+        "created_at": created_at
+    }).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>", methods=["PUT"])
