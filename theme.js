@@ -1,15 +1,5 @@
 // ═══ Rifugio 共用主題系統 ═══
 
-// 立即執行：先用 localStorage 快取套用，避免閃白
-(function () {
-  const cached = localStorage.getItem('rifugio_theme');
-  if (cached) document.documentElement.setAttribute('data-theme', cached);
-  const cachedCustom = localStorage.getItem('rifugio_theme_custom');
-  if (cachedCustom) {
-    try { applyCustomTheme(JSON.parse(cachedCustom)); } catch(e) {}
-  }
-})();
-
 function applyCustomTheme(custom) {
   if (!custom || !Object.keys(custom).length) return;
   const root = document.documentElement;
@@ -35,6 +25,16 @@ function applyCustomTheme(custom) {
     if (app) app.style.background = '';
   }
 }
+
+// 立即執行：先用 localStorage 快取套用，避免閃白
+(function () {
+  const cached = localStorage.getItem('rifugio_theme');
+  if (cached) document.documentElement.setAttribute('data-theme', cached);
+  const cachedCustom = localStorage.getItem('rifugio_theme_custom');
+  if (cachedCustom) {
+    try { applyCustomTheme(JSON.parse(cachedCustom)); } catch(e) {}
+  }
+})();
 
 async function rifugioLoadTheme() {
   try {
