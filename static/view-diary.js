@@ -152,10 +152,11 @@
     function dKey(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
     async function loadMonth() {
-      const [diaryRes, periodRes, eventRes] = await Promise.all([
+      const [diaryRes, periodRes, eventRes, personasRes] = await Promise.all([
         fetch(`/diary?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/period?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/events?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
+        fetch('/personas').catch(()=>null),
       ]);
       monthData = {};
       if (diaryRes) {
@@ -183,21 +184,22 @@
           monthData[e.date].events.push(e);
         });
       }
-      // 生日從 personas
+      // 生日從 personas（同時跑好了）
       try {
-        const pr = await fetch('/personas');
-        const pd = await pr.json();
-        ['user','claude'].forEach(key => {
-          const bd = pd[key]?.birthday;
-          if (!bd) return;
-          const parts = bd.split('-');
-          if (parts.length >= 2) {
-            const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
-            if (!monthData[bdKey]) monthData[bdKey] = {};
-            if (!monthData[bdKey].events) monthData[bdKey].events = [];
-            monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
-          }
-        });
+        if (personasRes) {
+          const pd = await personasRes.json();
+          ['user','claude'].forEach(key => {
+            const bd = pd[key]?.birthday;
+            if (!bd) return;
+            const parts = bd.split('-');
+            if (parts.length >= 2) {
+              const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
+              if (!monthData[bdKey]) monthData[bdKey] = {};
+              if (!monthData[bdKey].events) monthData[bdKey].events = [];
+              monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
+            }
+          });
+        }
       } catch(e) {}
       render();
     }
