@@ -154,18 +154,31 @@
 
     function dKey(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
-    async function loadMonth() {
-      const [diaryRes, periodRes, eventRes] = await Promise.all([
+    function getCacheKey() { return `rifugio_cal_${cur.y}_${cur.m+1}`; }
+
+    async function loadMonth(background = false) {
+      // 先顯示快取（非背景更新時才用）
+      if (!background) {
+        const cached = localStorage.getItem(getCacheKey());
+        if (cached) {
+          try {
+            monthData = JSON.parse(cached);
+            render();
+          } catch(e) {}
+        }
+      }
+
+      const [diaryRes, periodRes, eventRes, personasRes] = await Promise.all([
         fetch(`/diary?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/period?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
         fetch(`/calendar/events?year=${cur.y}&month=${cur.m+1}`).catch(()=>null),
+        fetch('/personas').catch(()=>null),
       ]);
       monthData = {};
       if (diaryRes) {
         const d = await diaryRes.json().catch(()=>({}));
         (d.entries || []).forEach(e => {
           if (!e.created_at) return;
-          // 轉台灣時間（UTC+8）取日期
           const twDate = new Date(new Date(e.created_at).getTime() + 8*60*60*1000);
           const dt = twDate.toISOString().slice(0,10);
           if (!monthData[dt]) monthData[dt] = {};
@@ -188,22 +201,25 @@
           monthData[e.date].events.push(e);
         });
       }
-      // 生日從 personas
+      // 生日從 personas（同時跑）
       try {
-        const pr = await fetch('/personas');
-        const pd = await pr.json();
-        ['user','claude'].forEach(key => {
-          const bd = pd[key]?.birthday;
-          if (!bd) return;
-          const parts = bd.split('-');
-          if (parts.length >= 2) {
-            const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
-            if (!monthData[bdKey]) monthData[bdKey] = {};
-            if (!monthData[bdKey].events) monthData[bdKey].events = [];
-            monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
-          }
-        });
+        if (personasRes) {
+          const pd = await personasRes.json();
+          ['user','claude'].forEach(key => {
+            const bd = pd[key]?.birthday;
+            if (!bd) return;
+            const parts = bd.split('-');
+            if (parts.length >= 2) {
+              const bdKey = `${cur.y}-${String(parseInt(parts[parts.length-2])).padStart(2,'0')}-${String(parseInt(parts[parts.length-1])).padStart(2,'0')}`;
+              if (!monthData[bdKey]) monthData[bdKey] = {};
+              if (!monthData[bdKey].events) monthData[bdKey].events = [];
+              monthData[bdKey].events.push({ title: key === 'user' ? '然然生日🎂' : '晏的生日🎂', type: 'birthday' });
+            }
+          });
+        }
       } catch(e) {}
+      // 存快取
+      try { localStorage.setItem(getCacheKey(), JSON.stringify(monthData)); } catch(e) {}
       render();
     }
 
@@ -356,7 +372,7 @@
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ date: curDate, type: curPeriod ? 'remove' : 'day' })
       });
-      loadMonth();
+      loadMonth(true);
     };
 
     // 寫日記按鈕
@@ -383,7 +399,7 @@
         });
         document.getElementById('calComposeText').value = '';
         document.getElementById('calCompose').style.display = 'none';
-        loadMonth();
+        loadMonth(true);
         if (curDate) selectDay(curDate, parseInt(curDate.split('-')[2]), monthData[curDate] || {});
       } catch(e) { alert('儲存失敗'); }
       btn.disabled = false; btn.textContent = '儲存日記';
@@ -400,7 +416,7 @@
         body: JSON.stringify({ date: curDate, title, type })
       });
       document.getElementById('calEventInput').value = '';
-      loadMonth();
+      loadMonth(true);
     };
 
     // 月份切換
