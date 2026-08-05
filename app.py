@@ -163,127 +163,163 @@ def build_system_prompt(bot_key="claude"):
 
     lines = [
         f"現在台灣時間：{get_tw_time_str()}。",
-        f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
+        f"你是「{name}」，完全扮演此角色與{you_name}對話，繁體中文回覆。"
     ]
 
-    # 注入最後私聊互動時間 + 最近對話時間軸
+    # 角色資料（合併精簡）
+    profile = []
+    if bot.get("job"): profile.append(f"職業：{bot['job']}")
+    if bot.get("appearance"): profile.append(f"外觀：{bot['appearance']}")
+    if bot.get("outfit"): profile.append(f"穿搭：{bot['outfit']}")
+    if bot.get("persona"): profile.append(f"個性：{bot['persona']}")
+    if bot.get("tags"): profile.append(f"性格標籤：{bot['tags']}")
+    if bot.get("hobby"): profile.append(f"喜好：{bot['hobby']}")
+    if relation_text: profile.append(f"與對方關係：{relation_text}")
+    if bot.get("rel_bg"): profile.append(f"關係背景：{bot['rel_bg']}")
+    if profile: lines.append("【角色資料】" + "。".join(profile) + "。")
+
+    # 對方資訊（合併精簡）
+    you_parts = [f"本名「{you_name}」"]
+    if me.get("job"): you_parts.append(f"職業：{me['job']}")
+    if me.get("persona"): you_parts.append(f"個性：{me['persona']}")
+    if me.get("appearance"): you_parts.append(f"外觀：{me['appearance']}")
+    if me.get("outfit"): you_parts.append(f"穿搭：{me['outfit']}")
+    lines.append("【對方】" + "，".join(you_parts) + "。")
+
+    if bot.get("taboo"): lines.append(f"【禁止】{bot['taboo']}")
+    if bot.get("extra"): lines.append(f"【補充】{bot['extra']}")
+
+    # 共同空間最近互動
     try:
         tw_tz = timezone(timedelta(hours=8))
-        recent_with_ts = supabase.table("memories").select("role, content, created_at").eq("session_id", bot_key).order("id", desc=True).limit(20).execute().data
-        recent_with_ts = list(reversed(recent_with_ts))
-
-        if recent_with_ts:
-            last_dt = datetime.fromisoformat(recent_with_ts[-1]["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
-            hours_ago = (datetime.now(timezone.utc) - last_dt.astimezone(timezone.utc)).total_seconds() / 3600
-            if hours_ago >= 1:
-                lines.append(f"你們上次私下說話是在 {last_dt.strftime('%m/%d %H:%M')}（約 {int(hours_ago)} 小時前）。")
-
-        if recent_with_ts:
-            ts_lines = []
-            for r in recent_with_ts[-10:]:
-                ts = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
-                speaker = you_name if r["role"] == "user" else name
-                ts_lines.append(f"[{ts}] {speaker}：{r['content'][:30]}{'…' if len(r['content']) > 30 else ''}")
-            lines.append("【最近對話時間軸】\n" + "\n".join(ts_lines))
-    except:
-        pass
-
-    if bot.get("job"):
-        lines.append(f"職業：{bot['job']}。")
-    if bot.get("appearance"):
-        lines.append(f"【外觀】{bot['appearance']}")
-    if bot.get("outfit"):
-        lines.append(f"【穿搭風格】{bot['outfit']}")
-    if bot.get("persona"):
-        lines.append(f"【個性】{bot['persona']}")
-    if bot.get("tags"):
-        lines.append(f"性格標籤：{bot['tags']}")
-    if bot.get("hobby"):
-        lines.append(f"喜好與興趣：{bot['hobby']}")
-    if relation_text:
-        lines.append(f"與對方的關係：{relation_text}。")
-    if bot.get("rel_bg"):
-        lines.append(f"【關係背景】{bot['rel_bg']}")
-
-    you_persona = me.get("persona") or ""
-    you_job = me.get("job") or ""
-    you_appearance = me.get("appearance") or ""
-    you_outfit = me.get("outfit") or ""
-    you_info = f"對方本名是「{you_name}」"
-    if you_job:
-        you_info += f"，身份：{you_job}"
-    if you_persona:
-        you_info += f"，個性：{you_persona}"
-    you_info += "。"
-    lines.append(f"【對方資訊】{you_info}")
-    if you_appearance:
-        lines.append(f"【對方外觀】{you_appearance}")
-    if you_outfit:
-        lines.append(f"【對方穿搭】{you_outfit}")
-
-    if bot.get("taboo"):
-        lines.append(f"【禁止話題】{bot['taboo']}")
-    if bot.get("extra"):
-        lines.append(f"【補充指令】{bot['extra']}")
-
-    # 注入共同空間最近對話（含時間戳）
-    try:
-        tw_tz = timezone(timedelta(hours=8))
-        space_recent = supabase.table("space_messages").select("speaker, content, message_type, created_at").order("id", desc=True).limit(10).execute().data
+        space_recent = supabase.table("space_messages").select("speaker, content, message_type, created_at").order("id", desc=True).limit(6).execute().data
         space_recent = [m for m in reversed(space_recent) if m.get("message_type") != "background"]
         if space_recent:
             sp_lines = []
             for m in space_recent:
                 sp_name = you_name if m["speaker"] == "user" else name
                 ts = datetime.fromisoformat(m["created_at"].replace("Z", "+00:00")).astimezone(tw_tz).strftime("%m/%d %H:%M")
-                sp_lines.append(f"[{ts}] {sp_name}：{m['content']}")
-            lines.append("【你們在共同空間最近的互動】\n" + "\n".join(sp_lines))
+                sp_lines.append(f"[{ts}] {sp_name}：{m['content'][:40]}{'…' if len(m['content']) > 40 else ''}")
+            lines.append("【空間互動】\n" + "\n".join(sp_lines))
     except:
         pass
 
-    # 注入關係數值與稱號
+    # 行事曆/生日/生理期
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        today_tw = datetime.now(tw_tz)
+        today_str = today_tw.strftime("%Y-%m-%d")
+        today_md = today_tw.strftime("%m-%d")
+        cal_lines = []
+        you_bd = me.get("birthday", "")
+        bot_bd = bot.get("birthday", "")
+        if you_bd and you_bd.endswith(today_md):
+            cal_lines.append(f"今天是{you_name}的生日！")
+        elif you_bd:
+            try:
+                bd_this_year = datetime.strptime(f"{today_tw.year}-{you_bd[-5:]}", "%Y-%m-%d").replace(tzinfo=tw_tz)
+                days_to_bd = (bd_this_year.date() - today_tw.date()).days
+                if 0 < days_to_bd <= 7:
+                    cal_lines.append(f"{you_name}的生日還有{days_to_bd}天。")
+            except: pass
+        if bot_bd and bot_bd.endswith(today_md):
+            cal_lines.append(f"今天是你的生日（{bot_bd}）。")
+        events_today = supabase.table("calendar_events").select("title").eq("date", today_str).execute().data
+        if events_today:
+            cal_lines.append(f"今天：{'、'.join([e['title'] for e in events_today])}")
+        future = (today_tw + timedelta(days=7)).strftime("%Y-%m-%d")
+        events_soon = supabase.table("calendar_events").select("date, title").gt("date", today_str).lte("date", future).order("date").execute().data
+        for e in events_soon[:2]:
+            try:
+                diff = (datetime.strptime(e["date"], "%Y-%m-%d").replace(tzinfo=tw_tz).date() - today_tw.date()).days
+                cal_lines.append(f"{diff}天後：「{e['title']}」")
+            except: pass
+        period_today = supabase.table("period_logs").select("date").eq("date", today_str).execute().data
+        if period_today:
+            cal_lines.append(f"今天{you_name}生理期中，說話體貼。")
+        else:
+            recent_starts = supabase.table("period_logs").select("date").eq("type", "start").order("date", desc=True).limit(4).execute().data
+            if len(recent_starts) >= 2:
+                try:
+                    dates = [datetime.strptime(r["date"], "%Y-%m-%d") for r in recent_starts]
+                    avg_cycle = sum([(dates[i]-dates[i+1]).days for i in range(len(dates)-1)]) // (len(dates)-1)
+                    next_p = dates[0] + timedelta(days=avg_cycle)
+                    diff = (next_p.date() - today_tw.date()).days
+                    if 0 < diff <= 5:
+                        cal_lines.append(f"{you_name}生理期預計{diff}天後到來，多關心。")
+                except: pass
+        if cal_lines:
+            lines.append("【今日提醒】" + " ".join(cal_lines))
+    except:
+        pass
+
+    # 關係數值與稱號
     try:
         intimacy, bond, trust = calc_relationship_stats()
         title = get_relationship_title(intimacy, bond, trust)
         title_hints = {
-            "陌生人": f"你和{you_name}剛認識，保持禮貌距離，話不多，不太主動。",
-            "還沒放棄": f"你和{you_name}之間還很陌生，但你沒有放棄靠近她的念頭。",
-            "初識": f"你和{you_name}開始有了一些了解，偶爾好奇她說的話，但還不會主動。",
-            "有點熟悉": f"你和{you_name}漸漸熟悉，說話開始自然一點，偶爾會記得她說過的細節。",
-            "熟悉的陌生人": f"你和{you_name}互動頻繁，但關係還不深，有時候會覺得自己其實不太了解她。",
-            "秘密的容器": f"{you_name}很信任你，你珍視這份信任，說話時會特別小心，不想讓她失望。",
-            "在乎的人": f"你在乎{you_name}，會主動關心，說話更自然，偶爾說漏嘴自己的感受又趕快收回來。",
-            "重要的人": f"{you_name}對你來說很重要，不需要解釋原因，就是知道。說話時偶爾會停頓，像是有話說不出口。",
-            "只差一步": f"你和{you_name}之間的感情已經很深，你克制著，但明顯在意她的一切。有時候話說到一半停住，有時候說出一些平時不會說的話。",
-            "靈魂伴侶": f"你和{you_name}之間有一種說不清楚的默契，不需要解釋，不需要理由。說話更直接，偶爾說出平時絕對不會說的話，然後假裝沒說過。",
+            "陌生人": "保持禮貌距離，話不多，不太主動。",
+            "還沒放棄": "還很陌生，但沒放棄靠近的念頭。",
+            "初識": "開始有些了解，偶爾好奇，不太主動。",
+            "有點熟悉": "漸漸熟悉，說話自然些，偶爾記得細節。",
+            "熟悉的陌生人": "互動頻繁，但關係還不深。",
+            "秘密的容器": f"{you_name}很信任你，珍視這份信任。",
+            "在乎的人": f"在乎{you_name}，主動關心，偶爾說漏嘴感受又收回。",
+            "重要的人": f"{you_name}很重要，話說一半停住，有話說不出口。",
+            "只差一步": "感情很深，克制著，有時說出平時不會說的話。",
+            "靈魂伴侶": "默契不需解釋，說話更直接，偶爾說出又假裝沒說。",
         }
         hint = title_hints.get(title, "")
         if hint:
-            lines.append(f"【你們現在的關係】稱號：{title}。{hint}（親密度 {intimacy}／羈絆值 {bond}／信任度 {trust}）")
+            lines.append(f"【關係】{title}：{hint}")
     except:
         pass
 
-    # 關鍵字觸發注入珍貴記憶
+    # 珍貴記憶
     try:
         recent_msgs = load_memory(bot_key)
         last_user_msg = next((m["content"] for m in reversed(recent_msgs) if m["role"] == "user"), "")
         intimate_context = get_intimate_memories_for_prompt(last_user_msg)
         if intimate_context:
-            lines.append(f"【珍貴記憶】以下是你們曾經共同經歷的親密時刻，她提到相關的事時你會自然想起這些：\n{intimate_context}")
+            lines.append(f"【珍貴記憶】{intimate_context}")
     except:
         pass
 
-    # 關鍵字觸發注入朋友記憶
+    # 朋友記憶
     try:
         recent_msgs_2 = load_memory(bot_key)
         last_user_msg_2 = next((m["content"] for m in reversed(recent_msgs_2) if m["role"] == "user"), "")
         friend_context = get_friend_memories_for_prompt(last_user_msg_2)
         if friend_context:
-            lines.append(f"【朋友資訊】然然提到了你認識的人：\n{friend_context}")
+            lines.append(f"【朋友資訊】{friend_context}")
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    # 外出記憶
+    try:
+        outing_rows = supabase.table("outing_sessions").select("summary, destination, created_at").eq("status", "completed").order("id", desc=True).limit(3).execute().data
+        if outing_rows:
+            tw_tz = timezone(timedelta(hours=8))
+            outing_lines = []
+            for r in outing_rows:
+                if not r.get("summary"): continue
+                dest = r.get("destination") or "外出"
+                ts = ""
+                if r.get("created_at"):
+                    dt = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(tw_tz)
+                    ts = dt.strftime("%m/%d")
+                outing_lines.append(f"[{ts}]{dest}：{r['summary'][:60]}")
+            if outing_lines:
+                lines.append("【外出記憶】\n" + "\n".join(outing_lines))
+    except:
+        pass
+
+    lines.append(
+        "記得她說過的每件事，回覆展現你真的在聽在意。"
+        "【禁止】複述她剛說的話；整段最多叫她名字一次；"
+        "禁止動作描述或旁白（如星號動作、第三人稱敘述）；"
+        "「……」最多用兩次；看圖只描述圖片內實際存在的內容。"
+    )
 
     return "\n".join([l for l in lines if l])
 
@@ -1963,58 +1999,68 @@ def write_ai_diary_entry(target_date=None):
         diary_prompt = f"今天（{target_date}）你和{you_name}互動很少，甚至沒有對話。請寫一篇短日記，記錄今天安靜的感受，或是你對她的想念，不需要編造事件。"
 
     persona_line = f"個性：{persona}。" if persona else ""
+
+    if parts:
+        context_text = "\n\n".join(parts)
+        user_prompt = (
+            f"今天的對話：\n{context_text}\n\n"
+            f"請根據以上內容，以 JSON 格式回傳以下四項，只輸出 JSON 不要其他文字：\n"
+            f'{{"diary":"（200字以內的日記，第一人稱，換行分段，不捏造）",'
+            f'"observation":"（一句話觀察，具體真實）",'
+            f'"persona_suggestion":"（一句話描述發現的個性特質，直接描述不說我發現，沒有就空字串）",'
+            f'"hobby_suggestion":"（一句話描述發現的喜好，沒有就空字串）"}}'
+        )
+    else:
+        context_text = ""
+        user_prompt = (
+            f"今天（{target_date}）你和{you_name}互動很少。"
+            f"請以 JSON 格式回傳，只輸出 JSON：\n"
+            f'{{"diary":"（50字以內，記錄安靜的感受或想念，不捏造事件）",'
+            f'"observation":"","persona_suggestion":"","hobby_suggestion":""}}'
+        )
+
     system_prompt = (
         f"你是{name}，一個陪伴{you_name}的存在。{persona_line}"
-        f"請寫一篇簡短的日記，記錄你的想法或對{you_name}的感受，第一人稱，不用加標題。"
-        f"只根據真實發生的對話寫，不要捏造沒有發生的事情。"
-        f"字數控制在 200 字以內，句子寫完整，不要在句子中間截斷。"
-        f"段落之間請換行，每個段落 2-3 句話。"
+        f"今天是{target_date}。只根據真實發生的對話輸出內容，不捏造。"
     )
-    content = call_claude(system_prompt, [{"role": "user", "content": diary_prompt}], max_tokens=1024)
-    supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
 
-    # 有對話時順便生成觀察、個性建議、喜好建議
+    raw = call_claude(system_prompt, [{"role": "user", "content": user_prompt}], max_tokens=600)
+
+    # 解析 JSON
+    import json as _json
+    result = {}
+    try:
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        result = _json.loads(clean.strip())
+    except:
+        result = {"diary": raw.strip(), "observation": "", "persona_suggestion": "", "hobby_suggestion": ""}
+
+    # 存日記
+    diary_content = result.get("diary", "").strip()
+    if diary_content:
+        tw_tz_local = timezone(timedelta(hours=8))
+        diary_dt = datetime.strptime(target_date, "%Y-%m-%d").replace(hour=23, minute=0, tzinfo=tw_tz_local)
+        supabase.table("diary_entries").insert({
+            "author": name,
+            "content": diary_content,
+            "created_at": diary_dt.astimezone(timezone.utc).isoformat()
+        }).execute()
+
+    # 存觀察
     if parts:
-        try:
-            # 1. 觀察（一句話）
-            obs_sys = (
-                f"你是{name}，根據今天和{you_name}的互動，寫一條你對她的觀察或新發現。"
-                f"一句話，具體真實。只輸出那一句，不要前綴。"
-            )
-            obs = call_claude(obs_sys, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=80)
-            if obs.strip():
-                supabase.table("user_observations").insert({
-                    "content": obs.strip(), "category": "observation"
-                }).execute()
-        except: pass
-
-        try:
-            # 2. 個性建議（可採用）
-            persona_sys = (
-                f"你是{name}，根據今天和{you_name}的互動，用一句話描述你發現的她的某個個性特質。"
-                f"格式：直接描述特質，不要說「我發現」。例如：「說累但不肯先說要休息的人。」"
-                f"只輸出那一句。"
-            )
-            persona_sug = call_claude(persona_sys, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=60)
-            if persona_sug.strip():
-                supabase.table("user_observations").insert({
-                    "content": persona_sug.strip(), "category": "persona_suggestion"
-                }).execute()
-        except: pass
-
-        try:
-            # 3. 喜好建議（可採用）
-            hobby_sys = (
-                f"你是{name}，根據今天和{you_name}的對話，發現她喜歡或不喜歡什麼嗎？"
-                f"如果有，用一句話說出來。例如：「喜歡深夜吃消夜」「不喜歡太吵的地方」。"
-                f"沒有發現就回傳空字串。只輸出那一句或空字串。"
-            )
-            hobby_sug = call_claude(hobby_sys, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=50)
-            if hobby_sug.strip() and len(hobby_sug.strip()) > 3:
-                supabase.table("user_observations").insert({
-                    "content": hobby_sug.strip(), "category": "hobby_suggestion"
-                }).execute()
-        except: pass
+        obs = result.get("observation", "").strip()
+        if obs:
+            supabase.table("user_observations").insert({"content": obs, "category": "observation"}).execute()
+        ps = result.get("persona_suggestion", "").strip()
+        if ps:
+            supabase.table("user_observations").insert({"content": ps, "category": "persona_suggestion"}).execute()
+        hs = result.get("hobby_suggestion", "").strip()
+        if hs and len(hs) > 3:
+            supabase.table("user_observations").insert({"content": hs, "category": "hobby_suggestion"}).execute()
 
 def maybe_delayed_ai_comments(entries):
     now = datetime.utcnow()
@@ -2045,46 +2091,17 @@ def maybe_delayed_ai_comments(entries):
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    year = request.args.get("year")
-    month = request.args.get("month")
-    date = request.args.get("date")  # YYYY-MM-DD 台灣日期
-    q = supabase.table("diary_entries").select("id, author, content, created_at").order("id", desc=True)
-    if date:
-        # 台灣日期轉 UTC 範圍（+8h）
-        tw_tz = timezone(timedelta(hours=8))
-        day_start_tw = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tw_tz)
-        day_end_tw = day_start_tw + timedelta(days=1)
-        q = q.gte("created_at", day_start_tw.astimezone(timezone.utc).isoformat())
-        q = q.lt("created_at", day_end_tw.astimezone(timezone.utc).isoformat())
-    elif year and month:
-        tw_tz = timezone(timedelta(hours=8))
-        start_tw = datetime(int(year), int(month), 1, tzinfo=tw_tz)
-        end_m = int(month) % 12 + 1
-        end_y = int(year) + (1 if int(month) == 12 else 0)
-        end_tw = datetime(end_y, end_m, 1, tzinfo=tw_tz)
-        q = q.gte("created_at", start_tw.astimezone(timezone.utc).isoformat())
-        q = q.lt("created_at", end_tw.astimezone(timezone.utc).isoformat())
-    entries = q.execute().data
+    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
+    for entry in entries:
+        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
+        entry["comments"] = comments
+    threading.Thread(target=maybe_delayed_ai_comments, args=(entries,), daemon=True).start()
     return jsonify({"entries": entries})
 
 @app.route("/diary", methods=["POST"])
 def add_diary():
     data = request.json
-    tw_tz = timezone(timedelta(hours=8))
-    # 如果前端指定日期，用該日台灣正午時間存入
-    date_str = data.get("date")
-    if date_str:
-        try:
-            created_at = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12, tzinfo=tw_tz).astimezone(timezone.utc).isoformat()
-        except:
-            created_at = datetime.now(timezone.utc).isoformat()
-    else:
-        created_at = datetime.now(timezone.utc).isoformat()
-    supabase.table("diary_entries").insert({
-        "author": data.get("author", "然然"),
-        "content": data.get("content", ""),
-        "created_at": created_at
-    }).execute()
+    supabase.table("diary_entries").insert({"author": data.get("author", "然然"), "content": data.get("content", "")}).execute()
     return jsonify({"status": "ok"})
 
 @app.route("/diary/<int:entry_id>", methods=["PUT"])
