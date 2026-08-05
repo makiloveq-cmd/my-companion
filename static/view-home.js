@@ -82,6 +82,50 @@
             <div class="hm-card-sub">API 監控</div>
           </button>
         </div>
+        <div id="hmSpotifyCard" style="display:none;margin-top:12px;">
+          <style>
+            .hm-vinyl-wrap{display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:16px;border:0.5px solid var(--border);padding:12px 14px}
+            .hm-disc{width:64px;height:64px;border-radius:50%;background:conic-gradient(#1a1a1a 0deg,#2a2a2a 20deg,#1a1a1a 40deg,#2a2a2a 60deg,#1a1a1a 80deg,#2a2a2a 100deg,#1a1a1a 120deg,#2a2a2a 140deg,#1a1a1a 160deg,#2a2a2a 180deg,#1a1a1a 200deg,#2a2a2a 220deg,#1a1a1a 240deg,#2a2a2a 260deg,#1a1a1a 280deg,#2a2a2a 300deg,#1a1a1a 320deg,#2a2a2a 340deg,#1a1a1a 360deg);animation:hmSpin 4s linear infinite;position:relative;flex-shrink:0}
+            .hm-disc-inner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;overflow:hidden;border:2px solid #111}
+            .hm-disc-inner img{width:100%;height:100%;object-fit:cover}
+            .hm-disc-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:7px;height:7px;border-radius:50%;background:#1a1a1a;border:1.5px solid #444;z-index:2}
+            @keyframes hmSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+            .hm-vinyl-info{flex:1;min-width:0}
+            .hm-vinyl-track{font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .hm-vinyl-artist{font-size:11px;color:var(--text-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .hm-vinyl-now{font-size:10px;color:#1db954;margin-top:5px;display:flex;align-items:center;gap:4px}
+            .hm-bars{display:flex;align-items:flex-end;gap:2px;height:10px}
+            .hm-bar{width:2px;background:#1db954;border-radius:1px;animation:hmBounce var(--d) ease-in-out infinite alternate}
+            @keyframes hmBounce{from{height:2px}to{height:10px}}
+            .hm-vinyl-prog{margin-top:8px;height:2px;background:var(--border);border-radius:1px;overflow:hidden}
+            .hm-vinyl-prog-fill{height:100%;width:0%;background:#1db954;border-radius:1px;transition:width 1s linear}
+          </style>
+          <div class="hm-vinyl-wrap">
+            <div class="hm-disc" id="hmDisc">
+              <div class="hm-disc-inner"><img id="hmSpotifyArt" src="" alt=""></div>
+              <div class="hm-disc-center"></div>
+            </div>
+            <div class="hm-vinyl-info">
+              <div class="hm-vinyl-track" id="hmSpotifyTrack"></div>
+              <div class="hm-vinyl-artist" id="hmSpotifyArtist"></div>
+              <div class="hm-vinyl-now">
+                <div class="hm-bars">
+                  <div class="hm-bar" style="--d:0.6s"></div>
+                  <div class="hm-bar" style="--d:0.4s"></div>
+                  <div class="hm-bar" style="--d:0.8s"></div>
+                  <div class="hm-bar" style="--d:0.5s"></div>
+                </div>
+                正在播放
+              </div>
+              <div class="hm-vinyl-prog"><div class="hm-vinyl-prog-fill" id="hmSpotifyProg"></div></div>
+            </div>
+          </div>
+        </div>
+        <div id="hmSpotifyConnect" style="margin-top:12px;text-align:center;display:none;">
+          <button id="hmSpotifyConnectBtn" style="font-size:12px;padding:8px 16px;background:rgba(30,215,96,0.12);border:0.5px solid rgba(30,215,96,0.3);border-radius:20px;color:#1ed760;cursor:pointer;">
+            🎵 連結 Spotify
+          </button>
+        </div>
       </div>
     `;
 
@@ -107,7 +151,45 @@
       card.onclick = () => RifugioRouter.navigate(card.dataset.route);
     });
 
-    return function cleanup() {};
+    // Spotify 狀態
+    async function loadSpotify() {
+      try {
+        const res = await fetch('/spotify/now_playing');
+        const data = await res.json();
+        if (data.connected && data.playing) {
+          const card = document.getElementById('hmSpotifyCard');
+          if (card) {
+            card.style.display = 'block';
+            document.getElementById('hmSpotifyTrack').textContent = data.track;
+            document.getElementById('hmSpotifyArtist').textContent = `${data.artist}${data.album ? ' · ' + data.album : ''}`;
+            const art = document.getElementById('hmSpotifyArt');
+            if (data.album_art && art.src !== data.album_art) art.src = data.album_art;
+            // 進度條
+            if (data.duration_ms > 0) {
+              const pct = Math.round((data.progress_ms / data.duration_ms) * 100);
+              const prog = document.getElementById('hmSpotifyProg');
+              if (prog) prog.style.width = pct + '%';
+            }
+          }
+        } else if (data.connected && !data.playing) {
+          const card = document.getElementById('hmSpotifyCard');
+          if (card) card.style.display = 'none';
+        } else if (!data.connected) {
+          const connectDiv = document.getElementById('hmSpotifyConnect');
+          if (connectDiv) connectDiv.style.display = 'block';
+        }
+      } catch(e) {}
+    }
+    loadSpotify();
+
+    document.getElementById('hmSpotifyConnectBtn')?.addEventListener('click', () => {
+      window.location.href = '/spotify/auth';
+    });
+
+    // 每 30 秒更新播放狀態
+    const spotifyInterval = setInterval(loadSpotify, 30000);
+
+    return function cleanup() { clearInterval(spotifyInterval); };
   }
 
   window.RifugioViews = window.RifugioViews || {};
