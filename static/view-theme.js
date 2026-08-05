@@ -182,6 +182,13 @@
     let bgImageUrl = null;
     let bgOpacity = 30;
 
+    function hexToHsl(hex) {
+      let r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+      const max=Math.max(r,g,b), min=Math.min(r,g,b); let h,s,l=(max+min)/2;
+      if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);
+        switch(max){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;case b:h=((r-g)/d+4)/6;break;}}
+      return [Math.round(h*360), Math.round(s*100), Math.round(l*100)];
+    }
     function hsl2hex(h, s, l) {
       s /= 100; l /= 100;
       const a = s * Math.min(l, 1 - l);
@@ -338,7 +345,35 @@
       const res = await fetch('/theme/custom');
       const data = await res.json();
       if (data && data.bg) {
-        // 之後補上載入邏輯
+        // 還原顏色滑桿
+        const fields = ['bg','surface','user','accent','text'];
+        const keys = ['bg','surface','bubble-user','accent','text'];
+        fields.forEach((f,i) => {
+          const hex = data[keys[i]];
+          if (!hex) return;
+          const hsl = hexToHsl(hex);
+          if (!hsl) return;
+          sliders[f] = hsl;
+        });
+        // 還原背景圖片
+        if (data.bg_image) {
+          bgImageUrl = data.bg_image;
+          const previewImg = document.getElementById('thImgPreviewImg');
+          const previewWrap = document.getElementById('thImgPreviewWrap');
+          const opRow = document.getElementById('thOpacityRow');
+          const uploadBtn = document.getElementById('thImgUpload');
+          if (previewImg) previewImg.src = bgImageUrl;
+          if (previewWrap) previewWrap.style.display = 'block';
+          if (opRow) opRow.style.display = 'flex';
+          if (uploadBtn) uploadBtn.style.display = 'none';
+        }
+        if (data.bg_opacity !== undefined) {
+          bgOpacity = data.bg_opacity;
+          const opEl = document.getElementById('thOp');
+          const opV = document.getElementById('thOpV');
+          if (opEl) opEl.value = bgOpacity;
+          if (opV) opV.textContent = bgOpacity;
+        }
       }
     } catch (e) {}
 
