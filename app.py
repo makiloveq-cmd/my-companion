@@ -2257,7 +2257,19 @@ def maybe_delayed_ai_comments(entries):
 
 @app.route("/diary", methods=["GET"])
 def get_diary():
-    entries = supabase.table("diary_entries").select("*").order("id", desc=True).execute().data
+    date_param = request.args.get("date")  # 格式 YYYY-MM-DD（台灣時間）
+    tw_tz = timezone(timedelta(hours=8))
+    q = supabase.table("diary_entries").select("*").order("id", desc=True)
+    if date_param:
+        try:
+            # 篩選 created_at 落在指定台灣日期的 00:00:00 ~ 23:59:59
+            date_obj = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=tw_tz)
+            start_utc = (date_obj).astimezone(timezone.utc).isoformat()
+            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+            q = q.gte("created_at", start_utc).lt("created_at", end_utc)
+        except Exception:
+            pass
+    entries = q.execute().data
     for entry in entries:
         comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
         entry["comments"] = comments
