@@ -4837,6 +4837,61 @@ def cron_visitor_chat():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/cron/together_timeout", methods=["POST"])
+@require_auth
+def cron_together_timeout():
+    """定時檢查 together 模式訪客是否超時（超過 2 小時無更新自動送客）"""
+    try:
+        TIMEOUT_HOURS = 2
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)).isoformat()
+
+        rows = supabase.table("visitor_sessions").select("*") \
+            .eq("status", "active") \
+            .eq("mode", "together") \
+            .lt("updated_at", cutoff) \
+            .execute().data
+
+        if not rows:
+            return jsonify({"status": "no_timeout_sessions"})
+
+        results = []
+        for row in rows:
+            session_id = row["id"]
+            visitor_name = row.get("visitor_name", "訪客")
+            messages = row.get("messages") or []
+
+            personas = get_personas()
+            bot = personas.get("claude", {})
+            me = personas.get("user", {})
+            name = bot.get("name") or "晏"
+            you_name = me.get("name") or "然然"
+            mode = row.get("mode", "together")
+
+            context = "\n".join([
+                f"{'你' if m['role'] == 'assistant' else (you_name if mode == 'together' else visitor_name)}：{m['content']}"
+                for m in messages
+            ]) if messages else "（無對話記錄）"
+
+            summary_system = f"你是{name}，{visitor_name}的拜訪已經結束了。請整理這次到訪的摘要：條列3-5個重點，加上晏自己的一句感受（50字以內）。"
+            try:
+                summary = call_claude(summary_system, [{"role": "user", "content": f"請整理：\n{context}"}], max_tokens=400)
+                summary = summary.strip()
+            except:
+                summary = f"{visitor_name} 的到訪已結束。"
+
+            supabase.table("visitor_sessions").update({
+                "summary": summary,
+                "status": "completed",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", session_id).execute()
+
+            results.append({"session_id": session_id, "visitor": visitor_name, "status": "timed_out"})
+
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/chatlist_page")
 def chatlist_page():
     return send_from_directory(".", "chatlist.html")
