@@ -6,6 +6,7 @@ import anthropic
 import os
 import random
 import uuid
+import requests
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 import threading
