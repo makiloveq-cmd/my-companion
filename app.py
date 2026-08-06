@@ -6,7 +6,6 @@ import anthropic
 import os
 import random
 import uuid
-import requests
 from datetime import datetime, timezone, timedelta
 from supabase import create_client
 import threading
@@ -686,7 +685,7 @@ def spotify_callback():
     code = request.args.get("code")
     error = request.args.get("error")
     if error or not code:
-        return redirect(f"/#home?spotify=error&reason={error or 'no_code'}")
+        return redirect("/#settings?spotify=error")
     try:
         import base64
         creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
@@ -697,10 +696,7 @@ def spotify_callback():
         }, headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
         tokens = res.json()
         if "access_token" not in tokens:
-            err = tokens.get("error", "unknown")
-            desc = tokens.get("error_description", "")
-            print(f"[Spotify callback error] {err}: {desc}")
-            return redirect(f"/#home?spotify=error&reason={err}")
+            return redirect("/#settings?spotify=error")
         supabase.table("space_settings").upsert({
             "key": "spotify_access_token", "value": tokens["access_token"], "updated_at": datetime.now(timezone.utc).isoformat()
         }, on_conflict="key").execute()
@@ -709,8 +705,7 @@ def spotify_callback():
         }, on_conflict="key").execute()
         return redirect("/#home?spotify=connected")
     except Exception as e:
-        print(f"[Spotify callback exception] {e}")
-        return redirect(f"/#home?spotify=error&reason=exception")
+        return redirect("/#settings?spotify=error")
 
 def spotify_refresh_token():
     """用 refresh token 換新的 access token"""
@@ -772,6 +767,77 @@ def spotify_disconnect():
     try:
         supabase.table("space_settings").delete().in_("key", ["spotify_access_token", "spotify_refresh_token"]).execute()
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ===== 行事曆事件 & 生理期 =====
+
+@app.route("/calendar/events", methods=["GET"])
+def calendar_events_get():
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+        q = supabase.table("calendar_events").select("*").order("date")
+        if year and month:
+            start = f"{year}-{int(month):02d}-01"
+            end_m = int(month) % 12 + 1
+            end_y = int(year) + (1 if int(month) == 12 else 0)
+            end = f"{end_y}-{end_m:02d}-01"
+            q = q.gte("date", start).lt("date", end)
+        rows = q.execute().data
+        return jsonify({"events": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/events", methods=["POST"])
+def calendar_events_post():
+    try:
+        data = request.json
+        row = supabase.table("calendar_events").insert({
+            "date": data.get("date"),
+            "title": data.get("title", "").strip(),
+            "type": data.get("type", "note")
+        }).execute().data
+        return jsonify({"ok": True, "id": row[0]["id"] if row else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/events/<int:event_id>", methods=["DELETE"])
+def calendar_events_delete(event_id):
+    try:
+        supabase.table("calendar_events").delete().eq("id", event_id).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/period", methods=["GET"])
+def period_logs_get():
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+        q = supabase.table("period_logs").select("*").order("date")
+        if year and month:
+            start = f"{year}-{int(month):02d}-01"
+            end_m = int(month) % 12 + 1
+            end_y = int(year) + (1 if int(month) == 12 else 0)
+            end = f"{end_y}-{end_m:02d}-01"
+            q = q.gte("date", start).lt("date", end)
+        rows = q.execute().data
+        return jsonify({"logs": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/calendar/period", methods=["POST"])
+def period_logs_post():
+    try:
+        data = request.json
+        date = data.get("date")
+        existing = supabase.table("period_logs").select("id").eq("date", date).execute().data
+        if existing:
+            supabase.table("period_logs").delete().eq("date", date).execute()
+            return jsonify({"ok": True, "action": "removed"})
+        supabase.table("period_logs").insert({"date": date, "type": data.get("type", "day")}).execute()
+        return jsonify({"ok": True, "action": "added"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -2106,7 +2172,10 @@ def write_ai_diary_entry(target_date=None):
         f"段落之間請換行，每個段落 2-3 句話。"
     )
     content = call_claude(system_prompt, [{"role": "user", "content": diary_prompt}], max_tokens=1024)
-    supabase.table("diary_entries").insert({"author": name, "content": content}).execute()
+    # 存日記時用台灣日期正午，避免時區問題導致日期跑掉
+    tw_tz_diary = timezone(timedelta(hours=8))
+    diary_ts = datetime.strptime(target_date, "%Y-%m-%d").replace(hour=12, tzinfo=tw_tz_diary).astimezone(timezone.utc).isoformat()
+    supabase.table("diary_entries").insert({"author": name, "content": content, "created_at": diary_ts}).execute()
 
     # 有對話時順便生成觀察、個性建議、喜好建議
     if parts:
