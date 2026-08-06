@@ -1757,6 +1757,31 @@
     return function cleanup() {};
   }
 
+  // 訪客送客摘要視窗（IIFE 層級，供 visitor-room 跨 view 呼叫）
+  function showVisitorSummary(d) {
+    const summary = d.summary || '';
+    const visitorName = d.visitor_name || '訪客';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9997;display:flex;align-items:flex-end;';
+    const escaped = summary.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    modal.innerHTML = `
+      <div style="background:#111f35;border-radius:20px 20px 0 0;padding:20px;width:100%;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
+        <div style="width:32px;height:4px;background:#2a3a5a;border-radius:2px;margin:0 auto 16px;"></div>
+        <div style="color:#7a9ab8;font-size:13px;margin-bottom:12px;letter-spacing:0.05em;">${visitorName} 的到訪記錄</div>
+        <div style="background:#0d1624;border:0.5px solid #1e2d4a;border-radius:10px;padding:14px;color:#c8d8f0;font-size:13px;line-height:1.8;white-space:pre-wrap;">${escaped}</div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button id="visitorSummaryCloseBtn" style="flex:1;padding:10px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:13px;cursor:pointer;">✦ 好</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('visitorSummaryCloseBtn').onclick = () => { modal.remove(); };
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  }
+
   window.RifugioViews = window.RifugioViews || {};
-  window.RifugioViews.space = { mount };
+  window.RifugioViews.space = {
+    mount,
+    showSummary: showVisitorSummary
+  };
 })();
