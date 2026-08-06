@@ -285,9 +285,10 @@ def build_system_prompt(bot_key="claude"):
 
     # Spotify 目前播放
     try:
+        import requests as req
         at = supabase.table("space_settings").select("value").eq("key", "spotify_access_token").single().execute().data
         if at and at.get("value"):
-            sp_res = requests.get("https://api.spotify.com/v1/me/player/currently-playing",
+            sp_res = req.get("https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {at['value']}"}, timeout=3)
             if sp_res.status_code == 200 and sp_res.content:
                 sp_data = sp_res.json()
@@ -688,8 +689,9 @@ def spotify_callback():
         return redirect(f"/#home?spotify=error&reason={error or 'no_code'}")
     try:
         import base64
+        import requests as req
         creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
-        res = requests.post("https://accounts.spotify.com/api/token", data={
+        res = req.post("https://accounts.spotify.com/api/token", data={
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": SPOTIFY_REDIRECT_URI
@@ -715,10 +717,11 @@ def spotify_refresh_token():
     """用 refresh token 換新的 access token"""
     try:
         import base64
+        import requests as req
         rt = supabase.table("space_settings").select("value").eq("key", "spotify_refresh_token").single().execute().data
         if not rt or not rt.get("value"): return None
         creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
-        res = requests.post("https://accounts.spotify.com/api/token", data={
+        res = req.post("https://accounts.spotify.com/api/token", data={
             "grant_type": "refresh_token",
             "refresh_token": rt["value"]
         }, headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
@@ -735,16 +738,17 @@ def spotify_refresh_token():
 def spotify_now_playing():
     """取得目前播放的歌曲"""
     try:
+        import requests as req
         at = supabase.table("space_settings").select("value").eq("key", "spotify_access_token").single().execute().data
         if not at or not at.get("value"):
             return jsonify({"playing": False, "connected": False})
         token = at["value"]
-        res = requests.get("https://api.spotify.com/v1/me/player/currently-playing",
+        res = req.get("https://api.spotify.com/v1/me/player/currently-playing",
             headers={"Authorization": f"Bearer {token}"}, timeout=5)
         if res.status_code == 401:
             token = spotify_refresh_token()
             if not token: return jsonify({"playing": False, "connected": False})
-            res = requests.get("https://api.spotify.com/v1/me/player/currently-playing",
+            res = req.get("https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {token}"}, timeout=5)
         if res.status_code == 204 or not res.content:
             return jsonify({"playing": False, "connected": True})
@@ -4596,16 +4600,17 @@ def cron_spotify_check():
         if random.random() > 0.20:
             return jsonify({"status": "skipped"})
 
+        import requests as req
         at = supabase.table("space_settings").select("value").eq("key", "spotify_access_token").single().execute().data
         if not at or not at.get("value"):
             return jsonify({"status": "no_spotify"})
 
-        sp_res = requests.get("https://api.spotify.com/v1/me/player/currently-playing",
+        sp_res = req.get("https://api.spotify.com/v1/me/player/currently-playing",
             headers={"Authorization": f"Bearer {at['value']}"}, timeout=5)
         if sp_res.status_code == 401:
             new_token = spotify_refresh_token()
             if not new_token: return jsonify({"status": "token_expired"})
-            sp_res = requests.get("https://api.spotify.com/v1/me/player/currently-playing",
+            sp_res = req.get("https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {new_token}"}, timeout=5)
 
         if sp_res.status_code != 200 or not sp_res.content:
