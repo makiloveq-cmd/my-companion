@@ -685,7 +685,7 @@ def spotify_callback():
     code = request.args.get("code")
     error = request.args.get("error")
     if error or not code:
-        return redirect("/#settings?spotify=error")
+        return f"<pre>Spotify error param: {error}, code={code}</pre>", 400
     try:
         import base64
         creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
@@ -696,7 +696,7 @@ def spotify_callback():
         }, headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
         tokens = res.json()
         if "access_token" not in tokens:
-            return redirect("/#settings?spotify=error")
+            return f"<pre>Token exchange failed (HTTP {res.status_code}):\n{res.text}</pre>", 400
         supabase.table("space_settings").upsert({
             "key": "spotify_access_token", "value": tokens["access_token"], "updated_at": datetime.now(timezone.utc).isoformat()
         }, on_conflict="key").execute()
@@ -705,7 +705,7 @@ def spotify_callback():
         }, on_conflict="key").execute()
         return redirect("/#home?spotify=connected")
     except Exception as e:
-        return redirect("/#settings?spotify=error")
+        return f"<pre>Exception: {e}</pre>", 500
 
 def spotify_refresh_token():
     """用 refresh token 換新的 access token"""
