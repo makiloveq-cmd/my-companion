@@ -311,9 +311,7 @@
       } catch(e) {}
 
       // 生理期按鈕
-      const pbtn = document.getElementById('calPeriodBtn');
-      pbtn.className = 'cal-period-btn' + (curPeriod ? ' active' : '');
-      pbtn.textContent = curPeriod ? '🌸 已標記生理期（點擊取消）' : '🌸 標記生理期';
+      updatePeriodBtn();
 
       // 事件列表
       const evList = document.getElementById('calEventList');
@@ -365,15 +363,78 @@
       list.scrollTop = list.scrollHeight;
     }
 
-    // 生理期標記
+    const PERIOD_START_KEY = 'rifugio_period_start';
+    const PERIOD_DEFAULT_DAYS = 7;
+
+    function dateAddDays(dateStr, n) {
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function updatePeriodBtn() {
+      const pbtn = document.getElementById('calPeriodBtn');
+      const startDate = localStorage.getItem(PERIOD_START_KEY);
+      if (startDate) {
+        pbtn.className = 'cal-period-btn active';
+        pbtn.textContent = '🌸 今天生理期結束';
+      } else if (curPeriod) {
+        pbtn.className = 'cal-period-btn active';
+        pbtn.textContent = '🌸 已標記（點擊取消）';
+      } else {
+        pbtn.className = 'cal-period-btn';
+        pbtn.textContent = '🌸 生理期開始';
+      }
+    }
+
     document.getElementById('calPeriodBtn').onclick = async () => {
       if (!curDate) return;
-      await fetch('/calendar/period', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ date: curDate, type: curPeriod ? 'remove' : 'day' })
-      });
-      loadMonth(true);
+      const startDate = localStorage.getItem(PERIOD_START_KEY);
+
+      if (startDate) {
+        // 按「今天生理期結束」：
+        // 1. 確保 startDate ~ curDate 都有標記
+        // 2. 刪除 curDate 之後到預設結束日之間多餘的標記
+        const previewEnd = dateAddDays(startDate, PERIOD_DEFAULT_DAYS - 1);
+
+        // 寫入 start ~ curDate（確保這段都有）
+        await fetch('/calendar/period/range', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ start_date: startDate, end_date: curDate })
+        });
+
+        // 刪除 curDate+1 ~ previewEnd 之間多餘的日期
+        if (curDate < previewEnd) {
+          await fetch('/calendar/period/range', {
+            method: 'DELETE', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ start_date: dateAddDays(curDate, 1), end_date: previewEnd })
+          });
+        }
+
+        localStorage.removeItem(PERIOD_START_KEY);
+        loadMonth(true);
+
+      } else if (curPeriod) {
+        // 這天已標記 → 取消這天
+        await fetch('/calendar/period', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ date: curDate, type: 'remove' })
+        });
+        loadMonth(true);
+
+      } else {
+        // 第一次按「生理期開始」：往後自動標記 7 天
+        const endPreview = dateAddDays(curDate, PERIOD_DEFAULT_DAYS - 1);
+        await fetch('/calendar/period/range', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ start_date: curDate, end_date: endPreview })
+        });
+        localStorage.setItem(PERIOD_START_KEY, curDate);
+        loadMonth(true);
+        updatePeriodBtn();
+      }
     };
+    updatePeriodBtn();
 
     // 寫日記按鈕
     document.getElementById('calWriteDiaryBtn').onclick = () => {

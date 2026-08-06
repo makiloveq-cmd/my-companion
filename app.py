@@ -849,6 +849,41 @@ def period_logs_post():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/calendar/period/range", methods=["POST", "DELETE"])
+def period_logs_range():
+    """批次標記或刪除生理期區間（start_date ~ end_date）"""
+    try:
+        data = request.json
+        start_str = data.get("start_date")
+        end_str = data.get("end_date")
+        if not start_str or not end_str:
+            return jsonify({"error": "missing dates"}), 400
+        start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
+        end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
+        if end_d < start_d:
+            start_d, end_d = end_d, start_d
+
+        if request.method == "DELETE":
+            # 刪除區間內所有標記
+            supabase.table("period_logs").delete().gte("date", str(start_d)).lte("date", str(end_d)).execute()
+            return jsonify({"ok": True, "action": "deleted"})
+
+        # POST：寫入區間
+        existing = supabase.table("period_logs").select("date").gte("date", str(start_d)).lte("date", str(end_d)).execute().data
+        existing_dates = {r["date"] for r in existing}
+        to_insert = []
+        cur_d = start_d
+        while cur_d <= end_d:
+            ds = str(cur_d)
+            if ds not in existing_dates:
+                to_insert.append({"date": ds, "type": "day"})
+            cur_d += timedelta(days=1)
+        if to_insert:
+            supabase.table("period_logs").insert(to_insert).execute()
+        return jsonify({"ok": True, "inserted": len(to_insert)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ===== 空間設定 =====
 
 SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "intimate_keywords"]
