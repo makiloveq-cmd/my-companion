@@ -577,7 +577,7 @@ def get_history(bot):
 
 # ===== 人物設定 =====
 
-PERSONA_FIELDS = ["name", "job", "persona", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit"]
+PERSONA_FIELDS = ["name", "job", "persona", "relation", "rel_bg", "taboo", "extra", "avatar", "tags", "hobby", "appearance", "outfit", "birthday"]
 
 @app.route("/personas", methods=["GET"])
 def personas_get():
