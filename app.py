@@ -4385,6 +4385,16 @@ def voice_tts():
         text = data.get("text", "").strip()
         if not text:
             return jsonify({"error": "no text"}), 400
+
+        # 補停頓：長句中間沒有標點的地方插入逗號，讓語音更自然
+        import re
+        def inject_pauses(t):
+            # 超過 20 字沒有標點就補一個逗號（中文語境）
+            t = re.sub(r'([^\s，。！？、…,\.!?\n]{20})([^\s，。！？、…,\.!?\n])', r'\1，\2', t)
+            # 破折號前後加空格讓 ElevenLabs 停頓
+            t = t.replace('——', '—— ')
+            return t
+        text = inject_pauses(text)
         if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
             return jsonify({"error": "ElevenLabs not configured"}), 500
 
@@ -4402,9 +4412,9 @@ def voice_tts():
                 "text": text,
                 "model_id": "eleven_multilingual_v2",
                 "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "style": 0.3,
+                    "stability": 0.32,
+                    "similarity_boost": 0.65,
+                    "style": 0.55,
                     "use_speaker_boost": True
                 }
             },
