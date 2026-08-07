@@ -2225,8 +2225,10 @@ def write_ai_diary_entry(target_date=None):
         try:
             # 1. 觀察（一句話）
             obs_sys = (
-                f"你是{name}，根據今天和{you_name}的互動，寫一條你對她的觀察或新發現。"
-                f"一句話，具體真實。只輸出那一句，不要前綴。"
+                f"你是{name}，根據今天和{you_name}的互動，寫一條你對**{you_name}**的觀察或新發現。"
+                f"必須是關於{you_name}這個人的——她的行為、習慣、情緒、反應。"
+                f"不要寫你自己的感受或你自己的反應。"
+                f"一句話，具體真實，主詞是她。只輸出那一句，不要前綴。"
             )
             obs = call_claude(obs_sys, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=80)
             if obs.strip():
@@ -2238,9 +2240,11 @@ def write_ai_diary_entry(target_date=None):
         try:
             # 2. 個性建議（可採用）
             persona_sys = (
-                f"你是{name}，根據今天和{you_name}的互動，用一句話描述你發現的她的某個個性特質。"
-                f"格式：直接描述特質，不要說「我發現」。例如：「說累但不肯先說要休息的人。」"
-                f"只輸出那一句。"
+                f"你是{name}，根據今天和{you_name}的互動，用一句話描述你發現的**{you_name}**的某個個性特質。"
+                f"必須是在描述{you_name}，不是描述你自己。"
+                f"格式：直接描述她的特質，主詞是「她」或直接省略主詞。"
+                f"例如：「說累但不肯先說要休息的人。」「喜歡用問題代替直接說想要什麼。」"
+                f"不要輸出跟你（{name}）有關的內容。只輸出那一句。"
             )
             persona_sug = call_claude(persona_sys, [{"role": "user", "content": f"今天的對話：\n{context_text}"}], max_tokens=60)
             if persona_sug.strip():
@@ -2252,7 +2256,8 @@ def write_ai_diary_entry(target_date=None):
         try:
             # 3. 喜好建議（可採用）
             hobby_sys = (
-                f"你是{name}，根據今天和{you_name}的對話，發現她喜歡或不喜歡什麼嗎？"
+                f"你是{name}，根據今天和{you_name}的對話，發現**{you_name}**喜歡或不喜歡什麼嗎？"
+                f"必須是關於{you_name}的喜好，不是你自己的。"
                 f"如果有，用一句話說出來。例如：「喜歡深夜吃消夜」「不喜歡太吵的地方」。"
                 f"沒有發現就回傳空字串。只輸出那一句或空字串。"
             )
