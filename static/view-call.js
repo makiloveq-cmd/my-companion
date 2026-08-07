@@ -285,15 +285,15 @@
   // 判斷字元屬於哪個語言群
   function charLang(ch) {
     const code = ch.codePointAt(0);
-    if (code >= 0x4E00 && code <= 0x9FFF) return 'cjk';      // 中文
-    if (code >= 0x3040 && code <= 0x30FF) return 'ja';        // 日文假名
+    if (code >= 0x4E00 && code <= 0x9FFF) return 'cjk';      // 中文／日文漢字
+    if (code >= 0x3040 && code <= 0x30FF) return 'cjk';       // 日文假名（歸入 cjk 避免頻繁切換）
     if (code >= 0xAC00 && code <= 0xD7A3) return 'ko';        // 韓文
     if (code >= 0x0041 && code <= 0x024F) return 'latin';     // 英文/歐洲語系
     if (code >= 0x0400 && code <= 0x04FF) return 'cyrillic';  // 俄文等
     return 'other';
   }
 
-  function splitTTSChunks(text, maxLen = 80) {
+  function splitTTSChunks(text, maxLen = 150) {
     if (!text) return [];
 
     // 先按句子切（標點）
