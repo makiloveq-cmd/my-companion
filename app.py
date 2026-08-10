@@ -2152,8 +2152,8 @@ def write_ai_diary_entry(target_date=None):
     # 計算當天 UTC 時間範圍
     day_start_tw = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=tw_tz)
     day_end_tw = day_start_tw + timedelta(days=1)
-    day_start_utc = day_start_tw.astimezone(timezone.utc).isoformat()
-    day_end_utc = day_end_tw.astimezone(timezone.utc).isoformat()
+    day_start_utc = day_start_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    day_end_utc = day_end_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
     # 只取當天的私聊訊息
     try:
@@ -2304,8 +2304,8 @@ def get_diary():
         try:
             # 篩選 created_at 落在指定台灣日期的 00:00:00 ~ 23:59:59
             date_obj = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=tw_tz)
-            start_utc = (date_obj).astimezone(timezone.utc).isoformat()
-            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+            start_utc = (date_obj).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
             q = q.gte("created_at", start_utc).lt("created_at", end_utc)
         except Exception:
             pass
@@ -4518,7 +4518,7 @@ def cron_daily_message():
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
         today_start_tw = now_tw.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start_utc = today_start_tw.astimezone(timezone.utc).isoformat()
+        today_start_utc = today_start_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
         # 今天晏已主動傳過幾次（最多 2 次）
         today_proactive = supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "assistant").gte("created_at", today_start_utc).execute().data
@@ -4858,7 +4858,7 @@ def cron_together_timeout():
     """定時檢查 together 模式訪客是否超時（超過 2 小時無更新自動送客）"""
     try:
         TIMEOUT_HOURS = 2
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
 
         rows = supabase.table("visitor_sessions").select("*") \
             .eq("status", "active") \
