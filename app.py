@@ -133,17 +133,25 @@ def record_usage(api, input_tokens, output_tokens):
 # ===== AI 呼叫 =====
 
 def call_claude(system_prompt, messages, max_tokens=400, timeout=60):
+    import time
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=max_tokens,
-        system=system_prompt,
-        messages=messages,
-        timeout=timeout
-    )
-    reply = response.content[0].text
-    record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
-    return reply
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=messages,
+                timeout=timeout
+            )
+            reply = response.content[0].text
+            record_usage("anthropic", response.usage.input_tokens, response.usage.output_tokens)
+            return reply
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+            else:
+                raise
 
 # ===== System Prompt =====
 
