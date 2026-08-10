@@ -1371,6 +1371,9 @@ def space_outing():
 
             return jsonify({"status": "ok", "summary": summary, "outing_id": outing_id})
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/outing/start", methods=["POST"])
 def outing_start():
     """建立新的外出 session"""
