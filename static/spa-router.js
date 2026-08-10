@@ -94,6 +94,7 @@ window.RifugioRouter = (function () {
 window.formatTime = function(isoStr) {
   if (!isoStr) return '';
   let s = isoStr;
+  if (typeof s === 'string') s = s.replace(' ', 'T');
   if (typeof s === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
   const d = new Date(s);
   const now = new Date();
