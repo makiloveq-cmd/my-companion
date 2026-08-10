@@ -804,14 +804,7 @@
       const loading = addLoadingRow();
       try {
         let spaceData;
-        if (outingSessionId) {
-          // 外出中走獨立的 outing/chat
-          const outRes = await fetch('/outing/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: outingSessionId, message: text })
-          });
-          spaceData = await outRes.json();
-        } else if (visitorSessionId && visitorMode === 'together') {
+        if (visitorSessionId && visitorMode === 'together') {
           // 三人模式走 visitor/chat
           const visRes = await fetch('/visitor/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -838,6 +831,7 @@
           }
         } catch (e) {}
       } catch (e) {
+        console.error('[space reply error]', e);
         loading.remove();
         renderRetry();
       } finally {
