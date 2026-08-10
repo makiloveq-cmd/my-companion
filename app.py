@@ -1295,22 +1295,81 @@ def space_scene_post():
 
 @app.route("/space/outing", methods=["POST"])
 def space_outing():
-    """切換外出/回家狀態，並生成銜接回應"""
+    """切換外出/回家狀態。
+    開始：記錄 outing_start_time，回傳 ok。
+    結束：生成總結回傳給前端確認，由 /outing/confirm 存檔。
+    """
     try:
         data = request.json
         is_outing = data.get("outing", True)
-        now = datetime.now(timezone.utc).isoformat()
+        now_utc = datetime.now(timezone.utc)
+        now = now_utc.strftime("%Y-%m-%dT%H:%M:%S")
 
-        supabase.table("space_settings").upsert({
-            "key": "outing",
-            "value": "true" if is_outing else "false",
-            "updated_at": now
-        }, on_conflict="key").execute()
-        invalidate_cache("space_settings")
+        if is_outing:
+            # 外出開始：記錄開始時間
+            supabase.table("space_settings").upsert({
+                "key": "outing", "value": "true", "updated_at": now
+            }, on_conflict="key").execute()
+            supabase.table("space_settings").upsert({
+                "key": "outing_start_time", "value": now, "updated_at": now
+            }, on_conflict="key").execute()
+            invalidate_cache("space_settings")
+            return jsonify({"status": "ok"})
+        else:
+            # 外出結束：關閉狀態，撈訊息，生成總結回傳
+            start_time_row = supabase.table("space_settings").select("value").eq("key", "outing_start_time").execute().data
+            start_time = start_time_row[0]["value"] if start_time_row else None
 
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            supabase.table("space_settings").upsert({
+                "key": "outing", "value": "false", "updated_at": now
+            }, on_conflict="key").execute()
+            invalidate_cache("space_settings")
+
+            if not start_time:
+                return jsonify({"status": "ok", "summary": None})
+
+            personas = get_personas()
+            name = (personas.get("claude") or {}).get("name") or "晏"
+            you_name = (personas.get("user") or {}).get("name") or "然然"
+
+            msgs = supabase.table("space_messages").select("speaker, content") \
+                .neq("message_type", "background") \
+                .gte("created_at", start_time).lte("created_at", now) \
+                .order("id").execute().data or []
+
+            if not msgs:
+                return jsonify({"status": "ok", "summary": None})
+
+            context = "\n".join([
+                f"{'你' if m['speaker'] == 'claude' else you_name}：{m['content']}"
+                for m in msgs
+            ])
+
+            summary_prompt = (
+                f"你是{name}，請把這段和{you_name}一起外出的對話整理成記錄。\n\n"
+                f"格式：\n"
+                f"【重點記憶】\n"
+                f"・（條列3-5個重要的事、說的話、發生的事）\n\n"
+                f"【{name}的心得】\n"
+                f"（用{name}第一人稱，50字以內，帶他自己的語氣）\n\n"
+                f"必須寫完整，不能截斷。"
+            )
+            summary = call_claude(summary_prompt, [{"role": "user", "content": f"請整理以下對話：\n{context}"}], max_tokens=500)
+            summary = summary.strip()
+
+            # 先暫存一筆 pending 的 outing session，給前端確認後更新
+            result = supabase.table("outing_sessions").insert({
+                "destination": "",
+                "messages": [{"role": m["speaker"], "content": m["content"]} for m in msgs],
+                "summary": summary,
+                "keywords": "",
+                "status": "pending",
+                "created_at": start_time,
+                "updated_at": now
+            }).execute()
+            outing_id = result.data[0]["id"] if result.data else None
+
+            return jsonify({"status": "ok", "summary": summary, "outing_id": outing_id})
 
 @app.route("/outing/start", methods=["POST"])
 def outing_start():
@@ -1448,13 +1507,13 @@ def outing_end():
 
 @app.route("/outing/confirm", methods=["POST"])
 def outing_confirm():
-    """確認摘要後存進資料庫"""
+    """前端確認外出摘要後，更新 outing_sessions 為 completed"""
     try:
         data = request.json
-        session_id = data.get("session_id")
+        outing_id = data.get("outing_id") or data.get("session_id")
         summary = data.get("summary", "")
-        if not session_id:
-            return jsonify({"error": "no session_id"}), 400
+        if not outing_id:
+            return jsonify({"error": "no outing_id"}), 400
 
         keywords = ""
         try:
@@ -1467,20 +1526,13 @@ def outing_confirm():
         except:
             pass
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         supabase.table("outing_sessions").update({
             "summary": summary,
             "keywords": keywords,
             "status": "completed",
             "updated_at": now
-        }).eq("id", session_id).execute()
-
-        supabase.table("space_settings").upsert({
-            "key": "outing",
-            "value": "false",
-            "updated_at": now
-        }, on_conflict="key").execute()
-        invalidate_cache("space_settings")
+        }).eq("id", outing_id).execute()
 
         return jsonify({"status": "ok"})
     except Exception as e:
@@ -2152,8 +2204,8 @@ def write_ai_diary_entry(target_date=None):
     # 計算當天 UTC 時間範圍
     day_start_tw = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=tw_tz)
     day_end_tw = day_start_tw + timedelta(days=1)
-    day_start_utc = day_start_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    day_end_utc = day_end_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    day_start_utc = day_start_tw.astimezone(timezone.utc).isoformat()
+    day_end_utc = day_end_tw.astimezone(timezone.utc).isoformat()
 
     # 只取當天的私聊訊息
     try:
@@ -2304,8 +2356,8 @@ def get_diary():
         try:
             # 篩選 created_at 落在指定台灣日期的 00:00:00 ~ 23:59:59
             date_obj = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=tw_tz)
-            start_utc = (date_obj).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            start_utc = (date_obj).astimezone(timezone.utc).isoformat()
+            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).isoformat()
             q = q.gte("created_at", start_utc).lt("created_at", end_utc)
         except Exception:
             pass
@@ -4518,7 +4570,7 @@ def cron_daily_message():
         tw_tz = timezone(timedelta(hours=8))
         now_tw = datetime.now(tw_tz)
         today_start_tw = now_tw.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start_utc = today_start_tw.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        today_start_utc = today_start_tw.astimezone(timezone.utc).isoformat()
 
         # 今天晏已主動傳過幾次（最多 2 次）
         today_proactive = supabase.table("memories").select("id").eq("session_id", "claude").eq("role", "assistant").gte("created_at", today_start_utc).execute().data
@@ -4858,7 +4910,7 @@ def cron_together_timeout():
     """定時檢查 together 模式訪客是否超時（超過 2 小時無更新自動送客）"""
     try:
         TIMEOUT_HOURS = 2
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)).isoformat()
 
         rows = supabase.table("visitor_sessions").select("*") \
             .eq("status", "active") \
