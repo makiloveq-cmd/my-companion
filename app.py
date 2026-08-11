@@ -3040,7 +3040,7 @@ def intimate_draft_summary():
                 f"刪去重複與冗詞。300 字以內。用繁體中文。"
             )
             for c in chunks:
-                part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=100)
+                part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=150)
                 condensed.append(part.strip())
             combined = "\n\n---\n\n".join(condensed)
 
@@ -3051,7 +3051,7 @@ def intimate_draft_summary():
             f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
             f"兩段合計不超過 800 字。"
         )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=110)
+        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=160)
         return jsonify({"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
