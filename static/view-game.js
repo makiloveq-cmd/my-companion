@@ -843,13 +843,21 @@
       document.getElementById('gmChapterBtn').onclick = async () => {
         const btn = document.getElementById('gmChapterBtn');
         btn.disabled = true; btn.textContent = '整理中…';
-        await sealChapter();
+        try {
+          await sealChapter();
+        } catch (e) {
+          alert('封存失敗，請再試一次。\n（對話內容還在，不會不見）');
+        }
         if (btn) { btn.disabled = false; btn.textContent = '封存這章'; }
       };
       document.getElementById('gmEndBtn').onclick = async () => {
         const btn = document.getElementById('gmEndBtn');
         btn.disabled = true; btn.textContent = '整理中…';
-        await endStory();
+        try {
+          await endStory();
+        } catch (e) {
+          alert('結束故事失敗，請再試一次。\n（對話內容還在，不會不見）');
+        }
         if (btn) { btn.disabled = false; btn.textContent = '結束故事'; }
       };
     }
