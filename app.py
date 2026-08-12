@@ -1828,14 +1828,14 @@ def game_seal_chapter():
         setting = data.get("setting", "")
         now = datetime.now(timezone.utc).isoformat()
 
-        # 封存現有 session
+        # 封存現有 session（messages 清空，只保留 summary，避免資料太大超過 index 限制）
         if session_id:
             supabase.table("game_sessions").update({
                 "book_id": book_id,
                 "chapter_number": chapter_number,
                 "chapter_title": chapter_title,
                 "summary": summary,
-                "messages": messages,
+                "messages": [],
                 "status": "archived",
                 "updated_at": now
             }).eq("id", session_id).execute()
@@ -1873,14 +1873,14 @@ def game_end_story():
         setting = data.get("setting", "")
         now = datetime.now(timezone.utc).isoformat()
 
-        # 封存最後一章
+        # 封存最後一章（messages 清空，只保留 summary）
         if session_id:
             supabase.table("game_sessions").update({
                 "book_id": book_id,
                 "chapter_number": chapter_number,
                 "chapter_title": chapter_title,
                 "summary": summary,
-                "messages": messages,
+                "messages": [],
                 "status": "archived",
                 "updated_at": now
             }).eq("id", session_id).execute()
