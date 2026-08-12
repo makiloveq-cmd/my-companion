@@ -745,10 +745,23 @@
               <button class="gm-world-continue" data-id="${item.id}">繼續</button>
             </div>
           `;
-          div.querySelector('.gm-world-continue').onclick = () => {
+          div.querySelector('.gm-world-continue').onclick = async () => {
             gameSetting = item.setting;
             currentBookId = item.book_id;
             currentChapterNumber = item.chapter_number;
+            // 撈上一章的 summary 當 prevChapterSummary
+            prevChapterSummary = '';
+            if (item.book_id && item.chapter_number > 1) {
+              try {
+                const bRes = await fetch('/game/books');
+                const bData = await bRes.json();
+                const thisBook = (bData.books || []).find(b => b.id === item.book_id);
+                if (thisBook) {
+                  const prevChapter = (thisBook.chapters || []).find(ch => ch.chapter_number === item.chapter_number - 1);
+                  if (prevChapter && prevChapter.summary) prevChapterSummary = prevChapter.summary;
+                }
+              } catch (e) {}
+            }
             startGame(item.id, item.messages);
           };
           list.appendChild(div);
@@ -843,21 +856,13 @@
       document.getElementById('gmChapterBtn').onclick = async () => {
         const btn = document.getElementById('gmChapterBtn');
         btn.disabled = true; btn.textContent = '整理中…';
-        try {
-          await sealChapter();
-        } catch (e) {
-          alert('封存失敗，請再試一次。\n（對話內容還在，不會不見）');
-        }
+        await sealChapter();
         if (btn) { btn.disabled = false; btn.textContent = '封存這章'; }
       };
       document.getElementById('gmEndBtn').onclick = async () => {
         const btn = document.getElementById('gmEndBtn');
         btn.disabled = true; btn.textContent = '整理中…';
-        try {
-          await endStory();
-        } catch (e) {
-          alert('結束故事失敗，請再試一次。\n（對話內容還在，不會不見）');
-        }
+        await endStory();
         if (btn) { btn.disabled = false; btn.textContent = '結束故事'; }
       };
     }
