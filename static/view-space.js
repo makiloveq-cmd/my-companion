@@ -588,6 +588,24 @@
       wrap.addEventListener('mouseup', cancelSelect);
     }
 
+    // 輪詢背景整理任務
+    async function pollIntimacySummary(job_id, onDone, onError) {
+      const maxWait = 300000; // 最多等 5 分鐘
+      const interval = 3000;
+      let elapsed = 0;
+      while (elapsed < maxWait) {
+        await new Promise(r => setTimeout(r, interval));
+        elapsed += interval;
+        try {
+          const res = await fetch(`/intimate_memories/summary_status?job_id=${job_id}`);
+          const data = await res.json();
+          if (data.status === 'done') { onDone(data.result); return; }
+          if (data.status === 'error') { onError(data.result); return; }
+        } catch (e) {}
+      }
+      onError('timeout');
+    }
+
     document.getElementById('spSelectCancel').onclick = exitSelectMode;
 
     document.getElementById('spSelectConfirm').onclick = async () => {
@@ -604,9 +622,15 @@
         if (!dr.ok) throw new Error('draft failed ' + dr.status);
         const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
         if (!res.ok) throw new Error('summary failed ' + res.status);
-        const data = await res.json();
-        if (data.has_draft && data.content) showIntimateModal(data.content);
-        else alert('整理結果是空的，請再試一次。');
+        const jobData = await res.json();
+        if (!jobData.job_id) throw new Error('no job_id');
+        btn.textContent = `整理中…(${jobData.draft_count}則)`;
+        await new Promise((resolve, reject) => {
+          pollIntimacySummary(jobData.job_id,
+            (result) => { if (result.has_draft && result.content) showIntimateModal(result.content); else alert('整理結果是空的，請再試一次。'); resolve(); },
+            (err) => { reject(new Error('summary failed: ' + err)); }
+          );
+        });
       } catch (e) {
         alert('封存失敗：' + e.message + '\n草稿可能已存下，可回空間按「✦ 封存這段記憶」重試。');
       }
@@ -1590,17 +1614,26 @@
         try {
           const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
           if (!res.ok) throw new Error('summary failed ' + res.status);
-          const data = await res.json();
-          if (data.has_draft && data.content) {
-            showIntimateModal(data.content);
-          } else {
-            // 沒有草稿：這段期間沒有記錄到內容
-            alert('這段期間沒有記錄到對話。\n要先按🍎開始記錄，之後的對話才會被收進去。');
-            isRecordingIntimate = false;
-            btn.textContent = '🍎';
-            btn.title = '開始記錄';
-            bar.classList.remove('show');
-          }
+          const jobData = await res.json();
+          if (!jobData.job_id) throw new Error('no job_id');
+          btn.textContent = '⏳';
+          await new Promise((resolve, reject) => {
+            pollIntimacySummary(jobData.job_id,
+              (result) => {
+                if (result.has_draft && result.content) {
+                  showIntimateModal(result.content);
+                } else {
+                  alert('這段期間沒有記錄到對話。\n要先按🍎開始記錄，之後的對話才會被收進去。');
+                  isRecordingIntimate = false;
+                  btn.textContent = '🍎';
+                  btn.title = '開始記錄';
+                  bar.classList.remove('show');
+                }
+                resolve();
+              },
+              (err) => { reject(new Error(err)); }
+            );
+          });
         } catch (e) {
           // 失敗：保留記錄狀態，草稿還在，可以再按一次重試
           alert('整理逾時或失敗，請再點一次重試。\n（草稿還在，不會不見）');
@@ -1617,10 +1650,21 @@
       btn.textContent = '整理中…';
       try {
         const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
-        const data = await res.json();
-        if (data.has_draft && data.content) {
-          showIntimateModal(data.content);
-        }
+        const jobData = await res.json();
+        if (!jobData.job_id) throw new Error('no job_id');
+        btn.textContent = '整理中…';
+        pollIntimacySummary(jobData.job_id,
+          (result) => {
+            if (result.has_draft && result.content) showIntimateModal(result.content);
+            btn.disabled = false;
+            btn.textContent = '✦ 封存這段記憶';
+          },
+          () => {
+            btn.disabled = false;
+            btn.textContent = '✦ 封存這段記憶';
+          }
+        );
+        return; // 輪詢中，不走下面的 finally
       } catch (e) {}
       btn.disabled = false;
       btn.textContent = '✦ 封存這段記憶';
