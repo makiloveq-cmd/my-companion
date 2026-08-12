@@ -588,9 +588,11 @@
       wrap.addEventListener('mouseup', cancelSelect);
     }
 
+    document.getElementById('spSelectCancel').onclick = exitSelectMode;
+
     // 輪詢背景整理任務
     async function pollIntimacySummary(job_id, onDone, onError) {
-      const maxWait = 300000; // 最多等 5 分鐘
+      const maxWait = 300000;
       const interval = 3000;
       let elapsed = 0;
       while (elapsed < maxWait) {
@@ -605,8 +607,6 @@
       }
       onError('timeout');
     }
-
-    document.getElementById('spSelectCancel').onclick = exitSelectMode;
 
     document.getElementById('spSelectConfirm').onclick = async () => {
       if (selectedMessages.length === 0) return;
@@ -1652,7 +1652,6 @@
         const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
         const jobData = await res.json();
         if (!jobData.job_id) throw new Error('no job_id');
-        btn.textContent = '整理中…';
         pollIntimacySummary(jobData.job_id,
           (result) => {
             if (result.has_draft && result.content) showIntimateModal(result.content);
@@ -1664,7 +1663,7 @@
             btn.textContent = '✦ 封存這段記憶';
           }
         );
-        return; // 輪詢中，不走下面的 finally
+        return;
       } catch (e) {}
       btn.disabled = false;
       btn.textContent = '✦ 封存這段記憶';

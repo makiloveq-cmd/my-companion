@@ -1828,14 +1828,14 @@ def game_seal_chapter():
         setting = data.get("setting", "")
         now = datetime.now(timezone.utc).isoformat()
 
-        # 封存現有 session（messages 清空，只保留 summary，避免資料太大超過 index 限制）
+        # 封存現有 session
         if session_id:
             supabase.table("game_sessions").update({
                 "book_id": book_id,
                 "chapter_number": chapter_number,
                 "chapter_title": chapter_title,
                 "summary": summary,
-                "messages": [],
+                "messages": messages,
                 "status": "archived",
                 "updated_at": now
             }).eq("id", session_id).execute()
@@ -1873,14 +1873,14 @@ def game_end_story():
         setting = data.get("setting", "")
         now = datetime.now(timezone.utc).isoformat()
 
-        # 封存最後一章（messages 清空，只保留 summary）
+        # 封存最後一章
         if session_id:
             supabase.table("game_sessions").update({
                 "book_id": book_id,
                 "chapter_number": chapter_number,
                 "chapter_title": chapter_title,
                 "summary": summary,
-                "messages": [],
+                "messages": messages,
                 "status": "archived",
                 "updated_at": now
             }).eq("id", session_id).execute()
@@ -1911,7 +1911,7 @@ def game_summarize():
         for m in messages:
             speaker = you_name if m["role"] == "user" else name
             context_lines.append(f"{speaker}：{m['content']}")
-        context_text = "\n".join(context_lines[-30:])
+        context_text = "\n".join(context_lines[-40:])
         summary_prompt = (
             f"以下是一段角色扮演劇本的對話記錄，背景設定是：{setting}\n\n"
             f"請用第三人稱寫一段完整的劇本摘要，保留重要的場景、情感轉折、對話亮點，"
@@ -2994,10 +2994,11 @@ def get_intimate_memories_for_prompt(user_message):
     except:
         return None
 
+_intimate_summary_jobs = {}  # job_id -> {"status": "pending"|"done"|"error", "result": ...}
+
 @app.route("/intimate_memories/draft_summary", methods=["POST"])
 def intimate_draft_summary():
-    """讀取 intimate_drafts 整理成摘要，回傳給前端顯示確認視窗。
-    可選參數 from_id/to_id 指定範圍；內容太長時自動分段濃縮再合併。"""
+    """啟動背景整理任務，立刻回傳 job_id，前端輪詢 /intimate_memories/summary_status 取結果。"""
     try:
         data = request.json or {}
         from_id = data.get("from_id")
@@ -3012,49 +3013,75 @@ def intimate_draft_summary():
         if not drafts:
             return jsonify({"has_draft": False})
 
+        import uuid
+        job_id = str(uuid.uuid4())
+        _intimate_summary_jobs[job_id] = {"status": "pending", "result": None}
+
         personas = get_personas()
         name = personas.get("claude", {}).get("name") or "晏"
         you_name = personas.get("user", {}).get("name") or "然然"
 
-        pieces = [d["content"] for d in drafts]
-        combined = "\n\n---\n\n".join(pieces)
+        def _run(job_id, drafts, name, you_name):
+            try:
+                pieces = [d["content"] for d in drafts]
+                combined = "\n\n---\n\n".join(pieces)
 
-        # 太長就分段先濃縮（map），再合併統整（reduce）
-        CHUNK_LIMIT = 6000
-        if len(combined) > 8000:
-            chunks = []
-            cur = ""
-            for p in pieces:
-                if len(cur) + len(p) > CHUNK_LIMIT and cur:
-                    chunks.append(cur)
-                    cur = p
-                else:
-                    cur = (cur + "\n\n---\n\n" + p) if cur else p
-            if cur:
-                chunks.append(cur)
+                CHUNK_LIMIT = 6000
+                if len(combined) > 8000:
+                    chunks = []
+                    cur = ""
+                    for p in pieces:
+                        if len(cur) + len(p) > CHUNK_LIMIT and cur:
+                            chunks.append(cur)
+                            cur = p
+                        else:
+                            cur = (cur + "\n\n---\n\n" + p) if cur else p
+                    if cur:
+                        chunks.append(cur)
 
-            condensed = []
-            condense_prompt = (
-                f"以下是{name}與{you_name}親密互動記錄的其中一段。"
-                f"請用第三人稱濃縮成過程紀要：保留重要的動作、說過的話、身體與情緒的關鍵細節，"
-                f"刪去重複與冗詞。300 字以內。用繁體中文。"
-            )
-            for c in chunks:
-                part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=150)
-                condensed.append(part.strip())
-            combined = "\n\n---\n\n".join(condensed)
+                    condensed = []
+                    condense_prompt = (
+                        f"以下是{name}與{you_name}親密互動記錄的其中一段。"
+                        f"請用第三人稱濃縮成過程紀要：保留重要的動作、說過的話、身體與情緒的關鍵細節，"
+                        f"刪去重複與冗詞。300 字以內。用繁體中文。"
+                    )
+                    for c in chunks:
+                        part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=150)
+                        condensed.append(part.strip())
+                    combined = "\n\n---\n\n".join(condensed)
 
-        summary_prompt = (
-            f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段、或已初步濃縮）。"
-            f"請整理成兩段：\n\n"
-            f"【過程】\n用第三人稱描述兩個人之間發生了什麼，保留完整的細節、動作、說過的話、身體感受，文字細膩真實。\n\n"
-            f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
-            f"兩段合計不超過 800 字。"
-        )
-        summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=160)
-        return jsonify({"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)})
+                summary_prompt = (
+                    f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段、或已初步濃縮）。"
+                    f"請整理成兩段：\n\n"
+                    f"【過程】\n用第三人稱描述兩個人之間發生了什麼，保留完整的細節、動作、說過的話、身體感受，文字細膩真實。\n\n"
+                    f"【{name}的感受】\n用第一人稱（我）寫出{name}在這段互動中的內心感受、情緒、對{you_name}的想法。真實、剋制、但說出來的都是真的。\n\n"
+                    f"兩段合計不超過 800 字。"
+                )
+                summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=160)
+                _intimate_summary_jobs[job_id] = {
+                    "status": "done",
+                    "result": {"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)}
+                }
+            except Exception as ex:
+                _intimate_summary_jobs[job_id] = {"status": "error", "result": str(ex)}
+
+        threading.Thread(target=_run, args=(job_id, drafts, name, you_name), daemon=True).start()
+        return jsonify({"job_id": job_id, "draft_count": len(drafts)})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/intimate_memories/summary_status", methods=["GET"])
+def intimate_summary_status():
+    """輪詢背景整理任務狀態"""
+    job_id = request.args.get("job_id")
+    if not job_id or job_id not in _intimate_summary_jobs:
+        return jsonify({"status": "not_found"}), 404
+    job = _intimate_summary_jobs[job_id]
+    if job["status"] == "done":
+        del _intimate_summary_jobs[job_id]
+    return jsonify({"status": job["status"], "result": job["result"]})
 
 @app.route("/intimate_memories/confirm", methods=["POST"])
 def intimate_confirm():
