@@ -3026,8 +3026,8 @@ def intimate_draft_summary():
                 pieces = [d["content"] for d in drafts]
                 combined = "\n\n---\n\n".join(pieces)
 
-                CHUNK_LIMIT = 6000
-                if len(combined) > 8000:
+                CHUNK_LIMIT = 3000
+                if len(combined) > 4000:
                     chunks = []
                     cur = ""
                     for p in pieces:
