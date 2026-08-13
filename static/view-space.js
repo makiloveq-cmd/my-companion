@@ -620,7 +620,7 @@
           body: JSON.stringify({ messages: selectedMessages })
         });
         if (!dr.ok) throw new Error('draft failed ' + dr.status);
-        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
         if (!res.ok) throw new Error('summary failed ' + res.status);
         const jobData = await res.json();
         if (!jobData.job_id) throw new Error('no job_id');
@@ -1612,7 +1612,7 @@
         btn.disabled = true;
         btn.textContent = '⏳';
         try {
-          const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+          const res = await fetch('/intimate_memories/draft_summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
           if (!res.ok) throw new Error('summary failed ' + res.status);
           const jobData = await res.json();
           if (!jobData.job_id) throw new Error('no job_id');
@@ -1649,7 +1649,7 @@
       btn.disabled = true;
       btn.textContent = '整理中…';
       try {
-        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST' });
+        const res = await fetch('/intimate_memories/draft_summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
         const jobData = await res.json();
         if (!jobData.job_id) throw new Error('no job_id');
         pollIntimacySummary(jobData.job_id,
