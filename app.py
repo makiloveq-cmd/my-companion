@@ -2994,8 +2994,6 @@ def get_intimate_memories_for_prompt(user_message):
     except:
         return None
 
-_intimate_summary_jobs = {}  # job_id -> {"status": "pending"|"done"|"error", "result": ...}
-
 @app.route("/intimate_memories/draft_summary", methods=["POST"])
 def intimate_draft_summary():
     """啟動背景整理任務，立刻回傳 job_id，前端輪詢 /intimate_memories/summary_status 取結果。"""
@@ -3013,19 +3011,22 @@ def intimate_draft_summary():
         if not drafts:
             return jsonify({"has_draft": False})
 
-        import uuid
+        import uuid, json as _json
         job_id = str(uuid.uuid4())
-        _intimate_summary_jobs[job_id] = {"status": "pending", "result": None}
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        supabase.table("space_settings").upsert({
+            "key": f"intimate_job_{job_id}", "value": "pending", "updated_at": now
+        }, on_conflict="key").execute()
 
         personas = get_personas()
         name = personas.get("claude", {}).get("name") or "晏"
         you_name = personas.get("user", {}).get("name") or "然然"
 
         def _run(job_id, drafts, name, you_name):
+            import json as _json
             try:
                 pieces = [d["content"] for d in drafts]
                 combined = "\n\n---\n\n".join(pieces)
-
                 CHUNK_LIMIT = 3000
                 if len(combined) > 4000:
                     chunks = []
@@ -3038,7 +3039,6 @@ def intimate_draft_summary():
                             cur = (cur + "\n\n---\n\n" + p) if cur else p
                     if cur:
                         chunks.append(cur)
-
                     condensed = []
                     condense_prompt = (
                         f"以下是{name}與{you_name}親密互動記錄的其中一段。"
@@ -3049,7 +3049,6 @@ def intimate_draft_summary():
                         part = call_claude(condense_prompt, [{"role": "user", "content": c}], max_tokens=500, timeout=150)
                         condensed.append(part.strip())
                     combined = "\n\n---\n\n".join(condensed)
-
                 summary_prompt = (
                     f"以下是{name}與{you_name}在共同空間的親密互動對話記錄（可能包含多段、或已初步濃縮）。"
                     f"請整理成兩段：\n\n"
@@ -3058,30 +3057,47 @@ def intimate_draft_summary():
                     f"兩段合計不超過 800 字。"
                 )
                 summary = call_claude(summary_prompt, [{"role": "user", "content": combined}], max_tokens=2000, timeout=160)
-                _intimate_summary_jobs[job_id] = {
-                    "status": "done",
-                    "result": {"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)}
-                }
+                result_str = _json.dumps({"has_draft": True, "content": summary.strip(), "draft_count": len(drafts)}, ensure_ascii=False)
+                now2 = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                supabase.table("space_settings").upsert({
+                    "key": f"intimate_job_{job_id}", "value": f"done:{result_str}", "updated_at": now2
+                }, on_conflict="key").execute()
             except Exception as ex:
-                _intimate_summary_jobs[job_id] = {"status": "error", "result": str(ex)}
+                now2 = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                supabase.table("space_settings").upsert({
+                    "key": f"intimate_job_{job_id}", "value": f"error:{str(ex)}", "updated_at": now2
+                }, on_conflict="key").execute()
 
         threading.Thread(target=_run, args=(job_id, drafts, name, you_name), daemon=True).start()
         return jsonify({"job_id": job_id, "draft_count": len(drafts)})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/intimate_memories/summary_status", methods=["GET"])
 def intimate_summary_status():
-    """輪詢背景整理任務狀態"""
+    """輪詢背景整理任務狀態（從 Supabase 讀，避免多 worker 問題）"""
+    import json as _json
     job_id = request.args.get("job_id")
-    if not job_id or job_id not in _intimate_summary_jobs:
+    if not job_id:
         return jsonify({"status": "not_found"}), 404
-    job = _intimate_summary_jobs[job_id]
-    if job["status"] == "done":
-        del _intimate_summary_jobs[job_id]
-    return jsonify({"status": job["status"], "result": job["result"]})
+    try:
+        rows = supabase.table("space_settings").select("value").eq("key", f"intimate_job_{job_id}").execute().data
+        if not rows:
+            return jsonify({"status": "pending"})
+        val = rows[0]["value"]
+        if val == "pending":
+            return jsonify({"status": "pending"})
+        elif val.startswith("done:"):
+            result = _json.loads(val[5:])
+            supabase.table("space_settings").delete().eq("key", f"intimate_job_{job_id}").execute()
+            return jsonify({"status": "done", "result": result})
+        elif val.startswith("error:"):
+            supabase.table("space_settings").delete().eq("key", f"intimate_job_{job_id}").execute()
+            return jsonify({"status": "error", "result": val[6:]})
+        return jsonify({"status": "pending"})
+    except Exception as e:
+        return jsonify({"status": "error", "result": str(e)})
 
 @app.route("/intimate_memories/confirm", methods=["POST"])
 def intimate_confirm():
