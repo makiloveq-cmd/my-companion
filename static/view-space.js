@@ -1295,6 +1295,11 @@
           visitorInfo = visitor;
           if (visitor.mode === 'together') {
             await startVisitor();
+            // 跳到訪客室
+            window.SpaRouter.navigate('visitor-room', {
+              session_id: visitor.id,
+              visitor_name: encodeURIComponent(visitor.visitor_name || '訪客')
+            });
           } else {
             // solo_partner：晏自己去聊，顯示bar，背景自動跑對話
             try {
@@ -1422,8 +1427,19 @@
       `;
       bar.innerHTML = `
         <div style="color:#7a9ab8;font-size:13px;">✦ ${visitorName} 在這裡</div>
-        <button id="visitorEndBtn" style="padding:5px 14px;background:#1a2840;border:0.5px solid #2a3f60;border-radius:10px;color:#4a6a88;font-size:12px;cursor:pointer;">送客</button>
+        <div style="display:flex;gap:8px;">
+          ${visitorMode === 'together' ? `<button id="visitorEnterBtn" style="padding:5px 14px;background:#1e3a5f;border:0.5px solid #3a5a8a;border-radius:10px;color:#a0c0e0;font-size:12px;cursor:pointer;">進訪客室</button>` : ''}
+          <button id="visitorEndBtn" style="padding:5px 14px;background:#1a2840;border:0.5px solid #2a3f60;border-radius:10px;color:#4a6a88;font-size:12px;cursor:pointer;">送客</button>
+        </div>
       `;
+      if (visitorMode === 'together') {
+        bar.querySelector('#visitorEnterBtn').onclick = () => {
+          window.SpaRouter.navigate('visitor-room', {
+            session_id: visitorSessionId,
+            visitor_name: encodeURIComponent(visitorName)
+          });
+        };
+      }
       bar.querySelector('#visitorEndBtn').onclick = () => endVisitor();
       document.body.appendChild(bar);
     }
