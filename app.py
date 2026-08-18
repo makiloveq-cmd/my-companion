@@ -380,8 +380,9 @@ def maybe_summarize(bot):
 
 def maybe_space_summarize():
     """空間訊息累積到 50 筆就壓縮成摘要，存入 memory_summaries (session_id=space)"""
-    rows = supabase.table("space_messages").select("*").order("id").execute().data
-    if len(rows) < 50:
+    # 先只撈 id 判斷數量（避免撈全表內容）
+    count_rows = supabase.table("space_messages").select("id").order("id").execute().data
+    if len(count_rows) < 50:
         return
 
     # 去重鎖：最近 10 分鐘內已壓縮過就跳過
@@ -394,7 +395,7 @@ def maybe_space_summarize():
     except:
         pass
 
-    to_summarize = rows[:30]
+    to_summarize = supabase.table("space_messages").select("*").order("id").limit(30).execute().data
     ids_to_delete = [r["id"] for r in to_summarize]
     personas = get_personas()
     name = personas.get("claude", {}).get("name") or "晏"
@@ -454,7 +455,7 @@ def maybe_space_summarize():
 
 def maybe_evolve_rel_bg(bot):
     chat_rows = load_memory(bot)
-    space_rows = supabase.table("space_messages").select("*").neq("message_type", "background").order("id").execute().data
+    space_rows = supabase.table("space_messages").select("id").neq("message_type", "background").execute().data
     total = len(chat_rows) + len(space_rows)
     if total % 30 != 0 or total == 0:
         return
@@ -2367,15 +2368,21 @@ def get_diary():
         try:
             # 篩選 created_at 落在指定台灣日期的 00:00:00 ~ 23:59:59
             date_obj = datetime.strptime(date_param, "%Y-%m-%d").replace(tzinfo=tw_tz)
-            start_utc = (date_obj).astimezone(timezone.utc).isoformat()
-            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+            start_utc = (date_obj).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            end_utc = (date_obj + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
             q = q.gte("created_at", start_utc).lt("created_at", end_utc)
         except Exception:
             pass
     entries = q.execute().data
-    for entry in entries:
-        comments = supabase.table("diary_comments").select("*").eq("entry_id", entry["id"]).order("id").execute().data
-        entry["comments"] = comments
+    # 一次撈完所有留言再分配（避免 N+1 查詢）
+    if entries:
+        entry_ids = [e["id"] for e in entries]
+        all_comments = supabase.table("diary_comments").select("*").in_("entry_id", entry_ids).order("id").execute().data
+        comments_map = {}
+        for c in all_comments:
+            comments_map.setdefault(c["entry_id"], []).append(c)
+        for entry in entries:
+            entry["comments"] = comments_map.get(entry["id"], [])
     threading.Thread(target=maybe_delayed_ai_comments, args=(entries,), daemon=True).start()
     return jsonify({"entries": entries})
 
