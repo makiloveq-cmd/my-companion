@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import anthropic
 import os
+import math
 import random
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -229,6 +230,11 @@ def build_system_prompt(bot_key="claude"):
     if you_outfit:
         lines.append(f"【對方穿搭】{you_outfit}")
 
+    # 注入對方近期情緒狀態（OmbreBrain）
+    emo = get_recent_emotions()
+    if emo:
+        lines.append(f"【{you_name}最近的情緒】\n{emo}\n（這是你觀察到的，不要直接複述，讓它自然影響你的語氣與關心方式。）")
+
     if bot.get("taboo"):
         lines.append(f"【禁止話題】{bot['taboo']}")
     if bot.get("extra"):
@@ -375,6 +381,9 @@ def maybe_summarize(bot):
         }).execute()
         for rid in ids_to_delete:
             supabase.table("memories").delete().eq("id", rid).execute()
+
+        # 順帶記錄這段期間的情緒狀態（OmbreBrain）
+        detect_and_log_emotion(context, you_name)
     except Exception as e:
         print(f"[maybe_summarize error] {e}")
 
@@ -434,6 +443,9 @@ def maybe_space_summarize():
         }).execute()
         for rid in ids_to_delete:
             supabase.table("space_messages").delete().eq("id", rid).execute()
+
+        # 順帶記錄這段期間的情緒狀態（OmbreBrain）
+        detect_and_log_emotion(context, you_name)
 
         # 空間訊息壓縮時寫一筆 rel_bg_history 讓羈絆值 +20
         try:
@@ -523,40 +535,164 @@ def maybe_evolve_rel_bg(bot):
     except:
         pass
 
-def get_relevant_summaries(bot, user_message, limit=3):
-    """根據關鍵字從 memory_summaries 取出最相關的摘要，最多 limit 筆"""
+# ===== 記憶檢索調參（參考 OmbreBrain 衰減引擎）=====
+MEM_RECENT_DAYS = 7        # 「最近」的定義：幾天內
+MEM_RECENT_QUOTA = 2       # 最近這段期間至少保留幾筆（不管有沒有命中關鍵字）
+MEM_TOTAL_LIMIT = 4        # 總共注入幾筆摘要（調高會更記得事，但每則訊息 token 也會增加）
+MEM_DECAY_LAMBDA = 0.05    # 艾賓浩斯衰減率：分數每過一天 × e^(-λ)
+MEM_HIT_WEIGHT = 10.0      # 每命中一個關鍵字的加分
+MEM_DECAY_WEIGHT = 5.0     # 時間新鮮度的加分上限
+
+
+def _days_ago(created_at):
+    """回傳距今幾天（float）。解析失敗當作很久以前。"""
     try:
-        rows = supabase.table("memory_summaries").select("content, keywords").eq("session_id", bot).order("id", desc=True).execute().data
-        if not rows:
+        s = str(created_at).replace(" ", "T").replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0)
+    except:
+        return 999.0
+
+
+def get_relevant_summaries(bot, user_message, limit=None):
+    """從 memory_summaries 取出要注入的摘要。
+
+    規則：
+      1. 最近 MEM_RECENT_DAYS 天內的摘要，先無條件保留最新的 MEM_RECENT_QUOTA 筆
+         → 確保晏一定記得最近一週發生的事
+      2. 剩下的名額，用「關鍵字命中 + 時間衰減」計分挑選
+         分數 = 命中數 × MEM_HIT_WEIGHT + e^(-λ × 天數) × MEM_DECAY_WEIGHT
+      3. 過濾掉太通用的關鍵字（雙方名字、單字），避免老摘要被誤命中洗版
+    """
+    limit = limit or MEM_TOTAL_LIMIT
+    try:
+        # 第一階段：只撈輕量欄位評分（不撈 content，省流量）
+        meta = supabase.table("memory_summaries").select("id, keywords, created_at") \
+            .eq("session_id", bot).order("id", desc=True).execute().data
+        if not meta:
             return []
-        if not user_message:
-            # 沒有用戶訊息就取最新幾筆
-            return [r["content"] for r in rows[:limit] if r.get("content")]
 
-        matched = []
-        unmatched = []
-        for r in rows:
-            kw_raw = r.get("keywords") or ""
-            if kw_raw:
-                keywords = [k.strip() for k in kw_raw.split(",") if k.strip()]
-                if any(kw in user_message for kw in keywords):
-                    matched.append(r["content"])
-                else:
-                    unmatched.append(r["content"])
-            else:
-                unmatched.append(r["content"])
+        # 通用詞過濾：人名沒有鑑別度
+        personas = get_personas()
+        generic = set()
+        for k in ("user", bot, "claude"):
+            n = (personas.get(k) or {}).get("name")
+            if n:
+                generic.add(n)
 
-        # 有命中的優先，不夠再補最新的
-        result = matched[:limit]
-        if len(result) < limit:
-            for c in unmatched:
-                if c not in result:
-                    result.append(c)
-                if len(result) >= limit:
-                    break
-        return result[:limit]
+        # 先算好每筆的天數
+        for r in meta:
+            r["_days"] = _days_ago(r.get("created_at"))
+
+        # 步驟 1：最近一週的保底名額（meta 已由新到舊排序）
+        picked_ids = []
+        for r in meta:
+            if len(picked_ids) >= MEM_RECENT_QUOTA:
+                break
+            if r["_days"] <= MEM_RECENT_DAYS:
+                picked_ids.append(r["id"])
+        # 一週內完全沒有摘要時，至少放最新一筆，避免完全沒有近期脈絡
+        if not picked_ids:
+            picked_ids.append(meta[0]["id"])
+
+        # 步驟 2：剩餘名額用命中數 + 指數衰減計分
+        scored = []
+        for r in meta:
+            if r["id"] in picked_ids:
+                continue
+            hits = 0
+            if user_message:
+                for kw in (r.get("keywords") or "").split(","):
+                    kw = kw.strip()
+                    if len(kw) < 2 or kw in generic:
+                        continue
+                    if kw in user_message:
+                        hits += 1
+            decay = math.exp(-MEM_DECAY_LAMBDA * r["_days"])
+            scored.append((hits * MEM_HIT_WEIGHT + decay * MEM_DECAY_WEIGHT, r["id"]))
+
+        scored.sort(key=lambda x: -x[0])
+        picked_ids += [i for _, i in scored[:max(0, limit - len(picked_ids))]]
+
+        # 第三階段：只撈選中的那幾筆內容
+        rows = supabase.table("memory_summaries").select("id, content").in_("id", picked_ids).execute().data
+        by_id = {r["id"]: r.get("content") for r in rows}
+        # 依 id 由舊到新排列，讓時間順序讀起來自然
+        return [by_id[i] for i in sorted(picked_ids) if by_id.get(i)]
     except:
         return []
+
+
+def log_emotion(emotion, intensity=3, note=""):
+    """寫入一筆情緒記錄（OmbreBrain）"""
+    try:
+        emotion = (emotion or "").strip()
+        if not emotion:
+            return False
+        try:
+            intensity = max(1, min(5, int(intensity)))
+        except:
+            intensity = 3
+        supabase.table("emotion_logs").insert({
+            "emotion": emotion[:20],
+            "intensity": intensity,
+            "note": (note or "")[:200]
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"[log_emotion error] {e}")
+        return False
+
+
+def get_recent_emotions(days=7, limit=8):
+    """取最近幾天的情緒記錄，組成可注入 system prompt 的文字"""
+    try:
+        tw_tz = timezone(timedelta(hours=8))
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+        rows = supabase.table("emotion_logs").select("emotion, intensity, note, created_at") \
+            .gte("created_at", since).order("id", desc=True).limit(limit).execute().data
+        if not rows:
+            return ""
+        parts = []
+        for r in reversed(rows):
+            try:
+                dt = datetime.fromisoformat(r["created_at"].replace(" ", "T").replace("Z", "+00:00")).astimezone(tw_tz)
+                ts = dt.strftime("%m/%d")
+            except:
+                ts = ""
+            note = (r.get("note") or "").strip()
+            line = f"{ts} {r['emotion']}（強度{r.get('intensity') or 3}）"
+            if note:
+                line += f" — {note}"
+            parts.append(line)
+        return "\n".join(parts)
+    except:
+        return ""
+
+
+def detect_and_log_emotion(context_text, you_name):
+    """從對話內容判斷對方的情緒狀態並記錄。在背景摘要流程中呼叫。"""
+    try:
+        raw = call_claude(
+            f"以下是一段對話記錄。請判斷「{you_name}」在這段對話中主要的情緒狀態。\n"
+            f"只回傳一行，格式：情緒|強度|簡短原因\n"
+            f"情緒用兩到三個字（例如：疲憊、開心、焦慮、平靜、煩躁）。強度是 1 到 5 的整數。原因不超過 20 字。\n"
+            f"如果看不出明顯情緒，只回傳：無",
+            [{"role": "user", "content": context_text[:3000]}],
+            max_tokens=60
+        )
+        raw = (raw or "").strip()
+        if not raw or raw.startswith("無"):
+            return
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) < 2:
+            return
+        log_emotion(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+    except Exception as e:
+        print(f"[detect_emotion error] {e}")
+
 
 def build_history(bot, last_user_message=""):
     threading.Thread(target=maybe_summarize, args=(bot,), daemon=True).start()
@@ -893,6 +1029,42 @@ def period_logs_range():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ===== 情緒記錄（OmbreBrain）=====
+
+@app.route("/emotion", methods=["POST"])
+def emotion_post():
+    """手動記錄一筆情緒。body: {emotion, intensity, note}"""
+    try:
+        data = request.json or {}
+        ok = log_emotion(data.get("emotion"), data.get("intensity", 3), data.get("note", ""))
+        if not ok:
+            return jsonify({"error": "emotion is required"}), 400
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/emotion", methods=["GET"])
+def emotion_get():
+    """取最近的情緒記錄"""
+    try:
+        days = int(request.args.get("days", 30))
+        rows = supabase.table("emotion_logs").select("*").order("id", desc=True).limit(50).execute().data
+        return jsonify({"emotions": rows, "summary": get_recent_emotions(days=days)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/emotion/<int:emotion_id>", methods=["DELETE"])
+def emotion_delete(emotion_id):
+    """刪除一筆情緒記錄"""
+    try:
+        supabase.table("emotion_logs").delete().eq("id", emotion_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ===== 空間設定 =====
 
 SPACE_SETTING_KEYS = ["room_desc", "atmosphere", "furniture", "layout", "corner_details", "claude_spots", "intimate_keywords"]
@@ -1052,6 +1224,11 @@ def build_space_system_prompt():
         lines.append(f"【{you_name}的外觀】{you_appearance}")
     if you_outfit:
         lines.append(f"【{you_name}的穿搭】{you_outfit}")
+
+    # 注入對方近期情緒狀態（OmbreBrain）
+    emo = get_recent_emotions()
+    if emo:
+        lines.append(f"【{you_name}最近的情緒】\n{emo}\n（這是你觀察到的，不要直接複述，讓它自然影響你的語氣與關心方式。）")
 
     # 取最後一則用戶訊息作為關鍵字比對基礎
     try:
