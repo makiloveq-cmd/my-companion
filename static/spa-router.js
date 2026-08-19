@@ -6,6 +6,7 @@ window.RifugioRouter = (function () {
     home: 'home', chatlist: 'chatlist', chat: 'chatlist', space: 'chatlist',
     diary: 'diary', persona: 'persona', usage: 'home', settings: 'home', game: 'home',
     theme: 'theme', collection: 'home', quotes: 'chatlist', guest: 'home', friends: 'home',
+    memory: 'home',
     'visitor-room': 'home',
   };
 

@@ -76,6 +76,11 @@
             <div class="hm-card-title">訪客</div>
             <div class="hm-card-sub">會客廳</div>
           </button>
+          <button class="hm-card" data-route="memory">
+            <div class="hm-card-icon">✦</div>
+            <div class="hm-card-title">記憶管理</div>
+            <div class="hm-card-sub">珍藏與情緒</div>
+          </button>
           <button class="hm-card" data-route="usage">
             <div class="hm-card-icon">⚡</div>
             <div class="hm-card-title">用量</div>

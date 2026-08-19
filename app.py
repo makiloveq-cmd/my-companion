@@ -1051,6 +1051,21 @@ def period_logs_range():
 
 # ===== 珍藏記憶（pinned memory）=====
 
+@app.route("/memory_summaries/list", methods=["GET"])
+def memory_summaries_list():
+    """列出摘要供前端挑選珍藏。可選 session_id 篩選。"""
+    try:
+        session_id = request.args.get("session_id")
+        limit = int(request.args.get("limit", 60))
+        q = supabase.table("memory_summaries").select("id, session_id, content, keywords, created_at, pinned")
+        if session_id:
+            q = q.eq("session_id", session_id)
+        rows = q.order("id", desc=True).limit(limit).execute().data
+        return jsonify({"summaries": rows, "quota": MEM_PINNED_QUOTA})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/memory_summaries/pinned", methods=["GET"])
 def pinned_memories_get():
     """列出目前被珍藏的記憶"""
