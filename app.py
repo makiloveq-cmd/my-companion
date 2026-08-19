@@ -538,7 +538,8 @@ def maybe_evolve_rel_bg(bot):
 # ===== 記憶檢索調參（參考 OmbreBrain 衰減引擎）=====
 MEM_RECENT_DAYS = 7        # 「最近」的定義：幾天內
 MEM_RECENT_QUOTA = 2       # 最近這段期間至少保留幾筆（不管有沒有命中關鍵字）
-MEM_TOTAL_LIMIT = 4        # 總共注入幾筆摘要（調高會更記得事，但每則訊息 token 也會增加）
+MEM_TOTAL_LIMIT = 5        # 總共注入幾筆摘要（調高會更記得事，但每則訊息 token 也會增加）
+MEM_PINNED_QUOTA = 2       # 珍藏記憶（pinned）最多佔幾個名額，建議 1~2，設 0 則停用
 MEM_DECAY_LAMBDA = 0.05    # 艾賓浩斯衰減率：分數每過一天 × e^(-λ)
 MEM_HIT_WEIGHT = 10.0      # 每命中一個關鍵字的加分
 MEM_DECAY_WEIGHT = 5.0     # 時間新鮮度的加分上限
@@ -559,8 +560,9 @@ def _days_ago(created_at):
 def get_relevant_summaries(bot, user_message, limit=None):
     """從 memory_summaries 取出要注入的摘要。
 
-    規則：
-      1. 最近 MEM_RECENT_DAYS 天內的摘要，先無條件保留最新的 MEM_RECENT_QUOTA 筆
+    規則（優先序）：
+      0. pinned = true 的珍藏記憶最優先，最多 MEM_PINNED_QUOTA 筆，永不衰減
+      1. 最近 MEM_RECENT_DAYS 天內的摘要，保留最新的 MEM_RECENT_QUOTA 筆
          → 確保晏一定記得最近一週發生的事
       2. 剩下的名額，用「關鍵字命中 + 時間衰減」計分挑選
          分數 = 命中數 × MEM_HIT_WEIGHT + e^(-λ × 天數) × MEM_DECAY_WEIGHT
@@ -569,8 +571,13 @@ def get_relevant_summaries(bot, user_message, limit=None):
     limit = limit or MEM_TOTAL_LIMIT
     try:
         # 第一階段：只撈輕量欄位評分（不撈 content，省流量）
-        meta = supabase.table("memory_summaries").select("id, keywords, created_at") \
-            .eq("session_id", bot).order("id", desc=True).execute().data
+        try:
+            meta = supabase.table("memory_summaries").select("id, keywords, created_at, pinned") \
+                .eq("session_id", bot).order("id", desc=True).execute().data
+        except:
+            # pinned 欄位還沒建立時的相容處理
+            meta = supabase.table("memory_summaries").select("id, keywords, created_at") \
+                .eq("session_id", bot).order("id", desc=True).execute().data
         if not meta:
             return []
 
@@ -586,13 +593,26 @@ def get_relevant_summaries(bot, user_message, limit=None):
         for r in meta:
             r["_days"] = _days_ago(r.get("created_at"))
 
-        # 步驟 1：最近一週的保底名額（meta 已由新到舊排序）
         picked_ids = []
+
+        # 步驟 0：珍藏記憶（pinned）最優先，不受時間衰減影響
+        if MEM_PINNED_QUOTA > 0:
+            for r in meta:
+                if len(picked_ids) >= MEM_PINNED_QUOTA:
+                    break
+                if r.get("pinned"):
+                    picked_ids.append(r["id"])
+
+        # 步驟 1：最近一週的保底名額（meta 已由新到舊排序）
+        recent_added = 0
         for r in meta:
-            if len(picked_ids) >= MEM_RECENT_QUOTA:
+            if recent_added >= MEM_RECENT_QUOTA or len(picked_ids) >= limit:
                 break
+            if r["id"] in picked_ids:
+                continue
             if r["_days"] <= MEM_RECENT_DAYS:
                 picked_ids.append(r["id"])
+                recent_added += 1
         # 一週內完全沒有摘要時，至少放最新一筆，避免完全沒有近期脈絡
         if not picked_ids:
             picked_ids.append(meta[0]["id"])
@@ -1028,6 +1048,31 @@ def period_logs_range():
         return jsonify({"ok": True, "inserted": len(to_insert)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ===== 珍藏記憶（pinned memory）=====
+
+@app.route("/memory_summaries/pinned", methods=["GET"])
+def pinned_memories_get():
+    """列出目前被珍藏的記憶"""
+    try:
+        rows = supabase.table("memory_summaries").select("id, session_id, content, keywords, created_at") \
+            .eq("pinned", True).order("id", desc=True).execute().data
+        return jsonify({"pinned": rows, "quota": MEM_PINNED_QUOTA})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/memory_summaries/<int:summary_id>/pin", methods=["POST"])
+def pin_memory(summary_id):
+    """標記／取消標記珍藏記憶。body: {pinned: true/false}"""
+    try:
+        data = request.json or {}
+        pinned = bool(data.get("pinned", True))
+        supabase.table("memory_summaries").update({"pinned": pinned}).eq("id", summary_id).execute()
+        return jsonify({"status": "ok", "id": summary_id, "pinned": pinned})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ===== 情緒記錄（OmbreBrain）=====
 
