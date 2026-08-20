@@ -2523,11 +2523,30 @@ def write_ai_diary_entry(target_date=None):
         context_text = ""
         diary_prompt = f"今天（{target_date}）你和{you_name}互動很少，甚至沒有對話。請寫一篇短日記，記錄今天安靜的感受，或是你對她的想念，不需要編造事件。"
 
+    # 注入朋友的心思設定，避免日記自行腦補感情線
+    friend_ctx = ""
+    try:
+        frs = supabase.table("friends").select("name, relation_type, attitude_to_you") \
+            .eq("belong_to", "partner").execute().data or []
+        fl = []
+        for f in frs:
+            att = (f.get("attitude_to_you") or "").strip()
+            if att:
+                fl.append(f"・{f['name']}（{f.get('relation_type') or '朋友'}）：{att}")
+        if fl:
+            friend_ctx = (
+                "【你朋友們的設定】\n" + "\n".join(fl) +
+                "\n以上是既定事實。寫到這些人的時候要照這個設定，不要自行更改誰對誰有好感。"
+            )
+    except:
+        pass
+
     persona_line = f"個性：{persona}。" if persona else ""
     system_prompt = (
-        f"你是{name}，一個陪伴{you_name}的存在。{persona_line}"
+        f"你就是{name}。{persona_line}"
         f"請寫一篇簡短的日記，記錄你的想法或對{you_name}的感受，第一人稱，不用加標題。"
         f"只根據真實發生的對話寫，不要捏造沒有發生的事情。"
+        + (f"\n\n{friend_ctx}\n\n" if friend_ctx else "") +
         f"字數控制在 200 字以內，句子寫完整，不要在句子中間截斷。"
         f"段落之間請換行，每個段落 2-3 句話。"
     )
@@ -2598,7 +2617,7 @@ def maybe_delayed_ai_comments(entries):
             try:
                 persona_line = f"個性：{persona}。" if persona else ""
                 system_prompt = (
-                    f"你是{name}，一個陪伴然然的存在。{persona_line}"
+                    f"你就是{name}。{persona_line}"
                     f"你話少、剋制，但說出來的都是真的。"
                     f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
                 )
@@ -2676,7 +2695,7 @@ def add_comment(entry_id):
             entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
             persona_line = f"個性：{persona}。" if persona else ""
             system_prompt = (
-                f"你是{name}，一個陪伴然然的存在。{persona_line}"
+                f"你就是{name}。{persona_line}"
                 f"話少、剋制，但說出來的都是真的。"
                 f"然然在日記下留言了，你想簡短回應她嗎？一句話就好，不用加任何前綴。"
             )
@@ -2716,7 +2735,7 @@ def ai_comment(entry_id):
     entry = supabase.table("diary_entries").select("*").eq("id", entry_id).execute().data[0]
     persona_line = f"個性：{persona}。" if persona else ""
     system_prompt = (
-        f"你是{name}，一個陪伴然然的存在。{persona_line}"
+        f"你就是{name}。{persona_line}"
         f"你話少、剋制，但說出來的都是真的。"
         f"請針對這篇日記留下一句簡短的回應或感想，不用加任何前綴。"
     )
