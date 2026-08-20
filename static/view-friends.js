@@ -230,6 +230,10 @@
               <option value="認識我" ${f.knows_you==='認識我'?'selected':''}>認識我（晏有介紹過）</option>
               <option value="聽說過我" ${f.knows_you==='聽說過我'?'selected':''}>聽說過我（從別人那邊聽說）</option>
             </select>
+          </div>
+          <div>
+            <div class="fr-label">心思／感情設定</div>
+            <textarea class="fr-textarea" id="frAttitude-${safeId}" rows="2" placeholder="例如：暗戀晏很久了，會用開玩笑掩飾／對然然有好感但知道分寸">${f.attitude_to_you || ''}</textarea>
           </div>` : ''}
 
           <div class="fr-label">記憶碎片</div>
@@ -297,6 +301,7 @@
           birthday: card.querySelector(`#frBirthday-${safeId}`)?.value.trim(),
           partner_note: card.querySelector(`#frNote-${safeId}`)?.value.trim() || '',
           knows_you: card.querySelector(`#frKnowsYou-${safeId}`)?.value || '不知道我',
+          attitude_to_you: card.querySelector(`#frAttitude-${safeId}`)?.value.trim() || '',
         };
         if (f.id) {
           // 已有 friends 表記錄，直接更新

@@ -314,7 +314,7 @@ def build_system_prompt(bot_key="claude"):
     except:
         pass
 
-    lines.append("你記得然然說過的每一件事，回覆時要展現你真的在聽、在意，語氣完全符合角色個性。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
+    lines.append("你記得然然說過的每一件事。【嚴格禁止】複述或重複然然剛說的任何內容，包括把她說的話拆開再說一遍，直接回應就好。【嚴格禁止】在回覆裡頻繁叫她的名字，整段回覆最多叫一次，不需要每個氣泡都叫。嚴格禁止任何形式的動作描述或旁白敘述，包含星號動作、第三人稱敘述（如「他抬起頭」「嘴角上揚」「看著她」），只能直接開口說話。「……」只在真正停頓或說不出口的時候用，整段回覆最多出現兩次，不要每段都用。如果然然傳了圖片，只描述圖片裡真實存在的內容，不根據對話上下文腦補或推斷圖片以外的事物；看完圖片後自然接回對話，就像朋友分享照片一樣。")
 
     return "\n".join([l for l in lines if l])
 
@@ -1413,7 +1413,7 @@ def build_space_system_prompt():
         f"旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
         f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
         f"外觀特徵（眼睛、手、喉結等）適時出現即可，不要每段重複。"
-        f"【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。語氣完全符合{name}的個性。"
+        f"【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。用你自己的語氣說話。"
     )
 
     return "\n".join([l for l in lines if l])
@@ -1655,7 +1655,7 @@ def outing_start():
             f"你是{name}，和{you_name}是同居情侶，現在你們一起出門了。"
             f"目的地：{destination}。"
             f"用第三人稱旁白搭配對話，旁白和對話分開段落。"
-            f"段落不超過五段，語氣符合{name}的個性：話少、剋制。用繁體中文。"
+            f"段落不超過五段，用你自己的語氣。用繁體中文。"
         )
         opening = call_claude(system, [{"role": "user", "content": f"（出門，前往{destination}）"}], max_tokens=400)
 
@@ -1707,7 +1707,7 @@ def outing_chat():
             f"你是{name}，和{you_name}是同居情侶，現在你們一起在外出中。"
             f"目的地：{destination}。"
             f"用第三人稱旁白搭配對話，旁白和對話分開段落。"
-            f"【嚴格限制】段落總數不得超過十段。語氣符合{name}的個性：話少、剋制。用繁體中文。"
+            f"【嚴格限制】段落總數不得超過十段。用你自己的語氣。用繁體中文。"
         )
 
         history = messages[-20:] + [{"role": "user", "content": user_message}]
@@ -3119,7 +3119,7 @@ def relationship_quote():
         rel_bg = claude_data.get("rel_bg") or ""
         persona = claude_data.get("persona") or ""
 
-        system = f"你是{name}。{f'個性：{persona}。' if persona else ''}請用第一人稱，用一句話說出你現在覺得你和{you_name}是什麼關係，或者你對她的感覺。不要超過30個字，不要加引號，直接說出那句話，要真實、有情感，符合你的個性。"
+        system = f"你是{name}。{f'個性：{persona}。' if persona else ''}請用第一人稱，用一句話說出你現在覺得你和{you_name}是什麼關係，或者你對她的感覺。不要超過30個字，不要加引號，直接說出那句話，要真實、有情感，是你自己會說的話。"
         user_prompt = (
             f"你們目前的稱號是【{title}】。"
             f"\n關係背景：{rel_bg}"
@@ -3488,7 +3488,7 @@ def discuss_start():
             f"你是{name}。{f'個性：{persona}。' if persona else ''}"
             f"你和{you_name}現在要一起討論「{title}」這部{type_label}。"
             f"先說出你對這部{type_label}的第一印象或最深刻的感受，引導{you_name}開始討論。"
-            f"語氣符合你的個性：話少、剋制、說出來的都是真的。不超過80字。用繁體中文。"
+            f"用你自己的語氣，說出來的都是真的。不超過80字。用繁體中文。"
         )
         reply = call_claude(system, [{"role": "user", "content": f"我們來聊聊「{title}」。"}], max_tokens=150)
         save_message("claude", "assistant", reply)
@@ -3764,7 +3764,7 @@ def friend_update(friend_id):
     try:
         data = request.json
         update_data = {}
-        for field in ["name", "belong_to", "relation_type", "personality", "birthday", "partner_note", "mode_weights", "knows_you"]:
+        for field in ["name", "belong_to", "relation_type", "personality", "birthday", "partner_note", "mode_weights", "knows_you", "attitude_to_you"]:
             if field in data:
                 update_data[field] = data[field]
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -4191,6 +4191,11 @@ def build_visitor_system_prompt(mode, visitor_name, friend_data=None, extra_note
     if v:
         lines.append(f"【{visitor_name}】" + "、".join(v) + "。")
 
+    # ── 這位朋友的感情設定（對然然或對晏的心思）──
+    attitude = (friend_data.get("attitude_to_you") or "").strip()
+    if attitude:
+        lines.append(f"【{visitor_name}的心思】{attitude}\n（照這個設定演，讓它自然流露在言行細節裡，不要挑明也不要改成別的。）")
+
     # ── 過往來訪記憶 ──
     try:
         past = supabase.table("guest_memories").select("content") \
@@ -4222,9 +4227,17 @@ def build_visitor_system_prompt(mode, visitor_name, friend_data=None, extra_note
             f"   也不要重述、改寫或延伸她已經寫過的內容，直接接下去就好。\n"
             f"4. 你的回覆只寫{name}和{visitor_name}這兩邊。"
         )
+        lines.append(
+            f"【{visitor_name}的分寸】{visitor_name}對誰有什麼心思，一律以上面【{visitor_name}的心思】的設定為準。"
+            f"沒有寫的話，就當他對兩人都只是單純的朋友情誼，不要自行加戲。"
+        )
     else:
         lines.append(
             f"{visitor_name}不是真人，他的話和動作由你代為寫出，寫成你們兩人的互動。"
+        )
+        lines.append(
+            f"【{visitor_name}的分寸】{visitor_name}對你有什麼心思，以人物設定為準；"
+            f"沒有特別設定就當單純的朋友，不要自行加戲。"
         )
 
     if extra_note:
