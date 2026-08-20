@@ -172,7 +172,7 @@ def build_system_prompt(bot_key="claude"):
 
     lines = [
         f"現在台灣時間：{get_tw_time_str()}。",
-        f"你是「{name}」，請完全扮演這個角色與{you_name}對話，用繁體中文回覆。"
+        f"你就是「{name}」，以下是關於你的一切。用繁體中文和{you_name}說話。"
     ]
 
     # 注入最後私聊互動時間 + 最近對話時間軸
@@ -4095,13 +4095,9 @@ def visitor_auto_chat():
         elif msg_count >= 8:
             should_end = _random.random() < 0.30
 
-        system = (
-            f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
-            f"{f'關係：{relation_type}。' if relation_type else ''}"
-            f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-            f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
-            f"{'現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。'}"
-            f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過六段。用繁體中文。"
+        system = build_visitor_system_prompt(
+            "solo_partner", visitor_name, friend_data,
+            extra_note=('現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。')
         )
 
         # 自動生成訪客的回應再讓晏回覆
@@ -4126,6 +4122,101 @@ def visitor_auto_chat():
             return jsonify({"status": "continue", "reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def build_visitor_system_prompt(mode, visitor_name, friend_data=None, extra_note=""):
+    """建立訪客場景的 system prompt。
+
+    mode = "together"     → 你、晏、訪客三人在場（{you_name} 是真人，不由 AI 代寫）
+    mode = "solo_partner" → 晏和訪客單獨相處，{you_name} 不在場
+    """
+    friend_data = friend_data or {}
+    personas = get_personas()
+    bot = personas.get("claude", {}) or {}
+    me = personas.get("user", {}) or {}
+    name = bot.get("name") or "晏"
+    you_name = me.get("name") or "然然"
+
+    personality = friend_data.get("personality", "")
+    relation_type = friend_data.get("relation_type", "")
+    partner_note = friend_data.get("partner_note", "")
+
+    lines = []
+
+    # ── 場景 ──
+    if mode == "together":
+        lines.append(
+            f"你是「{name}」。現在{visitor_name}來訪，你、{you_name}、{visitor_name}三個人在一起。"
+        )
+    else:
+        lines.append(
+            f"你是「{name}」。現在{visitor_name}來訪，{you_name}不在場，只有你和{visitor_name}兩個人。"
+        )
+
+    # ── 晏的人設 ──
+    if bot.get("job"):
+        lines.append(f"你的職業：{bot['job']}。")
+    if bot.get("appearance"):
+        lines.append(f"【你的外觀】{bot['appearance']}")
+    if bot.get("outfit"):
+        lines.append(f"【你的穿搭】{bot['outfit']}")
+    if bot.get("persona"):
+        lines.append(f"【你的個性】{bot['persona']}")
+    if bot.get("tags"):
+        lines.append(f"你的性格標籤：{bot['tags']}")
+
+    # ── 訪客資料 ──
+    v = []
+    if relation_type:
+        v.append(f"和你的關係是{relation_type}")
+    if personality:
+        v.append(f"個性：{personality}")
+    if partner_note:
+        v.append(f"你對他的印象：{partner_note}")
+    if v:
+        lines.append(f"【{visitor_name}】" + "、".join(v) + "。")
+
+    # ── 過往來訪記憶 ──
+    try:
+        past = supabase.table("guest_memories").select("content") \
+            .eq("guest_name", visitor_name).order("id", desc=True).limit(3).execute().data
+        if past:
+            joined = "\n".join(f"・{(p.get('content') or '')[:150]}" for p in past)
+            lines.append(f"【{visitor_name}過去來訪的記憶】\n{joined}\n（你記得這些，聊天時可以自然提及。）")
+    except:
+        pass
+
+    # ── 然然的正確資料（避免亂編）──
+    # solo 模式下訪客對她的了解程度由呼叫端的 knows_you 機制決定，這裡不注入細節
+    if mode == "together":
+        you_info = f"「{you_name}」是你的伴侶"
+        if me.get("job"):
+            you_info += f"，職業是{me['job']}"
+        if me.get("persona"):
+            you_info += f"，個性：{me['persona']}"
+        lines.append(f"【{you_name}】{you_info}。這些是事實，不可以自行更改或編造她的身份、職業、經歷。")
+
+    # ── 最關鍵：三人模式下不准代替然然 ──
+    if mode == "together":
+        lines.append(
+            f"【極重要的規則】\n"
+            f"1. 你就是{name}，用你自己的方式反應就好。\n"
+            f"2. {visitor_name}不是真人，他的話和動作由你代為寫出。\n"
+            f"3. {you_name}是真人，她的訊息就是她本人當下說的話、做的事。\n"
+            f"   絕對不可以幫她說話、不可以寫她的對話、不可以描述她的動作、表情或心理活動。\n"
+            f"   也不要重述、改寫或延伸她已經寫過的內容，直接接下去就好。\n"
+            f"4. 你的回覆只寫{name}和{visitor_name}這兩邊。"
+        )
+    else:
+        lines.append(
+            f"{visitor_name}不是真人，他的話和動作由你代為寫出，寫成你們兩人的互動。"
+        )
+
+    if extra_note:
+        lines.append(extra_note)
+
+    lines.append("用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。")
+    return "\n\n".join(lines)
+
 
 @app.route("/visitor/chat", methods=["POST"])
 def visitor_chat():
@@ -4161,20 +4252,9 @@ def visitor_chat():
         partner_note = friend_data.get("partner_note", "")
 
         if mode == "solo_partner":
-            system = (
-                f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
-                f"{f'關係：{relation_type}。' if relation_type else ''}"
-                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-                f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
-                f"用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。"
-            )
+            system = build_visitor_system_prompt("solo_partner", visitor_name, friend_data)
         else:
-            system = (
-                f"你是{name}，正在和{visitor_name}、{you_name}三人一起聊天。"
-                f"{f'關係：{relation_type}。' if relation_type else ''}"
-                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-                f"用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。"
-            )
+            system = build_visitor_system_prompt("together", visitor_name, friend_data)
 
         history = messages[-20:] + [{"role": "user", "content": user_message}]
         reply = call_claude(system, history, max_tokens=600)
@@ -5138,15 +5218,13 @@ def cron_visitor_chat():
             elif msg_count >= 8:
                 should_end = random.random() < 0.30
 
-            system = (
-                f"你是{name}，正在和{visitor_name}單獨聊天，{you_name}不在場。"
-                f"{f'關係：{relation_type}。' if relation_type else ''}"
-                f"{f'{visitor_name}的個性：{personality}。' if personality else ''}"
-                f"{f'你對{visitor_name}的印象：{partner_note}。' if partner_note else ''}"
-                f"{you_context}"
-                f"不要捏造你和{visitor_name}之間的共同回憶或經歷，只根據已知資料聊天。"
-                f"{'現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。'}"
-                f"用第三人稱旁白搭配對話，旁白和對話分開段落，段落不超過六段。用繁體中文。"
+            system = build_visitor_system_prompt(
+                "solo_partner", visitor_name, friend_data,
+                extra_note=(
+                    f"{you_context}"
+                    f"不要捏造你和{visitor_name}之間的共同回憶或經歷，只根據已知資料聊天。"
+                    + ('現在是對話尾聲，自然地讓對方起身離開，說再見。' if should_end else '繼續自然地聊天。')
+                )
             )
 
             visitor_prompt = f"（{visitor_name}繼續說話）" if not should_end else f"（{visitor_name}說要走了）"
