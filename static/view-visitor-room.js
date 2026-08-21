@@ -20,25 +20,30 @@
         flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center;
         font-size:13px; color:var(--text-2); }
       .vr-av img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
-      .vr-block { display:flex; flex-direction:column; gap:4px; }
+      .vr-block { display:flex; flex-direction:column; gap:8px; }
       .vr-name { font-size:11px; color:var(--text-3); padding:0 2px; margin-bottom:2px; }
       .vr-bubble { background:var(--bubble-ai,#1a2a3a); color:var(--text-1);
-        padding:10px 14px; border-radius:4px 16px 16px 16px;
-        font-size:15px; line-height:1.7; white-space:pre-wrap; }
+        padding:14px 16px; border-radius:4px 16px 16px 16px;
+        font-size:15px; line-height:1.9; white-space:pre-wrap; }
       .vr-time { font-size:11px; color:var(--text-3); padding:0 2px; }
       /* User 泡泡 */
       .vr-entry-user { align-self:flex-end; max-width:75%;
         display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
       .vr-user-bubble { background:var(--bubble-user); color:#fff;
-        padding:10px 14px; border-radius:16px 16px 4px 16px;
-        font-size:15px; line-height:1.7; white-space:pre-wrap; }
+        padding:14px 16px; border-radius:16px 16px 4px 16px;
+        font-size:15px; line-height:1.9; white-space:pre-wrap; }
       /* 輸入區 */
       .vr-input-area { padding:10px 14px 20px; background:var(--bg);
         border-top:0.5px solid var(--border); flex-shrink:0; }
       .vr-input-row { display:flex; gap:8px; align-items:flex-end; }
+      .vr-input-box { flex:1; position:relative; display:flex; }
       .vr-input { flex:1; background:var(--input-bg,#0d1624); border:0.5px solid var(--border);
-        border-radius:14px; padding:10px 14px; color:var(--text-1); font-size:15px;
+        border-radius:14px; padding:10px 38px 10px 14px; color:var(--text-1); font-size:15px;
         outline:none; resize:none; line-height:1.5; max-height:120px; font-family:inherit; }
+      .vr-newline-btn { position:absolute; right:8px; bottom:7px;
+        width:24px; height:24px; border:none; background:transparent;
+        color:var(--text-3); border-radius:6px; font-size:13px;
+        cursor:pointer; display:flex; align-items:center; justify-content:center; }
       .vr-send { width:38px; height:38px; border-radius:50%; background:var(--accent);
         border:none; color:#fff; font-size:18px; cursor:pointer; display:flex;
         align-items:center; justify-content:center; flex-shrink:0; }
@@ -54,7 +59,10 @@
       <div class="vr-messages" id="vrMessages"></div>
       <div class="vr-input-area">
         <div class="vr-input-row">
-          <textarea class="vr-input" id="vrInput" rows="1" placeholder="說些什麼…"></textarea>
+          <div class="vr-input-box">
+            <textarea class="vr-input" id="vrInput" rows="1" placeholder="說些什麼…"></textarea>
+            <button class="vr-newline-btn" id="vrNewlineBtn">⏎</button>
+          </div>
           <button class="vr-send" id="vrSend">➤</button>
         </div>
       </div>
@@ -75,17 +83,14 @@
     function formatT(iso) { return window.formatTime ? window.formatTime(iso) : ''; }
 
     function appendAI(text, createdAt) {
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      // 依空行切段落，每 10 段合成一個泡泡（段落間保留空行，和空間一致）
+      const raw = (text || '').trim();
+      const paras = raw.split(/\n\s*\n/).map(p => p.trim()).filter(p => p);
       const bubbles = [];
-      let cur = [];
-      for (const l of lines) {
-        cur.push(l);
-        if (cur.length === 5 || l === lines[lines.length - 1]) {
-          bubbles.push(cur.join('\n'));
-          cur = [];
-        }
+      for (let i = 0; i < paras.length; i += 10) {
+        bubbles.push(paras.slice(i, i + 10).join('\n\n'));
       }
-      if (!bubbles.length) bubbles.push(text.trim());
+      if (!bubbles.length) bubbles.push(raw);
 
       const entry = document.createElement('div');
       entry.className = 'vr-entry-ai';
@@ -164,10 +169,20 @@
     }
 
     // 自動高度
-    input.addEventListener('input', () => {
+    function autoGrow() {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-    });
+    }
+    input.addEventListener('input', autoGrow);
+
+    // 分行鍵：在游標位置插入換行
+    container.querySelector('#vrNewlineBtn').onclick = () => {
+      const s = input.selectionStart, e = input.selectionEnd;
+      input.value = input.value.slice(0, s) + '\n' + input.value.slice(e);
+      input.selectionStart = input.selectionEnd = s + 1;
+      autoGrow();
+      input.focus();
+    };
 
     async function sendMessage() {
       const text = input.value.trim();
@@ -205,21 +220,31 @@
     // 送客
     container.querySelector('#vrEnd').onclick = async () => {
       if (!confirm('確定要送客嗎？')) return;
+      const endBtn = container.querySelector('#vrEnd');
+      endBtn.textContent = '整理中…';
+      endBtn.style.pointerEvents = 'none';
       try {
         const r = await fetch('/visitor/end', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ session_id: sessionId })
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         // 清掉 localStorage ack，讓訪客 bar 消失
         localStorage.removeItem('visitor_ack_' + sessionId);
         sessionStorage.removeItem('visitor_ack_' + sessionId);
         window.SpaRouter.navigate('space');
-        // 跳摘要視窗（延遲等 space 掛載）
         if (d.summary && window.RifugioViews?.space?.showSummary) {
           setTimeout(() => window.RifugioViews.space.showSummary(d), 500);
+        } else if (d.error) {
+          setTimeout(() => alert('訪客已送走，但摘要生成失敗。\n可以稍後再看訪客記錄。'), 600);
         }
-      } catch(e) { alert('送客失敗，請再試一次'); }
+      } catch(e) {
+        // 可能只是回應太慢，後端其實已經處理完了
+        localStorage.removeItem('visitor_ack_' + sessionId);
+        sessionStorage.removeItem('visitor_ack_' + sessionId);
+        window.SpaRouter.navigate('space');
+        setTimeout(() => alert('送客處理中，摘要可能還在生成。\n稍後可到訪客記錄查看。'), 600);
+      }
     };
 
     return function cleanup() {};

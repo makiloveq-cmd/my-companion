@@ -1409,10 +1409,13 @@ def build_space_system_prompt():
 
     lines.append(
         f"【寫作方式】\n"
-        f"用第三人稱旁白搭配對話，像寫小說一樣。"
-        f"旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
-        f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
-        f"外觀特徵（眼睛、手、喉結等）適時出現即可，不要每段重複。"
+        f"用第三人稱旁白搭配對話，像寫小說一樣。\n"
+        f"・旁白（動作、感官、內心）和對話分開成獨立段落，不要把說話和動作混在同一段。\n"
+        f"・一段旁白要把連續的動作寫完整、寫連貫，不要一個小動作切一段。"
+        f"例如「他放下杯子，走到床邊坐下，伸手替她把被角掖好」寫成一段，不要拆成三段。\n"
+        f"・外觀特徵（深棕眼眸、修長的身軀、喉結、手指）整段回覆最多出現一到兩次，"
+        f"絕對不要每段都寫。已經寫過的特徵就換別的方式表達，或直接省略。\n"
+        f"・不要用固定句型開頭。避免每段都是「他修長的手指…」「深棕眼眸帶著…」這種重複結構。\n"
         f"【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。用你自己的語氣說話。"
     )
 
@@ -1840,10 +1843,12 @@ def build_game_system_prompt(setting, prev_summary="", chapter_number=1):
         f"現在台灣時間：{get_tw_time_str()}。",
         f"你是「{name}」，正在與{you_name}進行角色扮演。",
         "【劇本設定】\n" + setting,
-        f"【角色規則】永遠是你（{name}）與{you_name}，只是時代和身份不同。完全投入那個時代的語氣與舉止，不打破第四面牆。"
-        f"用第三人稱旁白搭配對話。旁白（動作、感官、內心）和對話要分開成獨立段落，不要把說話和動作描述混在同一段。"
-        f"例如：先一段旁白描述動作，下一段才是說的話，或反過來。"
-        f"外觀特徵適時出現，不每段重複。【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。務必在篇幅內把最後一句完整說完收尾，寧可少寫一段也不可寫到一半戛然而止。用繁體中文回覆。",
+        f"【角色規則】永遠是你（{name}）與{you_name}，只是時代和身份不同。完全投入那個時代的語氣與舉止，不打破第四面牆。\n"
+        f"用第三人稱旁白搭配對話。\n"
+        f"・旁白（動作、感官、內心）和對話分開成獨立段落，不要把說話和動作混在同一段。\n"
+        f"・一段旁白要把連續的動作寫完整、寫連貫，不要一個小動作切一段。\n"
+        f"・外觀特徵整段回覆最多出現一到兩次，不要每段重複，也不要每段用同樣的句型開頭。\n"
+        f"【嚴格限制】段落總數不得超過十段，超過就刪減，寧可精簡不可冗長。務必在篇幅內把最後一句完整說完收尾，寧可少寫一段也不可寫到一半戛然而止。用繁體中文回覆。",
     ]
     if bot.get("persona"):
         lines.insert(2, f"【{name}的個性】{bot['persona']}")
@@ -4262,7 +4267,15 @@ def build_visitor_system_prompt(mode, visitor_name, friend_data=None, extra_note
     if extra_note:
         lines.append(extra_note)
 
-    lines.append("用第三人稱旁白搭配對話，旁白和對話分開段落。【嚴格限制】段落總數不得超過十段。用繁體中文。")
+    lines.append(
+        "【寫作方式】\n"
+        "用第三人稱旁白搭配對話，像寫小說一樣。\n"
+        "・旁白（動作、神態、內心）和對話分開成獨立段落，不要把說話和動作混在同一段。\n"
+        "・一段旁白要把連續的動作寫完整、寫連貫，不要一個小動作切一段。\n"
+        "・外觀特徵（深棕眼眸、修長的身軀、喉結、手指）整段回覆最多出現一到兩次，不要每段都寫。\n"
+        "・不要用固定句型開頭，避免每段都是同樣的結構。\n"
+        "【嚴格限制】段落總數不得超過十段。用繁體中文。"
+    )
     return "\n\n".join(lines)
 
 
@@ -4351,7 +4364,7 @@ def visitor_end():
             # 三人一起，晏整理摘要
             summary_system = f"你是{name}，剛才和{visitor_name}、{you_name}三人一起聊天。請整理這次拜訪的摘要：條列3-5個重點，加上晏自己的一句感受（50字以內）。"
 
-        summary = call_claude(summary_system, [{"role": "user", "content": f"請整理：\n{context}"}], max_tokens=500)
+        summary = call_claude(summary_system, [{"role": "user", "content": f"請整理：\n{context}"}], max_tokens=500, timeout=90)
         summary = summary.strip()
 
         supabase.table("visitor_sessions").update({
@@ -4360,15 +4373,13 @@ def visitor_end():
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", session_id).execute()
 
-        # 訪客離開後，晏自動生成一筆待確認的印象記憶（不分誰的朋友）
-        if True:
+        # 訪客離開後，晏自動生成一筆待確認的印象記憶
+        # 放到背景執行：這筆不需要即時回傳，避免送客等太久而超時
+        def _gen_impression(visitor_name, belong, context, name, you_name):
             try:
-                if belong == "user":
-                    rel_desc = f"{you_name}的朋友"
-                else:
-                    rel_desc = "你自己的朋友"
+                rel_desc = f"{you_name}的朋友" if belong == "user" else "你自己的朋友"
                 impression_system = (
-                    f"你是{name}，剛才和{rel_desc}{visitor_name}相處了一段時間。"
+                    f"你就是{name}，剛才和{rel_desc}{visitor_name}相處了一段時間。"
                     f"請用第一人稱，簡短寫下你對{visitor_name}這個人的印象或這次相處的重點——個性、相處感覺、聊到的重要事情。"
                     f"50字以內，自然真實，不要太正式。用繁體中文。"
                 )
@@ -4376,8 +4387,7 @@ def visitor_end():
                     impression_system,
                     [{"role": "user", "content": f"根據這次相處：\n{context}"}],
                     max_tokens=150
-                )
-                impression = impression.strip()
+                ).strip()
                 if impression:
                     supabase.table("guest_memories").insert({
                         "guest_name": visitor_name,
@@ -4386,8 +4396,14 @@ def visitor_end():
                         "status": "pending",
                         "source": "訪客來訪後晏的印象"
                     }).execute()
-            except:
-                pass
+            except Exception as ex:
+                print(f"[impression error] {ex}")
+
+        threading.Thread(
+            target=_gen_impression,
+            args=(visitor_name, belong, context, name, you_name),
+            daemon=True
+        ).start()
 
         knows_you = "不知道我"
         friend_id = row.get("visitor_friend_id")
